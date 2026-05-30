@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash2, Save, Filter } from 'lucide-react';
+import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { Button, Input, Select, Modal } from '@/components/common';
 import { useDataStore } from '@/stores';
+import { r2StorageService } from '@/services/r2Service';
 import type { TradingRecord, TradingRecordInput, TradingType } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 
@@ -63,7 +64,7 @@ function validateForm(data: TradingRecordInput): ValidationError[] {
 }
 
 export const DataEditor: React.FC = () => {
-  const { records, addRecord, updateRecord, deleteRecord } = useDataStore();
+  const { records, addRecord, updateRecord, deleteRecord, isSaving } = useDataStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<TradingRecord | null>(null);
   const [formData, setFormData] = useState<TradingRecordInput>(emptyRecord);
@@ -73,6 +74,9 @@ export const DataEditor: React.FC = () => {
     tradingType: '',
     isSystem: '',
   });
+  
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [updateMessage, setUpdateMessage] = useState('');
 
   // 计算筛选后的数据
   const filteredRecords = useMemo(() => {
@@ -172,6 +176,37 @@ export const DataEditor: React.FC = () => {
     return validationErrors.find((e) => e.field === field)?.message;
   };
 
+  const handleUpdateStats = async () => {
+    if (records.length === 0) {
+      setUpdateStatus('error');
+      setUpdateMessage('没有数据需要处理');
+      return;
+    }
+
+    setUpdateStatus('loading');
+    setUpdateMessage('正在更新统计数据...');
+
+    try {
+      const result = await r2StorageService.updateStats(records);
+      
+      if (result.success) {
+        setUpdateStatus('success');
+        setUpdateMessage(result.message);
+      } else {
+        setUpdateStatus('error');
+        setUpdateMessage(result.message);
+      }
+    } catch (error) {
+      setUpdateStatus('error');
+      setUpdateMessage(error instanceof Error ? error.message : '更新失败');
+    }
+
+    setTimeout(() => {
+      setUpdateStatus('idle');
+      setUpdateMessage('');
+    }, 5000);
+  };
+
   // 构造筛选的选项
   const allMonthOptions = [
     { value: '', label: '全部月份' },
@@ -192,11 +227,41 @@ export const DataEditor: React.FC = () => {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">交易记录</h2>
-        <Button onClick={() => handleOpenModal()}>
-          <Plus className="mr-2 h-4 w-4" />
-          添加记录
-        </Button>
+        <div className="flex items-center gap-3">
+          {isSaving && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              保存中...
+            </div>
+          )}
+          <Button 
+            variant="secondary" 
+            onClick={handleUpdateStats}
+            disabled={updateStatus === 'loading' || records.length === 0}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${updateStatus === 'loading' ? 'animate-spin' : ''}`} />
+            手动更新统计数据
+          </Button>
+          <Button onClick={() => handleOpenModal()}>
+            <Plus className="mr-2 h-4 w-4" />
+            添加记录
+          </Button>
+        </div>
       </div>
+
+      {/* 更新状态提示 */}
+      {updateStatus !== 'idle' && (
+        <div className={`p-4 rounded-lg flex items-center gap-2 ${
+          updateStatus === 'success' ? 'bg-green-50 text-green-800' : 
+          updateStatus === 'error' ? 'bg-red-50 text-red-800' : 
+          'bg-blue-50 text-blue-800'
+        }`}>
+          {updateStatus === 'success' && <CheckCircle className="h-5 w-5" />}
+          {updateStatus === 'error' && <AlertCircle className="h-5 w-5" />}
+          {updateStatus === 'loading' && <RefreshCw className="h-5 w-5 animate-spin" />}
+          <span>{updateMessage}</span>
+        </div>
+      )}
 
       {/* 筛选区域 */}
       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
