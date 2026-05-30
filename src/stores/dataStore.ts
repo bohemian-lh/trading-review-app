@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { useMemo, useEffect } from 'react';
+import { useMemo } from 'react';
 import type { TradingRecord, AnalysisResult, MonthlyAnalysis } from '@/types';
 import { calculateProfitRatio, calculateAverageHoldDays } from '@/utils/calculations';
 import { extractMonth } from '@/utils/dateUtils';
