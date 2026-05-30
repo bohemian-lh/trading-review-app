@@ -1,9 +1,9 @@
 import * as XLSX from 'xlsx';
-import type { TradingRecord } from '@/types';
+import type { TradingRecord, AnalysisResult, MonthlyAnalysis } from '@/types';
 import { generateId } from '@/utils';
 
-const SHEET_NAME = '表1-交易复盘数据';
-const HEADERS = [
+const SHEET_NAME_1 = '表1-交易复盘数据';
+const HEADERS_1 = [
   '开单时间',
   '股票名称',
   '股票代码',
@@ -19,6 +19,25 @@ const HEADERS = [
   '盘前是否',
 ];
 
+const SHEET_NAME_2 = '表2-动态数据分析';
+const HEADERS_2 = [
+  '指标',
+  '数值',
+];
+
+const SHEET_NAME_3 = '表3-月度统计';
+const HEADERS_3 = [
+  '月份',
+  '系统盈利胜率',
+  '系统无失误盈利胜率',
+  '系统有失误盈利胜率',
+  '非系统盈利胜率',
+  '系统盈利平均持仓天数',
+  '系统亏损平均持仓天数',
+  '非系统盈利平均持仓天数',
+  '非系统亏损平均持仓天数',
+];
+
 export interface ParseResult {
   records: TradingRecord[];
   errors: string[];
@@ -32,12 +51,12 @@ export function parseExcelFile(file: File): Promise<ParseResult> {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        const worksheet = workbook.Sheets[SHEET_NAME];
+        const worksheet = workbook.Sheets[SHEET_NAME_1];
 
         if (!worksheet) {
           resolve({
             records: [],
-            errors: [`未找到工作表：${SHEET_NAME}`],
+            errors: [`未找到工作表：${SHEET_NAME_1}`],
           });
           return;
         }
@@ -95,11 +114,11 @@ function mapRowToRecord(row: any): TradingRecord | null {
   };
 }
 
-export function exportToExcel(records: TradingRecord[], filename: string): void {
+export function exportTable1ToExcel(records: TradingRecord[], filename: string): void {
   const workbook = XLSX.utils.book_new();
 
   const data = [
-    HEADERS,
+    HEADERS_1,
     ...records.map((record) => [
       record.openDate,
       record.stockName,
@@ -135,13 +154,84 @@ export function exportToExcel(records: TradingRecord[], filename: string): void 
     { wch: 10 },
   ];
 
-  XLSX.utils.book_append_sheet(workbook, worksheet, SHEET_NAME);
+  XLSX.utils.book_append_sheet(workbook, worksheet, SHEET_NAME_1);
   XLSX.writeFile(workbook, filename);
+}
+
+export function exportTable2ToExcel(analysis: AnalysisResult, filename: string): void {
+  const workbook = XLSX.utils.book_new();
+
+  const data = [
+    HEADERS_2,
+    ['系统盈利胜率', formatValue(analysis.systemProfitRatio)],
+    ['系统无失误盈利胜率', formatValue(analysis.systemNoMistakeProfitRatio)],
+    ['系统有失误盈利胜率', formatValue(analysis.systemWithMistakeProfitRatio)],
+    ['非系统盈利胜率', formatValue(analysis.nonSystemProfitRatio)],
+    ['系统盈利平均持仓天数', formatValue(analysis.systemProfitAvgHoldDays)],
+    ['系统亏损平均持仓天数', formatValue(analysis.systemLossAvgHoldDays)],
+    ['非系统盈利平均持仓天数', formatValue(analysis.nonSystemProfitAvgHoldDays)],
+    ['非系统亏损平均持仓天数', formatValue(analysis.nonSystemLossAvgHoldDays)],
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(data);
+
+  worksheet['!cols'] = [
+    { wch: 20 },
+    { wch: 15 },
+  ];
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, SHEET_NAME_2);
+  XLSX.writeFile(workbook, filename);
+}
+
+export function exportTable3ToExcel(monthlyAnalysis: MonthlyAnalysis[], filename: string): void {
+  const workbook = XLSX.utils.book_new();
+
+  const data = [
+    HEADERS_3,
+    ...monthlyAnalysis.map((item) => [
+      item.month,
+      formatValue(item.systemProfitRatio),
+      formatValue(item.systemNoMistakeProfitRatio),
+      formatValue(item.systemWithMistakeProfitRatio),
+      formatValue(item.nonSystemProfitRatio),
+      formatValue(item.systemProfitAvgHoldDays),
+      formatValue(item.systemLossAvgHoldDays),
+      formatValue(item.nonSystemProfitAvgHoldDays),
+      formatValue(item.nonSystemLossAvgHoldDays),
+    ]),
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(data);
+
+  worksheet['!cols'] = [
+    { wch: 10 },
+    { wch: 15 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 15 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 20 },
+  ];
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, SHEET_NAME_3);
+  XLSX.writeFile(workbook, filename);
+}
+
+function formatValue(value: number | 'N/A'): string {
+  if (value === 'N/A') return 'N/A';
+  return `${value.toFixed(2)}%`;
+}
+
+export function exportToExcel(records: TradingRecord[], filename: string): void {
+  exportTable1ToExcel(records, filename);
 }
 
 export function createEmptyWorkbook(): void {
   const workbook = XLSX.utils.book_new();
-  const worksheet = XLSX.utils.aoa_to_sheet([HEADERS]);
+  const worksheet = XLSX.utils.aoa_to_sheet([HEADERS_1]);
 
   worksheet['!cols'] = [
     { wch: 12 },
@@ -159,6 +249,6 @@ export function createEmptyWorkbook(): void {
     { wch: 10 },
   ];
 
-  XLSX.utils.book_append_sheet(workbook, worksheet, SHEET_NAME);
+  XLSX.utils.book_append_sheet(workbook, worksheet, SHEET_NAME_1);
   XLSX.writeFile(workbook, '交易复盘模板.xlsx');
 }
