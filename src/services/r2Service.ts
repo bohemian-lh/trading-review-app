@@ -1,4 +1,4 @@
-import type { StorageFile, UploadProgress } from '@/types';
+import type { StorageFile, UploadProgress, TradingRecord, AnalysisResult, MonthlyAnalysis } from '@/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -124,6 +124,86 @@ class R2StorageService {
       }
     } catch (error) {
       throw new Error(`删除失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }
+
+  async getRecords(): Promise<{
+    success: boolean;
+    message: string;
+    records?: TradingRecord[];
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/records`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '获取记录失败');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('获取记录失败:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '未知错误',
+      };
+    }
+  }
+
+  async saveRecords(records: TradingRecord[]): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/records`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ records }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '保存记录失败');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('保存记录失败:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '未知错误',
+      };
+    }
+  }
+
+  async updateStats(records: TradingRecord[]): Promise<{
+    success: boolean;
+    message: string;
+    analysis?: AnalysisResult;
+    monthlyAnalysis?: MonthlyAnalysis[];
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/update-stats`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ records }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '更新统计数据失败');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('更新统计数据失败:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '未知错误',
+      };
     }
   }
 
