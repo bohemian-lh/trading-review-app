@@ -6,6 +6,29 @@ import { extractMonth } from '@/utils/dateUtils';
 import { generateId } from '@/utils';
 import { r2StorageService } from '@/services/r2Service';
 
+const isDev = import.meta.env.DEV;
+const STORAGE_KEY = 'trading-review-storage';
+
+function loadFromLocalStorage(): TradingRecord[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (data) {
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('从 localStorage 加载失败:', error);
+  }
+  return [];
+}
+
+function saveToLocalStorage(records: TradingRecord[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  } catch (error) {
+    console.error('保存到 localStorage 失败:', error);
+  }
+}
+
 interface DataState {
   records: TradingRecord[];
   isLoading: boolean;
@@ -26,7 +49,7 @@ interface DataState {
   saveToR2: () => Promise<void>;
 }
 
-export const useDataStore = create<DataState>()((set, get) => ({
+export const useDataStore = create<DataState>((set, get) => ({
   records: [],
   isLoading: false,
   isSaving: false,
@@ -86,11 +109,16 @@ export const useDataStore = create<DataState>()((set, get) => ({
   loadFromR2: async () => {
     set({ isLoading: true, error: null });
     try {
-      const result = await r2StorageService.getRecords();
-      if (result.success && result.records) {
-        set({ records: result.records, isInitialized: true });
+      if (isDev) {
+        const records = loadFromLocalStorage();
+        set({ records, isInitialized: true });
       } else {
-        set({ isInitialized: true });
+        const result = await r2StorageService.getRecords();
+        if (result.success && result.records) {
+          set({ records: result.records, isInitialized: true });
+        } else {
+          set({ isInitialized: true });
+        }
       }
     } catch (error) {
       set({
@@ -108,9 +136,13 @@ export const useDataStore = create<DataState>()((set, get) => ({
     
     set({ isSaving: true });
     try {
-      await r2StorageService.saveRecords(state.records);
+      if (isDev) {
+        saveToLocalStorage(state.records);
+      } else {
+        await r2StorageService.saveRecords(state.records);
+      }
     } catch (error) {
-      console.error('保存到 R2 失败:', error);
+      console.error('保存失败:', error);
     } finally {
       set({ isSaving: false });
     }
