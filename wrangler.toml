@@ -7,4 +7,4 @@ binding = "R2_BUCKET"
 bucket_name = "trading-review-data"
 
 [vars]
-API_TOKEN = "your-secure-api-token-here"
+API_TOKEN = "804e422f37109764b26c6a3254443379a85c05f1f445a21fd927af861860ea71"
