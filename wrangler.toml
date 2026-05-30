@@ -1,4 +1,4 @@
-name = "trading-review-r2-proxy"
+name = "trading-review-app"
 main = "workers/r2-proxy/index.ts"
 compatibility_date = "2024-01-01"
 
