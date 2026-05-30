@@ -1,10 +1,11 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { FileSpreadsheet, BarChart3, LayoutDashboard } from 'lucide-react';
+import { FileSpreadsheet, BarChart3, LayoutDashboard, Loader2 } from 'lucide-react';
 import { ExcelUploader } from '@/components/excel';
 import { DataEditor } from '@/components/editor';
 import { ProfitRatioChart } from '@/components/charts';
 import { useDataStore, useAnalysisResult } from '@/stores';
+import { useInitializeStore } from '@/hooks/useInitializeStore';
 import { cn } from '@/utils';
 
 const Dashboard: React.FC = () => {
@@ -112,6 +113,23 @@ const Navigation: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  useInitializeStore();
+  const isLoading = useDataStore((state) => state.isLoading);
+  const isInitialized = useDataStore((state) => state.isInitialized);
+  const error = useDataStore((state) => state.error);
+
+  if (!isInitialized || isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin mx-auto text-blue-600" />
+          <p className="mt-4 text-gray-600">加载中...</p>
+          {error && <p className="mt-2 text-red-600">{error}</p>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-gray-100">

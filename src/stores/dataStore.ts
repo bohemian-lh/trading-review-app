@@ -1,14 +1,39 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import type { TradingRecord, AnalysisResult, MonthlyAnalysis } from '@/types';
 import { calculateProfitRatio, calculateAverageHoldDays } from '@/utils/calculations';
 import { extractMonth } from '@/utils/dateUtils';
 import { generateId } from '@/utils';
+import { r2StorageService } from '@/services/r2Service';
+
+const isDev = import.meta.env.DEV;
+const STORAGE_KEY = 'trading-review-storage';
+
+function loadFromLocalStorage(): TradingRecord[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (data) {
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('从 localStorage 加载失败:', error);
+  }
+  return [];
+}
+
+function saveToLocalStorage(records: TradingRecord[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  } catch (error) {
+    console.error('保存到 localStorage 失败:', error);
+  }
+}
 
 interface DataState {
   records: TradingRecord[];
   isLoading: boolean;
+  isSaving: boolean;
+  isInitialized: boolean;
   error: string | null;
   currentFileName: string | null;
 
@@ -20,69 +45,109 @@ interface DataState {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setCurrentFileName: (filename: string | null) => void;
+  loadFromR2: () => Promise<void>;
+  saveToR2: () => Promise<void>;
 }
 
-export const useDataStore = create<DataState>()(
-  persist(
-    (set) => ({
-      records: [],
-      isLoading: false,
-      error: null,
-      currentFileName: null,
+export const useDataStore = create<DataState>((set, get) => ({
+  records: [],
+  isLoading: false,
+  isSaving: false,
+  isInitialized: false,
+  error: null,
+  currentFileName: null,
 
-      setRecords: (records) => {
-        set({ records, error: null });
-      },
+  setRecords: async (records) => {
+    set({ records, error: null });
+    await get().saveToR2();
+  },
 
-      addRecord: (recordData) => {
-        const newRecord: TradingRecord = {
-          ...recordData,
-          id: generateId(),
-        };
-        set((state) => ({
-          records: [...state.records, newRecord],
-        }));
-      },
+  addRecord: async (recordData) => {
+    const newRecord: TradingRecord = {
+      ...recordData,
+      id: generateId(),
+    };
+    set((state) => ({
+      records: [...state.records, newRecord],
+    }));
+    await get().saveToR2();
+  },
 
-      updateRecord: (id, updates) => {
-        set((state) => ({
-          records: state.records.map((record) =>
-            record.id === id ? { ...record, ...updates } : record
-          ),
-        }));
-      },
+  updateRecord: async (id, updates) => {
+    set((state) => ({
+      records: state.records.map((record) =>
+        record.id === id ? { ...record, ...updates } : record
+      ),
+    }));
+    await get().saveToR2();
+  },
 
-      deleteRecord: (id) => {
-        set((state) => ({
-          records: state.records.filter((record) => record.id !== id),
-        }));
-      },
+  deleteRecord: async (id) => {
+    set((state) => ({
+      records: state.records.filter((record) => record.id !== id),
+    }));
+    await get().saveToR2();
+  },
 
-      clearRecords: () => {
-        set({ records: [], currentFileName: null, error: null });
-      },
+  clearRecords: async () => {
+    set({ records: [], currentFileName: null, error: null });
+    await get().saveToR2();
+  },
 
-      setLoading: (loading) => {
-        set({ isLoading: loading });
-      },
+  setLoading: (loading) => {
+    set({ isLoading: loading });
+  },
 
-      setError: (error) => {
-        set({ error });
-      },
+  setError: (error) => {
+    set({ error });
+  },
 
-      setCurrentFileName: (filename) => {
-        set({ currentFileName: filename });
-      },
-    }),
-    {
-      name: 'trading-review-storage',
-      partialize: (state) => ({
-        records: state.records,
-        currentFileName: state.currentFileName,
-      }),
+  setCurrentFileName: (filename) => {
+    set({ currentFileName: filename });
+  },
+
+  loadFromR2: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      if (isDev) {
+        const records = loadFromLocalStorage();
+        set({ records, isInitialized: true });
+      } else {
+        const result = await r2StorageService.getRecords();
+        if (result.success && result.records) {
+          set({ records: result.records, isInitialized: true });
+        } else {
+          set({ isInitialized: true });
+        }
+      }
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : '加载失败',
+        isInitialized: true,
+      });
+    } finally {
+      set({ isLoading: false });
     }
-  )
-);
+  },
+
+  saveToR2: async () => {
+    const state = get();
+    if (!state.isInitialized) return;
+    
+    set({ isSaving: true });
+    try {
+      if (isDev) {
+        saveToLocalStorage(state.records);
+      } else {
+        await r2StorageService.saveRecords(state.records);
+      }
+    } catch (error) {
+      console.error('保存失败:', error);
+    } finally {
+      set({ isSaving: false });
+    }
+  },
+}));
 
 export function useAnalysisResult(): AnalysisResult {
   const records = useDataStore((state) => state.records);
