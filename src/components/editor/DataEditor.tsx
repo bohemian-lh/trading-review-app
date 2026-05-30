@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus, Pencil, Trash2, Save, X } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Plus, Pencil, Trash2, Save, Filter } from 'lucide-react';
 import { Button, Input, Select, Modal } from '@/components/common';
 import { useDataStore } from '@/stores';
 import type { TradingRecord, TradingRecordInput, TradingType } from '@/types';
@@ -34,6 +34,12 @@ interface ValidationError {
   message: string;
 }
 
+interface Filters {
+  month: string;
+  tradingType: string;
+  isSystem: string;
+}
+
 function validateForm(data: TradingRecordInput): ValidationError[] {
   const errors: ValidationError[] = [];
 
@@ -62,6 +68,47 @@ export const DataEditor: React.FC = () => {
   const [editingRecord, setEditingRecord] = useState<TradingRecord | null>(null);
   const [formData, setFormData] = useState<TradingRecordInput>(emptyRecord);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [filters, setFilters] = useState<Filters>({
+    month: '',
+    tradingType: '',
+    isSystem: '',
+  });
+
+  // 计算筛选后的数据
+  const filteredRecords = useMemo(() => {
+    return records.filter((record) => {
+      // 按月份筛选 (前6位 yyyymm)
+      if (filters.month && !record.openDate.startsWith(filters.month)) {
+        return false;
+      }
+
+      // 按交易类型筛选
+      if (filters.tradingType && record.tradingType !== filters.tradingType) {
+        return false;
+      }
+
+      // 按系统是否筛选
+      if (filters.isSystem && record.isSystem !== filters.isSystem) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [records, filters]);
+
+  // 获取所有可用的月份选项
+  const monthOptions = useMemo(() => {
+    const months = new Set<string>();
+    records.forEach((record) => {
+      if (record.openDate && record.openDate.length >= 6) {
+        months.add(record.openDate.slice(0, 6));
+      }
+    });
+    return Array.from(months).sort().map((month) => ({
+      value: month,
+      label: `${month.slice(0, 4)}-${month.slice(4, 6)}`,
+    }));
+  }, [records]);
 
   const handleOpenModal = (record?: TradingRecord) => {
     if (record) {
@@ -113,9 +160,33 @@ export const DataEditor: React.FC = () => {
     }
   };
 
+  const resetFilters = () => {
+    setFilters({
+      month: '',
+      tradingType: '',
+      isSystem: '',
+    });
+  };
+
   const getFieldError = (field: string): string | undefined => {
     return validationErrors.find((e) => e.field === field)?.message;
   };
+
+  // 构造筛选的选项
+  const allMonthOptions = [
+    { value: '', label: '全部月份' },
+    ...monthOptions,
+  ];
+
+  const allTradingTypeOptions = [
+    { value: '', label: '全部类型' },
+    ...TRADING_TYPE_OPTIONS,
+  ];
+
+  const allYesNoOptions = [
+    { value: '', label: '全部' },
+    ...YES_NO_OPTIONS,
+  ];
 
   return (
     <div className="space-y-4">
@@ -125,6 +196,61 @@ export const DataEditor: React.FC = () => {
           <Plus className="mr-2 h-4 w-4" />
           添加记录
         </Button>
+      </div>
+
+      {/* 筛选区域 */}
+      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <div className="flex items-center gap-4 mb-4">
+          <Filter className="h-5 w-5 text-gray-600" />
+          <h3 className="font-medium text-gray-800">数据筛选</h3>
+          {(filters.month || filters.tradingType || filters.isSystem) && (
+            <button
+              onClick={resetFilters}
+              className="ml-auto text-sm text-gray-600 hover:text-gray-800"
+            >
+              重置筛选
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              月份筛选
+            </label>
+            <Select
+              value={filters.month}
+              onChange={(e) => setFilters({ ...filters, month: e.target.value })}
+              options={allMonthOptions}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              交易类型
+            </label>
+            <Select
+              value={filters.tradingType}
+              onChange={(e) => setFilters({ ...filters, tradingType: e.target.value })}
+              options={allTradingTypeOptions}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              系统符合
+            </label>
+            <Select
+              value={filters.isSystem}
+              onChange={(e) => setFilters({ ...filters, isSystem: e.target.value })}
+              options={allYesNoOptions}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 text-sm text-gray-600">
+          共 {filteredRecords.length} 条记录 (总计 {records.length} 条)
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -143,14 +269,14 @@ export const DataEditor: React.FC = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {records.length === 0 ? (
+            {filteredRecords.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                  暂无数据，请导入Excel或添加记录
+                  {records.length === 0 ? '暂无数据，请导入Excel或添加记录' : '无符合筛选条件的记录'}
                 </td>
               </tr>
             ) : (
-              records.map((record) => (
+              filteredRecords.map((record) => (
                 <tr key={record.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-900">{record.openDate}</td>
                   <td className="px-4 py-3 text-sm text-gray-900">{record.stockName}</td>
@@ -198,77 +324,111 @@ export const DataEditor: React.FC = () => {
       </div>
 
       <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingRecord ? '编辑记录' : '添加记录'} size="lg">
-        {validationErrors.length > 0 && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <ul className="text-sm text-red-700 space-y-1">
-              {validationErrors.map((error, index) => (
-                <li key={index}>• {error.message}</li>
-              ))}
-            </ul>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                开单时间 (yyyymmdd) <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="text"
+                value={formData.openDate}
+                onChange={(e) => setFormData({ ...formData, openDate: e.target.value })}
+                placeholder="例如: 20250101"
+                error={getFieldError('openDate')}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                股票名称 <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="text"
+                value={formData.stockName}
+                onChange={(e) => setFormData({ ...formData, stockName: e.target.value })}
+                placeholder="例如: 贵州茅台"
+                error={getFieldError('stockName')}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                股票代码 <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="text"
+                value={formData.stockCode}
+                onChange={(e) => setFormData({ ...formData, stockCode: e.target.value })}
+                placeholder="例如: 600519"
+                error={getFieldError('stockCode')}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                交易类型
+              </label>
+              <Select
+                value={formData.tradingType}
+                onChange={(e) => setFormData({ ...formData, tradingType: e.target.value as TradingType })}
+                options={TRADING_TYPE_OPTIONS}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                符合系统
+              </label>
+              <Select
+                value={formData.isSystem}
+                onChange={(e) => setFormData({ ...formData, isSystem: e.target.value as '是' | '否' })}
+                options={YES_NO_OPTIONS}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                有失误
+              </label>
+              <Select
+                value={formData.hasMistake}
+                onChange={(e) => setFormData({ ...formData, hasMistake: e.target.value as '是' | '否' })}
+                options={YES_NO_OPTIONS}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                盈亏%
+              </label>
+              <Input
+                type="number"
+                value={formData.profitPercent}
+                onChange={(e) => setFormData({ ...formData, profitPercent: Number(e.target.value) })}
+                placeholder="例如: 5.2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                持仓天数 <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="number"
+                value={formData.holdDays}
+                onChange={(e) => setFormData({ ...formData, holdDays: Number(e.target.value) })}
+                placeholder="例如: 3"
+                error={getFieldError('holdDays')}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                盘前是否
+              </label>
+              <Select
+                value={formData.preMarket}
+                onChange={(e) => setFormData({ ...formData, preMarket: e.target.value as '是' | '否' })}
+                options={YES_NO_OPTIONS}
+              />
+            </div>
           </div>
-        )}
-        <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="开单时间"
-            value={formData.openDate}
-            onChange={(e) => setFormData({ ...formData, openDate: e.target.value })}
-            placeholder="yyyymmdd格式"
-            error={getFieldError('openDate')}
-          />
-          <Input
-            label="股票名称"
-            value={formData.stockName}
-            onChange={(e) => setFormData({ ...formData, stockName: e.target.value })}
-            error={getFieldError('stockName')}
-          />
-          <Input
-            label="股票代码"
-            value={formData.stockCode}
-            onChange={(e) => setFormData({ ...formData, stockCode: e.target.value })}
-            error={getFieldError('stockCode')}
-          />
-          <Select
-            label="交易类型"
-            options={TRADING_TYPE_OPTIONS}
-            value={formData.tradingType}
-            onChange={(e) => setFormData({ ...formData, tradingType: e.target.value as TradingType })}
-          />
-          <Select
-            label="是否符合系统"
-            options={YES_NO_OPTIONS}
-            value={formData.isSystem}
-            onChange={(e) => setFormData({ ...formData, isSystem: e.target.value as '是' | '否' })}
-          />
-          <Select
-            label="有无大的失误"
-            options={YES_NO_OPTIONS}
-            value={formData.hasMistake}
-            onChange={(e) => setFormData({ ...formData, hasMistake: e.target.value as '是' | '否' })}
-          />
-          <Input
-            label="盈亏情况 (%)"
-            type="number"
-            step="0.01"
-            value={formData.profitPercent}
-            onChange={(e) => setFormData({ ...formData, profitPercent: parseFloat(e.target.value) || 0 })}
-          />
-          <Input
-            label="持仓时间 (天)"
-            type="number"
-            value={formData.holdDays}
-            onChange={(e) => setFormData({ ...formData, holdDays: parseInt(e.target.value) || 0 })}
-            error={getFieldError('holdDays')}
-          />
-          <Select
-            label="盘前是否"
-            options={YES_NO_OPTIONS}
-            value={formData.preMarket}
-            onChange={(e) => setFormData({ ...formData, preMarket: e.target.value as '是' | '否' })}
-          />
         </div>
-        <div className="mt-6 flex justify-end space-x-3">
+        <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
           <Button variant="secondary" onClick={handleCloseModal}>
-            <X className="mr-2 h-4 w-4" />
             取消
           </Button>
           <Button onClick={handleSave}>
