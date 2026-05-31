@@ -2,6 +2,7 @@
 export async function onRequest(context) {
   const { request, env, url } = context;
   console.log('=== /api/file 请求 ===', request.method, url);
+  console.log('context.env keys:', Object.keys(env));
   
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -17,6 +18,7 @@ export async function onRequest(context) {
     // 从查询参数获取文件名
     const urlObj = new URL(url);
     const filename = urlObj.searchParams.get('filename');
+    console.log('filename from query:', filename);
     
     if (!filename) {
       return json({ success: false, error: 'Filename required' }, 400, corsHeaders);
@@ -36,32 +38,57 @@ export async function onRequest(context) {
     return json({ 
       success: false, 
       error: 'Internal error', 
-      details: e.message 
+      details: e.message,
+      stack: e.stack
     }, 500, corsHeaders);
   }
 }
 
 async function handleDownload(filename, env, corsHeaders) {
   const key = `excel-files/${filename}`;
-  console.log('下载文件', key);
+  console.log('下载文件, key:', key);
+  console.log('env.R2_BUCKET exists:', !!env.R2_BUCKET);
   
-  const object = await env.R2_BUCKET.get(key);
-  if (!object) {
-    return json({ success: false, error: 'Not found' }, 404, corsHeaders);
-  }
+  try {
+    const object = await env.R2_BUCKET.get(key);
+    console.log('object found:', !!object);
+    
+    if (!object) {
+      return json({ success: false, error: 'Not found' }, 404, corsHeaders);
+    }
 
-  const headers = new Headers(corsHeaders);
-  headers.set('Content-Type', object.httpMetadata?.contentType || 'application/octet-stream');
-  headers.set('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-  
-  return new Response(object.body, { headers, status: 200 });
+    const headers = new Headers(corsHeaders);
+    headers.set('Content-Type', object.httpMetadata?.contentType || 'application/octet-stream');
+    headers.set('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    
+    return new Response(object.body, { headers, status: 200 });
+  } catch (e) {
+    console.error('Download error:', e);
+    return json({ 
+      success: false, 
+      error: 'Download failed', 
+      details: e.message 
+    }, 500, corsHeaders);
+  }
 }
 
 async function handleDelete(filename, env, corsHeaders) {
   const key = `excel-files/${filename}`;
-  console.log('删除文件', key);
-  await env.R2_BUCKET.delete(key);
-  return json({ success: true, message: 'Deleted' }, 200, corsHeaders);
+  console.log('删除文件, key:', key);
+  console.log('env.R2_BUCKET exists:', !!env.R2_BUCKET);
+  
+  try {
+    await env.R2_BUCKET.delete(key);
+    console.log('File deleted successfully');
+    return json({ success: true, message: 'Deleted' }, 200, corsHeaders);
+  } catch (e) {
+    console.error('Delete error:', e);
+    return json({ 
+      success: false, 
+      error: 'Delete failed', 
+      details: e.message 
+    }, 500, corsHeaders);
+  }
 }
 
 function json(data, status = 200, headers = {}) {

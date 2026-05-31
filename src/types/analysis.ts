@@ -29,3 +29,16 @@ export interface ChartDataPoint {
   systemWithMistakeProfitRatio: number | 'N/A';
   nonSystemProfitRatio: number | 'N/A';
 }
+
+// 自定义分析数据（表2）
+export interface CustomAnalysisData {
+  useCustom: boolean;
+  data: AnalysisResult;
+}
+
+// 自定义月度分析数据（表3）
+export interface CustomMonthlyData {
+  useCustom: boolean;
+  data: MonthlyAnalysis[];
+}
+

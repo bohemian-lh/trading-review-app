@@ -1,4 +1,4 @@
-import type { StorageFile, UploadProgress, TradingRecord } from '@/types';
+import type { StorageFile, UploadProgress, TradingRecord, CustomAnalysisData, CustomMonthlyData } from '@/types';
 import type { RecordsResponse } from '@/types/validation';
 
 // 确保使用相对路径，在同一域名下直接请求
@@ -107,22 +107,38 @@ class R2StorageService {
   }
 
   async downloadFile(filename: string): Promise<Blob> {
+    console.log('=== r2StorageService.downloadFile START ===');
+    console.log('Downloading filename:', filename);
+    console.log('Request URL:', `${API_BASE_URL}/api/file?filename=${encodeURIComponent(filename)}`);
+    
     try {
       const response = await fetch(`${API_BASE_URL}/api/file?filename=${encodeURIComponent(filename)}`, {
         headers: this.getHeaders(false),
       });
 
+      console.log('Download response status:', response.status);
+
       if (!response.ok) {
-        throw new Error(`Download failed: HTTP ${response.status}`);
+        const errorText = await response.text();
+        console.error('Download error response:', errorText);
+        throw new Error(`Download failed: HTTP ${response.status} - ${errorText}`);
       }
 
-      return await response.blob();
+      const blob = await response.blob();
+      console.log('Download completed, blob size:', blob.size);
+      console.log('=== r2StorageService.downloadFile SUCCESS ===');
+      return blob;
     } catch (error) {
+      console.error('❌ r2StorageService.downloadFile FAILED:', error);
       throw new Error(`Download failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   async deleteFile(filename: string): Promise<void> {
+    console.log('=== r2StorageService.deleteFile START ===');
+    console.log('Deleting filename:', filename);
+    console.log('Request URL:', `${API_BASE_URL}/api/file?filename=${encodeURIComponent(filename)}`);
+    
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/file?filename=${encodeURIComponent(filename)}`,
@@ -132,8 +148,12 @@ class R2StorageService {
         }
       );
 
+      console.log('Delete response status:', response.status);
+      
       await this.handleResponse(response);
+      console.log('=== r2StorageService.deleteFile SUCCESS ===');
     } catch (error) {
+      console.error('❌ r2StorageService.deleteFile FAILED:', error);
       throw new Error(`Delete failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -162,18 +182,25 @@ class R2StorageService {
     }
   }
 
-  async saveRecords(records: TradingRecord[], version?: number): Promise<{
+  async saveRecords(
+    records: TradingRecord[], 
+    version?: number,
+    customAnalysis?: CustomAnalysisData,
+    customMonthly?: CustomMonthlyData
+  ): Promise<{
     success: boolean;
     message: string;
     version?: number;
     conflict?: boolean;
     records?: TradingRecord[];
+    customAnalysis?: CustomAnalysisData;
+    customMonthly?: CustomMonthlyData;
   }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/records`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ records, version }),
+        body: JSON.stringify({ records, version, customAnalysis, customMonthly }),
       });
 
       const data = await this.handleResponse<RecordsResponse>(response);
