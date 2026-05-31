@@ -48,14 +48,23 @@ export const ExcelUploader: React.FC = () => {
       mode: importMode,
     };
 
+    console.log('Import options:', options);
+    console.log('selectedTable:', selectedTable, 'type:', typeof selectedTable);
+
     setLoading(true);
     setError(null);
 
     try {
       const result = await parseExcelFile(file, options);
-      console.log('Parse result:', result);
+      console.log('Parse result:', JSON.stringify(result, null, 2));
 
       const recordCount = result.records?.length || 0;
+      console.log('Record count:', recordCount);
+
+      if (result.errors && result.errors.length > 0) {
+        console.log('Parse errors:', result.errors);
+      }
+
       setPreviewData({
         records: result.records,
         recordCount,
@@ -97,7 +106,13 @@ export const ExcelUploader: React.FC = () => {
   );
 
   const handleConfirmImport = async () => {
+    console.log('handleConfirmImport called');
+    console.log('previewData:', previewData);
+    console.log('records currently in store:', records.length);
+    console.log('importMode:', importMode);
+
     if (!previewData?.records || previewData.records.length === 0) {
+      console.log('No records to import, showing error');
       setError('没有可导入的记录');
       return;
     }
@@ -109,12 +124,20 @@ export const ExcelUploader: React.FC = () => {
       let newRecords: TradingRecord[];
 
       if (importMode === 'overwrite') {
+        console.log('Using overwrite mode, new records:', previewData.records.length);
         newRecords = previewData.records;
       } else {
+        console.log('Using append mode, existing:', records.length, 'new:', previewData.records.length);
         newRecords = [...records, ...previewData.records];
       }
 
-      await r2StorageService.saveRecords(newRecords);
+      console.log('Saving to R2, total records:', newRecords.length);
+      const saveResult = await r2StorageService.saveRecords(newRecords);
+      console.log('Save result:', saveResult);
+
+      if (!saveResult.success) {
+        throw new Error(saveResult.message);
+      }
 
       useDataStore.setState({
         records: newRecords,
@@ -122,10 +145,12 @@ export const ExcelUploader: React.FC = () => {
         error: null
       });
 
+      console.log('Import completed successfully');
       setIsModalOpen(false);
       setPreviewData(null);
       setFileToImport(null);
     } catch (err) {
+      console.error('Import failed:', err);
       setError(err instanceof Error ? err.message : '导入失败');
     } finally {
       setLoading(false);
