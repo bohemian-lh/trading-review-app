@@ -116,11 +116,13 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   saveToR2: async () => {
     const state = get();
-    if (!state.isInitialized) return;
-
     set({ isSaving: true });
     try {
-      await r2StorageService.saveRecords(state.records);
+      const result = await r2StorageService.saveRecords(state.records);
+      if (!result.success) {
+        console.error('保存失败:', result.message);
+        set({ error: result.message });
+      }
     } catch (error) {
       console.error('保存失败:', error);
     } finally {
