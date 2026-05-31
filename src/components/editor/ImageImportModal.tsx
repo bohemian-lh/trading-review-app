@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { X, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Upload, Image as ImageIcon, Loader2, Clipboard } from 'lucide-react';
 import { Button, Input, Select } from '../common';
 import type { ParsedTradeData, OcrStrategy } from '@/types';
 import { ocrManager } from '@/services/ocr';
@@ -27,6 +27,42 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [selectedStrategy, setSelectedStrategy] = useState<OcrStrategy>(ocrManager.getConfig().strategy);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 监听粘贴事件
+  useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      if (!isOpen || step !== 'upload') return;
+      
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      
+      // 查找图片项
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault(); // 阻止默认粘贴行为
+            
+            // 显示预览
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              setImagePreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+            
+            // 处理上传
+            await handleUpload(file);
+            return;
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('paste', handlePaste);
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+    };
+  }, [isOpen, step]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -157,8 +193,11 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                 className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Upload className="h-10 w-10 mx-auto text-gray-400 mb-2" />
-                <p className="text-gray-600 mb-2">拖拽图片到此处，或点击选择</p>
+                <div className="flex flex-col items-center gap-2 mb-4">
+                  <Upload className="h-10 w-10 text-gray-400" />
+                  <Clipboard className="h-8 w-8 text-gray-500" />
+                </div>
+                <p className="text-gray-600 mb-2">拖拽图片到此处，点击选择或 <kbd className="px-2 py-1 bg-gray-100 rounded text-sm">Cmd/Ctrl + V</kbd> 粘贴</p>
                 <p className="text-sm text-gray-400">支持 JPG、PNG 格式</p>
                 <input
                   ref={fileInputRef}
