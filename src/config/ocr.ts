@@ -10,8 +10,8 @@ export const DEFAULT_OCR_CONFIG: OcrConfig = {
     language: 'chi_sim+eng', // 中文简体 + 英文
   },
   cloudflareAi: {
-    ocrModel: '@cf/unum/uform-gen2-qwen-500m',
-    extractModel: '@cf/qwen/qwen2.5-7b-instruct-awq',
+    ocrModel: '@cf/meta/llama-3.2-11b-vision-instruct',
+    extractModel: '@cf/meta/llama-3.2-11b-vision-instruct',
   },
 };
 
