@@ -1,9 +1,50 @@
 import { z } from 'zod';
 import type { TradingRecord, TradingType, YesNo } from './trading';
+import type { CustomAnalysisData, CustomMonthlyData, AnalysisResult, MonthlyAnalysis } from './analysis';
 
 const TradingTypeSchema = z.enum(['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致']) satisfies z.ZodType<TradingType>;
 
 const YesNoSchema = z.enum(['是', '否']) satisfies z.ZodType<YesNo>;
+
+// 数值或 'N/A' 的 schema
+const NumberOrNASchema = z.union([z.number(), z.literal('N/A')]);
+
+// AnalysisResult schema
+const AnalysisResultSchema = z.object({
+  systemProfitRatio: NumberOrNASchema,
+  systemNoMistakeProfitRatio: NumberOrNASchema,
+  systemWithMistakeProfitRatio: NumberOrNASchema,
+  nonSystemProfitRatio: NumberOrNASchema,
+  systemProfitAvgHoldDays: NumberOrNASchema,
+  systemLossAvgHoldDays: NumberOrNASchema,
+  nonSystemProfitAvgHoldDays: NumberOrNASchema,
+  nonSystemLossAvgHoldDays: NumberOrNASchema,
+}) satisfies z.ZodType<AnalysisResult>;
+
+// MonthlyAnalysis schema
+const MonthlyAnalysisSchema = z.object({
+  month: z.string(),
+  systemProfitRatio: NumberOrNASchema,
+  systemNoMistakeProfitRatio: NumberOrNASchema,
+  systemWithMistakeProfitRatio: NumberOrNASchema,
+  nonSystemProfitRatio: NumberOrNASchema,
+  systemProfitAvgHoldDays: NumberOrNASchema,
+  systemLossAvgHoldDays: NumberOrNASchema,
+  nonSystemProfitAvgHoldDays: NumberOrNASchema,
+  nonSystemLossAvgHoldDays: NumberOrNASchema,
+}) satisfies z.ZodType<MonthlyAnalysis>;
+
+// CustomAnalysisData schema
+const CustomAnalysisDataSchema = z.object({
+  useCustom: z.boolean(),
+  data: AnalysisResultSchema,
+}) satisfies z.ZodType<CustomAnalysisData>;
+
+// CustomMonthlyData schema
+const CustomMonthlyDataSchema = z.object({
+  useCustom: z.boolean(),
+  data: z.array(MonthlyAnalysisSchema),
+}) satisfies z.ZodType<CustomMonthlyData>;
 
 export const TradingRecordSchema = z.object({
   id: z.string(),
@@ -27,11 +68,15 @@ export const TradingRecordArraySchema = z.array(TradingRecordSchema);
 export const SaveRecordsRequestSchema = z.object({
   records: TradingRecordArraySchema,
   version: z.number().optional(),
+  customAnalysis: CustomAnalysisDataSchema.optional(),
+  customMonthly: CustomMonthlyDataSchema.optional(),
 });
 
 export interface SaveRecordsRequest {
   records: TradingRecord[];
   version?: number;
+  customAnalysis?: CustomAnalysisData;
+  customMonthly?: CustomMonthlyData;
 }
 
 export interface RecordsResponse {
@@ -39,6 +84,8 @@ export interface RecordsResponse {
   message: string;
   records?: TradingRecord[];
   version?: number;
+  customAnalysis?: CustomAnalysisData;
+  customMonthly?: CustomMonthlyData;
   conflict?: boolean;
 }
 

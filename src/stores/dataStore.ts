@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useMemo } from 'react';
-import type { TradingRecord, AnalysisResult, MonthlyAnalysis } from '@/types';
+import type { TradingRecord, AnalysisResult, MonthlyAnalysis, CustomAnalysisData, CustomMonthlyData } from '@/types';
 import { calculateProfitRatio, calculateAverageHoldDays } from '@/utils/calculations';
 import { extractMonth } from '@/utils/dateUtils';
 import { generateId } from '@/utils';
@@ -25,6 +25,10 @@ interface DataState {
   error: string | null;
   currentFileName: string | null;
   version: number | null;
+  // 自定义分析数据（表2）
+  customAnalysis: CustomAnalysisData;
+  // 自定义月度数据（表3）
+  customMonthly: CustomMonthlyData;
 
   setRecords: (records: TradingRecord[]) => void;
   addRecord: (record: Omit<TradingRecord, 'id'>) => void;
@@ -35,6 +39,16 @@ interface DataState {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setCurrentFileName: (filename: string | null) => void;
+  // 自定义分析数据操作
+  setCustomAnalysis: (data: CustomAnalysisData) => void;
+  updateCustomAnalysisField: (field: keyof AnalysisResult, value: number | 'N/A') => void;
+  toggleUseCustomAnalysis: () => void;
+  // 自定义月度数据操作
+  setCustomMonthly: (data: CustomMonthlyData) => void;
+  addCustomMonthly: (item: MonthlyAnalysis) => void;
+  updateCustomMonthly: (month: string, updates: Partial<MonthlyAnalysis>) => void;
+  deleteCustomMonthly: (month: string) => void;
+  toggleUseCustomMonthly: () => void;
   loadFromR2: () => Promise<void>;
   saveToR2: () => Promise<void>;
 }
@@ -51,6 +65,18 @@ export const useDataStore = create<DataState>((set, get) => {
     return debouncedSave;
   };
 
+  // 空的分析数据模板
+  const emptyAnalysis: AnalysisResult = {
+    systemProfitRatio: 'N/A',
+    systemNoMistakeProfitRatio: 'N/A',
+    systemWithMistakeProfitRatio: 'N/A',
+    nonSystemProfitRatio: 'N/A',
+    systemProfitAvgHoldDays: 'N/A',
+    systemLossAvgHoldDays: 'N/A',
+    nonSystemProfitAvgHoldDays: 'N/A',
+    nonSystemLossAvgHoldDays: 'N/A',
+  };
+
   return {
     records: [],
     isLoading: false,
@@ -59,6 +85,8 @@ export const useDataStore = create<DataState>((set, get) => {
     error: null,
     currentFileName: null,
     version: null,
+    customAnalysis: { useCustom: false, data: { ...emptyAnalysis } },
+    customMonthly: { useCustom: false, data: [] },
 
     setRecords: (records) => {
       set({ records, error: null });
@@ -120,13 +148,89 @@ export const useDataStore = create<DataState>((set, get) => {
       set({ currentFileName: filename });
     },
 
+    // 自定义分析数据操作
+    setCustomAnalysis: (data) => {
+      set({ customAnalysis: data });
+      getDebouncedSave()();
+    },
+
+    updateCustomAnalysisField: (field, value) => {
+      set((state) => ({
+        customAnalysis: {
+          ...state.customAnalysis,
+          data: { ...state.customAnalysis.data, [field]: value },
+        },
+      }));
+      getDebouncedSave()();
+    },
+
+    toggleUseCustomAnalysis: () => {
+      set((state) => ({
+        customAnalysis: {
+          ...state.customAnalysis,
+          useCustom: !state.customAnalysis.useCustom,
+        },
+      }));
+      getDebouncedSave()();
+    },
+
+    // 自定义月度数据操作
+    setCustomMonthly: (data) => {
+      set({ customMonthly: data });
+      getDebouncedSave()();
+    },
+
+    addCustomMonthly: (item) => {
+      set((state) => ({
+        customMonthly: {
+          ...state.customMonthly,
+          data: [...state.customMonthly.data, item],
+        },
+      }));
+      getDebouncedSave()();
+    },
+
+    updateCustomMonthly: (month, updates) => {
+      set((state) => ({
+        customMonthly: {
+          ...state.customMonthly,
+          data: state.customMonthly.data.map((item) =>
+            item.month === month ? { ...item, ...updates } : item
+          ),
+        },
+      }));
+      getDebouncedSave()();
+    },
+
+    deleteCustomMonthly: (month) => {
+      set((state) => ({
+        customMonthly: {
+          ...state.customMonthly,
+          data: state.customMonthly.data.filter((item) => item.month !== month),
+        },
+      }));
+      getDebouncedSave()();
+    },
+
+    toggleUseCustomMonthly: () => {
+      set((state) => ({
+        customMonthly: {
+          ...state.customMonthly,
+          useCustom: !state.customMonthly.useCustom,
+        },
+      }));
+      getDebouncedSave()();
+    },
+
     loadFromR2: async () => {
       set({ isLoading: true, error: null });
       try {
-        const result = await r2StorageService.getRecords();
-        if (result.success && result.records) {
+        const result = await r2StorageService.getRecords() as any;
+        if (result.success) {
           set({
-            records: result.records,
+            records: result.records || [],
+            customAnalysis: result.customAnalysis || { useCustom: false, data: { ...emptyAnalysis } },
+            customMonthly: result.customMonthly || { useCustom: false, data: [] },
             version: result.version || null,
             isInitialized: true,
           });
@@ -147,13 +251,20 @@ export const useDataStore = create<DataState>((set, get) => {
       const state = get();
       set({ isSaving: true });
       try {
-        const result = await r2StorageService.saveRecords(state.records, state.version ?? undefined);
+        const result = await r2StorageService.saveRecords(
+          state.records, 
+          state.version ?? undefined,
+          state.customAnalysis,
+          state.customMonthly
+        ) as any;
         if (result.success) {
           set({ version: result.version || null, error: null });
         } else if (result.conflict) {
           set({
             error: 'Conflict detected, please refresh',
             records: result.records || [],
+            customAnalysis: result.customAnalysis || { useCustom: false, data: { ...emptyAnalysis } },
+            customMonthly: result.customMonthly || { useCustom: false, data: [] },
             version: result.version || null,
           });
         } else {
@@ -171,8 +282,12 @@ export const useDataStore = create<DataState>((set, get) => {
 
 export function useAnalysisResult(): AnalysisResult {
   const records = useDataStore((state) => state.records);
+  const customAnalysis = useDataStore((state) => state.customAnalysis);
 
   return useMemo(() => {
+    if (customAnalysis.useCustom) {
+      return customAnalysis.data;
+    }
     return {
       systemProfitRatio: calculateProfitRatio(records, '是'),
       systemNoMistakeProfitRatio: calculateProfitRatio(records, '是', '否'),
@@ -183,13 +298,18 @@ export function useAnalysisResult(): AnalysisResult {
       nonSystemProfitAvgHoldDays: calculateAverageHoldDays(records, '否', 'positive'),
       nonSystemLossAvgHoldDays: calculateAverageHoldDays(records, '否', 'negative'),
     };
-  }, [records]);
+  }, [records, customAnalysis]);
 }
 
 export function useMonthlyAnalysis(): MonthlyAnalysis[] {
   const records = useDataStore((state) => state.records);
+  const customMonthly = useDataStore((state) => state.customMonthly);
 
   return useMemo(() => {
+    if (customMonthly.useCustom) {
+      return customMonthly.data;
+    }
+    
     const monthlyMap = new Map<string, TradingRecord[]>();
 
     for (const record of records) {
@@ -218,5 +338,5 @@ export function useMonthlyAnalysis(): MonthlyAnalysis[] {
         nonSystemLossAvgHoldDays: calculateAverageHoldDays(monthRecords, '否', 'negative'),
       };
     });
-  }, [records]);
+  }, [records, customMonthly]);
 }

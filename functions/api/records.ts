@@ -48,9 +48,11 @@ async function handleGet(env, corsHeaders) {
     const data = JSON.parse(text);
     const records = data.records || data || [];
     const version = data.version || 0;
+    const customAnalysis = data.customAnalysis;
+    const customMonthly = data.customMonthly;
     console.log('成功获取记录', records.length, '条');
     
-    return json({ success: true, records, version }, 200, corsHeaders);
+    return json({ success: true, records, version, customAnalysis, customMonthly }, 200, corsHeaders);
   } catch (e) {
     console.error('获取记录失败', e);
     return json({ 
@@ -67,10 +69,10 @@ async function handlePost(request, env, corsHeaders) {
   const RECORDS_KEY = 'trading-data/records.json';
   try {
     const body = await request.json();
-    const { records, version: clientVersion } = body;
+    const { records, version: clientVersion, customAnalysis, customMonthly } = body;
     const newVersion = Date.now();
     
-    const dataToSave = { records, version: newVersion };
+    const dataToSave = { records, version: newVersion, customAnalysis, customMonthly };
     
     await env.R2_BUCKET.put(RECORDS_KEY, JSON.stringify(dataToSave), {
       httpMetadata: { contentType: 'application/json' }

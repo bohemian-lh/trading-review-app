@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType } from '@/types';
+import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType, CustomAnalysisData, CustomMonthlyData } from '@/types';
 import { generateId } from '@/utils';
 
 export const SHEET_NAME_1 = '表1-交易复盘数据';
@@ -387,9 +387,15 @@ export function exportAllToExcel(
   records: TradingRecord[],
   analysis: AnalysisResult,
   monthlyAnalysis: MonthlyAnalysis[],
-  filename: string
+  filename: string,
+  customAnalysis?: CustomAnalysisData,
+  customMonthly?: CustomMonthlyData
 ): void {
   const workbook = XLSX.utils.book_new();
+
+  // 决定使用自定义数据还是计算数据
+  const finalAnalysis = customAnalysis?.useCustom ? customAnalysis.data : analysis;
+  const finalMonthly = customMonthly?.useCustom ? customMonthly.data : monthlyAnalysis;
 
   const table1Data = [
     HEADERS_1,
@@ -412,19 +418,19 @@ export function exportAllToExcel(
 
   const table2Data = [
     HEADERS_2,
-    ['系统盈利胜率', formatValue(analysis.systemProfitRatio)],
-    ['系统无失误盈利胜率', formatValue(analysis.systemNoMistakeProfitRatio)],
-    ['系统有失误盈利胜率', formatValue(analysis.systemWithMistakeProfitRatio)],
-    ['非系统盈利胜率', formatValue(analysis.nonSystemProfitRatio)],
-    ['系统盈利平均持仓天数', formatValue(analysis.systemProfitAvgHoldDays)],
-    ['系统亏损平均持仓天数', formatValue(analysis.systemLossAvgHoldDays)],
-    ['非系统盈利平均持仓天数', formatValue(analysis.nonSystemProfitAvgHoldDays)],
-    ['非系统亏损平均持仓天数', formatValue(analysis.nonSystemLossAvgHoldDays)],
+    ['系统盈利胜率', formatValue(finalAnalysis.systemProfitRatio)],
+    ['系统无失误盈利胜率', formatValue(finalAnalysis.systemNoMistakeProfitRatio)],
+    ['系统有失误盈利胜率', formatValue(finalAnalysis.systemWithMistakeProfitRatio)],
+    ['非系统盈利胜率', formatValue(finalAnalysis.nonSystemProfitRatio)],
+    ['系统盈利平均持仓天数', formatValue(finalAnalysis.systemProfitAvgHoldDays)],
+    ['系统亏损平均持仓天数', formatValue(finalAnalysis.systemLossAvgHoldDays)],
+    ['非系统盈利平均持仓天数', formatValue(finalAnalysis.nonSystemProfitAvgHoldDays)],
+    ['非系统亏损平均持仓天数', formatValue(finalAnalysis.nonSystemLossAvgHoldDays)],
   ];
 
   const table3Data = [
     HEADERS_3,
-    ...monthlyAnalysis.map((item) => [
+    ...finalMonthly.map((item) => [
       item.month,
       formatValue(item.systemProfitRatio),
       formatValue(item.systemNoMistakeProfitRatio),
