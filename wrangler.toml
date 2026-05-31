@@ -9,6 +9,10 @@ pages_build_output_dir = "dist"
 binding = "R2_BUCKET"
 bucket_name = "trading-review-data"
 
+# Workers AI 绑定
+[ai]
+binding = "AI"
+
 # 环境变量
 [vars]
 API_TOKEN = "804e422f37109764b26c6a3254443379a85c05f1f445a21fd927af861860ea71"
