@@ -1,100 +1,103 @@
-/// <reference types="@cloudflare/workers-types" />
-
-export interface Env {
-  R2_BUCKET: R2Bucket;
-  API_TOKEN: string;
-}
-
-export async function onRequest({ request, env }: { request: Request; env: Env }): Promise<Response> {
-  const origin = request.headers.get('Origin') || '';
-  const allowedOrigins = ['https://trading-review.pages.dev', 'https://trading-review-app.pages.dev', 'http://localhost:5173'];
+// /api/records
+export async function onRequest(context) {
+  const { request, env } = context;
+  console.log('=== /api/records 请求 ===', request.method);
+  
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
 
   if (request.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': allowedOrigins.includes(origin) ? origin : 'https://trading-review.pages.dev',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Max-Age': '86400',
-      },
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
-  if (!allowedOrigins.includes(origin) && !origin.startsWith('http://localhost')) {
-    return new Response('Forbidden', { status: 403 });
-  }
-
-  const token = request.headers.get('Authorization')?.replace('Bearer ', '');
-  if (!token || token !== env.API_TOKEN) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const url = new URL(request.url);
-  const path = url.pathname;
-
-  if (path === '/api/records') {
+  try {
     if (request.method === 'GET') {
-      return handleGetRecords(env);
+      return await handleGet(env, corsHeaders);
     }
+    
     if (request.method === 'POST') {
-      return handleSaveRecords(request, env);
+      return await handlePost(request, env, corsHeaders);
     }
+    
+    return json({ success: false, error: 'Method not allowed' }, 405, corsHeaders);
+  } catch (e) {
+    console.error('Error:', e);
+    return json({ 
+      success: false, 
+      error: 'Internal error', 
+      details: e.message 
+    }, 500, corsHeaders);
   }
-
-  return new Response('Not Found', { status: 404 });
 }
 
-async function handleGetRecords(env: Env): Promise<Response> {
+async function handleGet(env, corsHeaders) {
+  console.log('处理 GET /api/records');
+  
+  const RECORDS_KEY = 'trading-data/records.json';
   try {
-    const key = 'trading-data/records.json';
-    const object = await env.R2_BUCKET.get(key);
-
+    const object = await env.R2_BUCKET.get(RECORDS_KEY);
     if (!object) {
-      return new Response(JSON.stringify({ success: true, records: [] }), {
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
+      console.log('没有找到记录，返回空数组');
+      return json({ success: true, records: [], version: 0 }, 200, corsHeaders);
     }
-
-    const records = await object.json() as any[];
-    return new Response(JSON.stringify({ success: true, records }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
-  } catch (error) {
-    return new Response('Failed to get records', { status: 500 });
+    
+    const text = await object.text();
+    const data = JSON.parse(text);
+    const records = data.records || data || [];
+    const version = data.version || 0;
+    console.log('成功获取记录', records.length, '条');
+    
+    return json({ success: true, records, version }, 200, corsHeaders);
+  } catch (e) {
+    console.error('获取记录失败', e);
+    return json({ 
+      success: false, 
+      error: 'Failed to get', 
+      details: e.message 
+    }, 500, corsHeaders);
   }
 }
 
-async function handleSaveRecords(request: Request, env: Env): Promise<Response> {
+async function handlePost(request, env, corsHeaders) {
+  console.log('处理 POST /api/records');
+  
+  const RECORDS_KEY = 'trading-data/records.json';
   try {
-    const body = await request.json() as { records?: any };
-    const { records } = body;
-
-    if (!Array.isArray(records)) {
-      return new Response(JSON.stringify({ success: false, message: 'Invalid records format' }), {
-        status: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
-    }
-
-    const key = 'trading-data/records.json';
-    await env.R2_BUCKET.put(key, JSON.stringify(records));
-
-    return new Response(JSON.stringify({ success: true, message: 'Records saved' }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+    const body = await request.json();
+    const { records, version: clientVersion } = body;
+    const newVersion = Date.now();
+    
+    const dataToSave = { records, version: newVersion };
+    
+    await env.R2_BUCKET.put(RECORDS_KEY, JSON.stringify(dataToSave), {
+      httpMetadata: { contentType: 'application/json' }
     });
-  } catch (error) {
-    return new Response('Failed to save records', { status: 500 });
+    
+    console.log('成功保存记录');
+    return json({ 
+      success: true, 
+      message: 'Records saved', 
+      version: newVersion 
+    }, 200, corsHeaders);
+  } catch (e) {
+    console.error('保存失败', e);
+    return json({ 
+      success: false, 
+      error: 'Failed to save', 
+      details: e.message 
+    }, 500, corsHeaders);
   }
+}
+
+function json(data, status = 200, headers = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers
+    }
+  });
 }

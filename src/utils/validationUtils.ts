@@ -9,21 +9,29 @@ export function validateTradingRecord(
 ): ValidationResult {
   const errors: ValidationError[] = [];
 
+  // 开单时间验证
   if (!record.openDate) {
     errors.push({
       field: 'openDate',
       message: '开单时间不能为空',
       row: rowIndex,
     });
+  } else if (!/^\d{8}$/.test(record.openDate)) {
+    errors.push({
+      field: 'openDate',
+      message: '开单时间格式错误，必须为8位数字（yyyymmdd）',
+      row: rowIndex,
+    });
   } else if (!parseDate(record.openDate)) {
     errors.push({
       field: 'openDate',
-      message: '开单时间格式错误，应为yyyymmdd',
+      message: '开单时间不是有效的日期',
       row: rowIndex,
     });
   }
 
-  if (!record.stockName) {
+  // 股票名称验证
+  if (!record.stockName || !record.stockName.trim()) {
     errors.push({
       field: 'stockName',
       message: '股票名称不能为空',
@@ -31,7 +39,8 @@ export function validateTradingRecord(
     });
   }
 
-  if (!record.stockCode) {
+  // 股票代码验证
+  if (!record.stockCode || !record.stockCode.trim()) {
     errors.push({
       field: 'stockCode',
       message: '股票代码不能为空',
@@ -39,6 +48,7 @@ export function validateTradingRecord(
     });
   }
 
+  // 交易类型验证
   if (!record.tradingType) {
     errors.push({
       field: 'tradingType',
@@ -53,6 +63,7 @@ export function validateTradingRecord(
     });
   }
 
+  // 系统符合验证
   if (!record.isSystem) {
     errors.push({
       field: 'isSystem',
@@ -67,14 +78,22 @@ export function validateTradingRecord(
     });
   }
 
+  // 失误验证
   if (!record.hasMistake) {
     errors.push({
       field: 'hasMistake',
       message: '有无大的失误不能为空',
       row: rowIndex,
     });
+  } else if (!['是', '否'].includes(record.hasMistake)) {
+    errors.push({
+      field: 'hasMistake',
+      message: '有无大的失误值无效',
+      row: rowIndex,
+    });
   }
 
+  // 盈亏情况验证
   if (record.profitPercent === undefined || record.profitPercent === null) {
     errors.push({
       field: 'profitPercent',
@@ -87,8 +106,21 @@ export function validateTradingRecord(
       message: '盈亏情况必须是数字',
       row: rowIndex,
     });
+  } else if (record.profitPercent < -100) {
+    errors.push({
+      field: 'profitPercent',
+      message: '盈亏情况不能小于-100%',
+      row: rowIndex,
+    });
+  } else if (record.profitPercent > 1000) {
+    errors.push({
+      field: 'profitPercent',
+      message: '盈亏情况不能大于1000%',
+      row: rowIndex,
+    });
   }
 
+  // 持仓时间验证
   if (record.holdDays === undefined || record.holdDays === null) {
     errors.push({
       field: 'holdDays',
@@ -102,7 +134,22 @@ export function validateTradingRecord(
   ) {
     errors.push({
       field: 'holdDays',
-      message: '持仓时间必须是正整数',
+      message: '持仓时间必须是非负整数',
+      row: rowIndex,
+    });
+  } else if (record.holdDays > 3650) {
+    errors.push({
+      field: 'holdDays',
+      message: '持仓时间不能超过3650天（10年）',
+      row: rowIndex,
+    });
+  }
+
+  // 盘前验证
+  if (record.preMarket !== undefined && !['是', '否'].includes(record.preMarket)) {
+    errors.push({
+      field: 'preMarket',
+      message: '盘前值无效',
       row: rowIndex,
     });
   }

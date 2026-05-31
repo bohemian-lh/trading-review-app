@@ -80,7 +80,7 @@ const Navigation: React.FC = () => {
   const navItems = [
     { path: '/', label: '首页', icon: LayoutDashboard },
     { path: '/import', label: '导入/导出', icon: FileSpreadsheet },
-    { path: '/charts', label: '数据编辑', icon: BarChart3 },
+    { path: '/editor', label: '数据编辑', icon: BarChart3 },
   ];
 
   return (
@@ -97,7 +97,7 @@ const Navigation: React.FC = () => {
                 className={cn(
                   'flex items-center space-x-2 px-3 py-4 text-sm font-medium border-b-2 transition-colors',
                   isActive
-                    ? 'border-primary-500 text-primary-600'
+                    ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 )}
               >
@@ -147,7 +147,7 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/import" element={<ExcelUploader />} />
-            <Route path="/charts" element={<DataEditor />} />
+            <Route path="/editor" element={<DataEditor />} />
           </Routes>
         </main>
       </div>

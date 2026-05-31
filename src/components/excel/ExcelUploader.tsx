@@ -1,10 +1,10 @@
-import React, { useCallback, useState } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Check, X, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import React, { useCallback, useState, useEffect } from 'react';
+import { Upload, Download, FileSpreadsheet, Plus, Check, X, Wifi, WifiOff, RefreshCw, Trash2, FileText } from 'lucide-react';
 import { Button, Modal } from '@/components/common';
 import { parseExcelFile, exportAllToExcel, type ImportTableType, type ImportMode, type ImportOptions } from '@/services/excelService';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
 import { r2StorageService } from '@/services/r2Service';
-import type { TradingRecord } from '@/types';
+import type { TradingRecord, StorageFile, UploadProgress } from '@/types';
 
 const TABLE_OPTIONS: { value: ImportTableType; label: string; description: string }[] = [
   { value: 'table1', label: '表1-交易复盘数据', description: '基本交易记录数据' },
@@ -30,6 +30,10 @@ export const ExcelUploader: React.FC = () => {
   const [fileToImport, setFileToImport] = useState<File | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [connectionMessage, setConnectionMessage] = useState<string>('');
+  const [files, setFiles] = useState<StorageFile[]>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [uploadToR2, setUploadToR2] = useState(true);
 
   const {
     records,
@@ -39,6 +43,22 @@ export const ExcelUploader: React.FC = () => {
   } = useDataStore();
   const analysis = useAnalysisResult();
   const monthlyAnalysis = useMonthlyAnalysis();
+
+  const loadFiles = useCallback(async () => {
+    setIsLoadingFiles(true);
+    try {
+      const filesList = await r2StorageService.listFiles();
+      setFiles(filesList);
+    } catch (error) {
+      console.error('Failed to load files:', error);
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
 
   const handleTestConnection = useCallback(async () => {
     setConnectionStatus('testing');
@@ -150,6 +170,11 @@ export const ExcelUploader: React.FC = () => {
     setError(null);
 
     try {
+      // 首先上传文件到R2（如果选择了）
+      if (uploadToR2 && fileToImport) {
+        await handleUploadToR2(fileToImport);
+      }
+
       let newRecords: TradingRecord[];
 
       if (importMode === 'overwrite') {
@@ -194,6 +219,61 @@ export const ExcelUploader: React.FC = () => {
     exportAllToExcel(records, analysis, monthlyAnalysis, currentFileName || '交易复盘数据.xlsx');
   }, [records, analysis, monthlyAnalysis, currentFileName, setError]);
 
+  const handleUploadToR2 = useCallback(async (file: File) => {
+    try {
+      setUploadProgress({
+        filename: file.name,
+        progress: 0,
+        status: 'uploading',
+      });
+
+      const uploadedFile = await r2StorageService.uploadFile(
+        file,
+        (progress) => setUploadProgress({ ...progress })
+      );
+
+      setUploadProgress(null);
+      await loadFiles();
+      
+      return uploadedFile;
+    } catch (error) {
+      console.error('Failed to upload file:', error);
+      setUploadProgress(null);
+      throw error;
+    }
+  }, [loadFiles]);
+
+  const handleDownloadFromR2 = useCallback(async (file: StorageFile) => {
+    try {
+      const blob = await r2StorageService.downloadFile(file.filename);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download file:', error);
+      setError('下载文件失败');
+    }
+  }, [setError]);
+
+  const handleDeleteFromR2 = useCallback(async (file: StorageFile) => {
+    if (!window.confirm(`确定要删除文件 "${file.filename}" 吗？`)) {
+      return;
+    }
+    
+    try {
+      await r2StorageService.deleteFile(file.filename);
+      await loadFiles();
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      setError('删除文件失败');
+    }
+  }, [loadFiles, setError]);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-white rounded-lg border border-gray-200 p-4">
@@ -209,20 +289,20 @@ export const ExcelUploader: React.FC = () => {
                   onClick={() => setSelectedTable(table.value)}
                   className={`flex items-center justify-between p-3 rounded-lg border-2 transition-all text-left ${
                     selectedTable === table.value
-                      ? 'border-primary-500 bg-primary-50'
+                      ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <div>
                     <p className={`text-sm font-medium ${
-                      selectedTable === table.value ? 'text-primary-700' : 'text-gray-700'
+                      selectedTable === table.value ? 'text-blue-700' : 'text-gray-700'
                     }`}>
                       {table.label}
                     </p>
                     <p className="text-xs text-gray-500">{table.description}</p>
                   </div>
                   {selectedTable === table.value && (
-                    <Check className="h-5 w-5 text-primary-500" />
+                    <Check className="h-5 w-5 text-blue-500" />
                   )}
                 </button>
               ))}
@@ -238,20 +318,20 @@ export const ExcelUploader: React.FC = () => {
                   onClick={() => setImportMode(mode.value)}
                   className={`flex items-center justify-between p-3 rounded-lg border-2 transition-all text-left ${
                     importMode === mode.value
-                      ? 'border-primary-500 bg-primary-50'
+                      ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <div>
                     <p className={`text-sm font-medium ${
-                      importMode === mode.value ? 'text-primary-700' : 'text-gray-700'
+                      importMode === mode.value ? 'text-blue-700' : 'text-gray-700'
                     }`}>
                       {mode.label}
                     </p>
                     <p className="text-xs text-gray-500">{mode.description}</p>
                   </div>
                   {importMode === mode.value && (
-                    <Check className="h-5 w-5 text-primary-500" />
+                    <Check className="h-5 w-5 text-blue-500" />
                   )}
                 </button>
               ))}
@@ -292,13 +372,13 @@ export const ExcelUploader: React.FC = () => {
           </div>
         )}
         <div className="mt-2 text-xs text-gray-500">
-          API 地址: {import.meta.env.VITE_API_BASE_URL || '未配置'}
+          API 地址: {import.meta.env.VITE_API_BASE_URL || '相对路径 (同一域名)'}
         </div>
       </div>
 
       <div
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          isDragging ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-gray-400'
+          isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
         }`}
         onDragOver={(e) => {
           e.preventDefault();
@@ -323,12 +403,86 @@ export const ExcelUploader: React.FC = () => {
           />
           <label
             htmlFor="file-upload"
-            className="inline-flex items-center justify-center px-4 py-2 text-base font-medium rounded-lg transition-colors bg-primary-600 text-white hover:bg-primary-700 cursor-pointer"
+            className="inline-flex items-center justify-center px-4 py-2 text-base font-medium rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
           >
             <Upload className="mr-2 h-4 w-4" />
             选择文件
           </label>
         </div>
+      </div>
+
+      {/* 上传进度显示 */}
+      {uploadProgress && (
+        <div className="bg-blue-50 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-blue-900">
+              {uploadProgress.status === 'uploading' ? '正在上传' : 
+               uploadProgress.status === 'completed' ? '上传完成' : '上传失败'}: {uploadProgress.filename}
+            </span>
+            <span className="text-sm text-blue-600">{uploadProgress.progress}%</span>
+          </div>
+          <div className="w-full bg-blue-200 rounded-full h-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${uploadProgress.progress}%` }}
+            />
+          </div>
+          {uploadProgress.error && (
+            <p className="text-sm text-red-600 mt-2">{uploadProgress.error}</p>
+          )}
+        </div>
+      )}
+
+      {/* 文件列表 */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-medium text-gray-900">已上传的 Excel 文件</h3>
+          <Button variant="secondary" size="sm" onClick={loadFiles} disabled={isLoadingFiles}>
+            {isLoadingFiles ? (
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            刷新
+          </Button>
+        </div>
+        
+        {isLoadingFiles ? (
+          <div className="text-center py-8 text-gray-500">
+            <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2" />
+            加载中...
+          </div>
+        ) : files.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            暂无上传的文件
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {files.map((file) => (
+              <div key={file.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <FileSpreadsheet className="h-5 w-5 text-green-600" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{file.filename}</p>
+                    <p className="text-xs text-gray-500">
+                      {file.size ? `${(file.size / 1024).toFixed(1)} KB` : ''} 
+                      {file.lastModified ? ` · ${new Date(file.lastModified).toLocaleString()}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button variant="secondary" size="sm" onClick={() => handleDownloadFromR2(file)}>
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => handleDeleteFromR2(file)} className="text-red-600 hover:text-red-700">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {records.length > 0 && (
@@ -341,10 +495,12 @@ export const ExcelUploader: React.FC = () => {
               共 {records.length} 条交易记录
             </p>
           </div>
-          <Button variant="secondary" onClick={handleExport}>
-            <Download className="mr-2 h-4 w-4" />
-            导出 Excel
-          </Button>
+          <div className="flex items-center space-x-2">
+            <Button variant="secondary" onClick={handleExport}>
+              <Download className="mr-2 h-4 w-4" />
+              导出 Excel
+            </Button>
+          </div>
         </div>
       )}
 
@@ -398,6 +554,20 @@ export const ExcelUploader: React.FC = () => {
               </p>
             </div>
           )}
+
+          {/* 上传到R2选项 */}
+          <div className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              id="uploadToR2"
+              checked={uploadToR2}
+              onChange={(e) => setUploadToR2(e.target.checked)}
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label htmlFor="uploadToR2" className="text-sm text-gray-700">
+              同时上传文件到 R2 存储
+            </label>
+          </div>
 
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
