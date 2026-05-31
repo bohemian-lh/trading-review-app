@@ -7,14 +7,25 @@ export interface Env {
 
 export async function onRequest({ request, env }: { request: Request; env: Env }): Promise<Response> {
   const origin = request.headers.get('Origin') || '';
-  const allowedOrigins = ['https://trading-review.pages.dev', 'http://localhost:5173'];
+  const allowedOrigins = ['https://trading-review.pages.dev', 'https://trading-review-app.pages.dev', 'http://localhost:5173'];
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      headers: {
+        'Access-Control-Allow-Origin': allowedOrigins.includes(origin) ? origin : 'https://trading-review.pages.dev',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Max-Age': '86400',
+      },
+    });
+  }
 
   if (!allowedOrigins.includes(origin) && !origin.startsWith('http://localhost')) {
     return new Response('Forbidden', { status: 403 });
   }
 
   const token = request.headers.get('Authorization')?.replace('Bearer ', '');
-  if (token !== env.API_TOKEN) {
+  if (!token || token !== env.API_TOKEN) {
     return new Response('Unauthorized', { status: 401 });
   }
 
