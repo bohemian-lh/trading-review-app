@@ -9,6 +9,10 @@ pages_build_output_dir = "dist"
 binding = "R2_BUCKET"
 bucket_name = "trading-review-data"
 
+# Workers AI 绑定
+[ai]
+binding = "AI"
+
 # 环境变量
 [vars]
 API_TOKEN = "REDACTED-ROTATE-THIS-TOKEN"

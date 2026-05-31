@@ -5,7 +5,7 @@ const STORAGE_VERSION_KEY = 'ocr-strategy-version';
 const CURRENT_VERSION = 2; // 版本号，用于强制更新策略
 
 export const DEFAULT_OCR_CONFIG: OcrConfig = {
-  strategy: OcrStrategy.TESSERACT, // 默认使用 Tesseract
+  strategy: OcrStrategy.CLOUDFLARE_AI,
   tesseract: {
     language: 'chi_sim+eng', // 中文简体 + 英文
   },

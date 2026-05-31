@@ -11,9 +11,9 @@ interface ImageImportModalProps {
 }
 
 const STRATEGY_OPTIONS = [
-  { value: 'mock', label: '模拟模式（用于测试）' },
-  { value: 'tesseract', label: 'Tesseract.js（本地识别）' },
-  { value: 'cloudflare-ai', label: 'Cloudflare AI（云端识别）' },
+  { value: 'cloudflare-ai', label: 'Cloudflare AI（推荐，精度最高）' },
+  { value: 'tesseract', label: 'Tesseract.js（本地识别，无需网络）' },
+  { value: 'mock', label: '模拟模式（仅测试用）' },
 ];
 
 export const ImageImportModal: React.FC<ImageImportModalProps> = ({
@@ -211,20 +211,18 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                 <div className="mt-1">
                   {selectedStrategy === 'mock' && (
                     <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
-                      ⚠️ 警告：当前使用的是模拟数据！<br/>
-                      这仅用于测试界面流程，不会真正识别图片内容。<br/>
-                      请选择 Tesseract 或 Cloudflare AI 进行真实识别。
+                      ⚠️ 警告：当前使用的是模拟数据！不会真正识别图片内容。
                     </div>
                   )}
                   {selectedStrategy === 'tesseract' && (
-                    <p className="text-xs text-gray-500">
-                      ✓ 使用本地 OCR 引擎，完全免费，不需要网络
-                    </p>
+                    <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                      ✓ 本地 OCR 引擎，免费无需网络。中文识别精度有限，建议截图清晰。
+                    </div>
                   )}
                   {selectedStrategy === 'cloudflare-ai' && (
-                    <p className="text-xs text-gray-500">
-                      使用 Cloudflare AI 服务，识别精度更高
-                    </p>
+                    <div className="p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
+                      ✓ 使用 AI 视觉模型，识别精度最高。需要网络和 AI 绑定配置。
+                    </div>
                   )}
                 </div>
               </div>
