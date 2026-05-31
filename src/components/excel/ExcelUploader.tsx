@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Check, X } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Plus, Check, X, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { Button, Modal } from '@/components/common';
 import { parseExcelFile, exportAllToExcel, type ImportTableType, type ImportMode, type ImportOptions } from '@/services/excelService';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
@@ -28,6 +28,8 @@ export const ExcelUploader: React.FC = () => {
     errors: string[];
   } | null>(null);
   const [fileToImport, setFileToImport] = useState<File | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [connectionMessage, setConnectionMessage] = useState<string>('');
 
   const {
     records,
@@ -37,6 +39,33 @@ export const ExcelUploader: React.FC = () => {
   } = useDataStore();
   const analysis = useAnalysisResult();
   const monthlyAnalysis = useMonthlyAnalysis();
+
+  const handleTestConnection = useCallback(async () => {
+    setConnectionStatus('testing');
+    setConnectionMessage('正在测试连接...');
+
+    try {
+      console.log('Testing R2 connection...');
+      const result = await r2StorageService.getRecords();
+      console.log('Connection test result:', result);
+
+      if (result.success) {
+        setConnectionStatus('success');
+        setConnectionMessage(`连接成功！R2 中有 ${result.records?.length || 0} 条记录`);
+      } else {
+        setConnectionStatus('error');
+        setConnectionMessage(`连接失败: ${result.message}`);
+      }
+    } catch (err) {
+      setConnectionStatus('error');
+      setConnectionMessage(`连接错误: ${err instanceof Error ? err.message : '未知错误'}`);
+    }
+
+    setTimeout(() => {
+      setConnectionStatus('idle');
+      setConnectionMessage('');
+    }, 5000);
+  }, []);
 
   const processFile = useCallback(async (file: File) => {
     console.log('Processing file:', file.name);
@@ -228,6 +257,42 @@ export const ExcelUploader: React.FC = () => {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-medium text-gray-700">R2 数据库连接测试</h3>
+            {connectionStatus === 'success' && <Wifi className="h-4 w-4 text-green-500" />}
+            {connectionStatus === 'error' && <WifiOff className="h-4 w-4 text-red-500" />}
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleTestConnection}
+            disabled={connectionStatus === 'testing'}
+          >
+            {connectionStatus === 'testing' ? (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                测试中...
+              </>
+            ) : (
+              <>
+                <Wifi className="mr-2 h-4 w-4" />
+                测试连接
+              </>
+            )}
+          </Button>
+        </div>
+        {connectionMessage && (
+          <div className={`mt-2 text-xs ${connectionStatus === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+            {connectionMessage}
+          </div>
+        )}
+        <div className="mt-2 text-xs text-gray-500">
+          API 地址: {import.meta.env.VITE_API_BASE_URL || '未配置'}
         </div>
       </div>
 
