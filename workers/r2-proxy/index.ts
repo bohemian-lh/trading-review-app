@@ -49,6 +49,15 @@ export default {
       return handleDeleteFile(env, filename);
     }
 
+    if (path === '/api/records') {
+      if (request.method === 'GET') {
+        return handleGetRecords(env);
+      }
+      if (request.method === 'POST') {
+        return handleSaveRecords(request, env);
+      }
+    }
+
     return new Response('Not Found', { status: 404 });
   },
 };
@@ -135,5 +144,60 @@ async function handleDeleteFile(env: Env, filename: string): Promise<Response> {
     });
   } catch (error) {
     return new Response('Failed to delete file', { status: 500 });
+  }
+}
+
+async function handleGetRecords(env: Env): Promise<Response> {
+  try {
+    const key = 'trading-data/records.json';
+    const object = await env.R2_BUCKET.get(key);
+
+    if (!object) {
+      return new Response(JSON.stringify({ success: true, records: [] }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    const records = await object.json();
+    return new Response(JSON.stringify({ success: true, records }), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  } catch (error) {
+    return new Response('Failed to get records', { status: 500 });
+  }
+}
+
+async function handleSaveRecords(request: Request, env: Env): Promise<Response> {
+  try {
+    const body = await request.json();
+    const { records } = body;
+
+    if (!Array.isArray(records)) {
+      return new Response(JSON.stringify({ success: false, message: 'Invalid records format' }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    const key = 'trading-data/records.json';
+    await env.R2_BUCKET.put(key, JSON.stringify(records));
+
+    return new Response(JSON.stringify({ success: true, message: 'Records saved' }), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  } catch (error) {
+    return new Response('Failed to save records', { status: 500 });
   }
 }
