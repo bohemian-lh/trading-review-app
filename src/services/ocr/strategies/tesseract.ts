@@ -1,6 +1,6 @@
 import { OcrStrategy, OcrStrategyHandler, OcrResult, ProfitCalculation } from '../../../types';
 
-// 表头关键词定义 - 增加更多关键词
+// 表头关键词定义
 const HEADER_KEYWORDS = {
   DATE: ['成交日期', '日期', 'date', '发生日期'],
   STOCK_CODE: ['证券代码', '代码', 'code', '股票代码'],
@@ -8,7 +8,16 @@ const HEADER_KEYWORDS = {
   AMOUNT: ['发生金额', '金额', 'amount', '发生']
 };
 
-// 解析结果类型
+// 文字块坐标信息
+interface WordBox {
+  text: string;
+  x: number;      // 左上角 x 坐标
+  y: number;      // 左上角 y 坐标
+  width: number;  // 宽度
+  height: number; // 高度
+}
+
+// 解析后的表格行
 interface ParsedTableRow {
   date: string | null;
   stockCode: string | null;
@@ -16,23 +25,12 @@ interface ParsedTableRow {
   amount: number | null;
 }
 
-// 动态导入 tesseract.js，避免首次使用时才加载
-const loadTesseract = async () => {
-  try {
-    const Tesseract = await import('tesseract.js');
-    return Tesseract;
-  } catch (e) {
-    console.warn('Tesseract.js not installed, falling back to mock');
-    return null;
-  }
-};
-
 export class TesseractOcrStrategy implements OcrStrategyHandler {
   readonly name = OcrStrategy.TESSERACT;
 
   async parseImage(imageFile: File): Promise<OcrResult> {
     try {
-      const Tesseract = await loadTesseract();
+      const Tesseract = await this.loadTesseract();
       
       if (!Tesseract) {
         return {
@@ -41,9 +39,9 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
         };
       }
 
-      console.log('开始识别图像...');
+      console.log('=== 开始识别图像（坐标模式）===');
       
-      // 识别图像
+      // 使用详细的识别模式获取坐标信息
       const result = await Tesseract.recognize(
         imageFile,
         'chi_sim+eng',
@@ -56,19 +54,29 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
         }
       );
 
-      const rawText = result.data.text;
-      console.log('原始识别文本:\n', rawText);
+      console.log('识别完成，开始解析...');
+      
+      // 获取详细的文字块信息
+      const words = this.extractWordBoxes(result);
+      console.log(`提取到 ${words.length} 个文字块`);
+      
+      if (words.length === 0) {
+        return {
+          success: false,
+          error: '未识别到任何文字'
+        };
+      }
 
       // 解析表格数据
-      const { structuredData, calculation } = this.parseTableData(rawText);
-
+      const { structuredData, calculation } = this.parseTableWithCoordinates(words);
+      
       return {
         success: true,
         data: {
-          rawText,
+          rawText: result.data.text,
           structuredData,
           calculation
-        },
+        }
       };
 
     } catch (error) {
@@ -80,214 +88,326 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
     }
   }
 
-  private parseTableData(rawText: string): { structuredData: any; calculation?: ProfitCalculation } {
-    console.log('=== 开始解析 OCR 结果 ===');
-    console.log('原始识别文本:', rawText);
+  private async loadTesseract() {
+    try {
+      const Tesseract = await import('tesseract.js');
+      return Tesseract;
+    } catch (e) {
+      console.warn('Tesseract.js not installed, falling back to mock');
+      return null;
+    }
+  }
+
+  /**
+   * 从 Tesseract 结果中提取文字块和坐标
+   */
+  private extractWordBoxes(result: any): WordBox[] {
+    const words: WordBox[] = [];
     
-    // 1. 清理和分割文本
-    const lines = this.cleanAndSplitText(rawText);
-    console.log('清理后的行数据:', lines);
+    // 尝试从不同层级提取文字块
+    if (result.data.words && result.data.words.length > 0) {
+      // 使用 words 数组
+      for (const word of result.data.words) {
+        if (word.text && word.bbox) {
+          words.push({
+            text: word.text.trim(),
+            x: word.bbox.x0,
+            y: word.bbox.y0,
+            width: word.bbox.x1 - word.bbox.x0,
+            height: word.bbox.y1 - word.bbox.y0
+          });
+        }
+      }
+    } else if (result.data.lines && result.data.lines.length > 0) {
+      // 使用 lines 数组
+      for (const line of result.data.lines) {
+        if (line.words && line.words.length > 0) {
+          for (const word of line.words) {
+            if (word.text && word.bbox) {
+              words.push({
+                text: word.text.trim(),
+                x: word.bbox.x0,
+                y: word.bbox.y0,
+                width: word.bbox.x1 - word.bbox.x0,
+                height: word.bbox.y1 - word.bbox.y0
+              });
+            }
+          }
+        } else if (line.text && line.bbox) {
+          words.push({
+            text: line.text.trim(),
+            x: line.bbox.x0,
+            y: line.bbox.y0,
+            width: line.bbox.x1 - line.bbox.x0,
+            height: line.bbox.y1 - line.bbox.y0
+          });
+        }
+      }
+    }
     
-    if (lines.length < 2) {
+    // 过滤空文字
+    return words.filter(w => w.text.length > 0);
+  }
+
+  /**
+   * 使用坐标信息解析表格
+   */
+  private parseTableWithCoordinates(words: WordBox[]): { 
+    structuredData: any; 
+    calculation?: ProfitCalculation 
+  } {
+    console.log('=== 使用坐标解析表格 ===');
+    
+    // 1. 按 y 坐标聚类，确定行
+    const rows = this.groupWordsByRow(words);
+    console.log(`识别到 ${rows.length} 行`);
+    
+    if (rows.length < 2) {
       console.warn('行数太少，无法识别表格');
       return { structuredData: this.getFallbackResult() };
     }
     
-    // 2. 定位表头行并识别列位置
-    const headerInfo = this.findAndParseHeader(lines);
-    console.log('表头识别结果:', headerInfo);
-    
-    let dataRows: ParsedTableRow[] = [];
-    
-    if (headerInfo.headerFound) {
-      // 3. 提取数据行
-      dataRows = this.extractDataRows(lines, headerInfo);
-      console.log('提取到的数据行:', dataRows);
+    // 2. 确定表头行
+    const headerRowIndex = this.findHeaderRow(rows);
+    if (headerRowIndex === -1) {
+      console.warn('未找到表头，尝试直接从数据中提取');
+      return this.parseWithoutHeader(rows);
     }
     
-    // 如果没有找到数据行，尝试备用方案
-    if (dataRows.length === 0) {
-      console.warn('未找到有效数据行，尝试备用识别方案');
-      dataRows = this.extractDataRowsFallback(lines);
-      console.log('备用方案提取到的数据行:', dataRows);
+    console.log(`找到表头在第 ${headerRowIndex + 1} 行`);
+    
+    // 3. 根据表头确定每列的含义
+    const headerRow = rows[headerRowIndex];
+    const columnMapping = this.mapColumns(headerRow);
+    console.log('列映射:', columnMapping);
+    
+    // 4. 提取数据行
+    const dataRows: ParsedTableRow[] = [];
+    for (let i = headerRowIndex + 1; i < rows.length; i++) {
+      const row = this.parseDataRow(rows[i], columnMapping);
+      if (row.date || row.amount) {
+        dataRows.push(row);
+        console.log('解析到数据行:', row);
+      }
     }
     
     if (dataRows.length === 0) {
-      console.warn('所有方案都未找到数据行');
+      console.warn('未找到有效数据行');
       return { structuredData: this.getFallbackResult() };
     }
     
-    // 4. 按照规则计算结果
-    const { structuredData, calculation } = this.calculateResult(dataRows);
-    console.log('最终计算结果:', { structuredData, calculation });
+    // 5. 计算最终结果
+    return this.calculateResult(dataRows);
+  }
+
+  /**
+   * 按 y 坐标将文字块分组为行
+   */
+  private groupWordsByRow(words: WordBox[]): WordBox[][] {
+    if (words.length === 0) return [];
     
-    return { structuredData, calculation };
-  }
-
-  /**
-   * 清理文本并按行分割
-   */
-  private cleanAndSplitText(rawText: string): string[] {
-    return rawText
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0);
-  }
-
-  /**
-   * 寻找并解析表头，确定各列位置
-   */
-  private findAndParseHeader(lines: string[]): {
-    headerFound: boolean;
-    headerLineIndex: number;
-    colPositions: { [key: string]: number };
-  } {
-    for (let i = 0; i < Math.min(lines.length, 5); i++) { // 只在前5行找表头
-      const line = lines[i];
-      const colPositions = this.tryParseHeaderLine(line);
+    // 先按 y 坐标排序
+    const sortedByY = [...words].sort((a, b) => a.y - b.y);
+    
+    const rows: WordBox[][] = [];
+    let currentRow: WordBox[] = [sortedByY[0]];
+    
+    // 估算行高
+    const avgHeight = words.reduce((sum, w) => sum + w.height, 0) / words.length;
+    const threshold = avgHeight * 0.8; // 80% 的高度作为阈值
+    
+    for (let i = 1; i < sortedByY.length; i++) {
+      const word = sortedByY[i];
+      const lastWord = currentRow[currentRow.length - 1];
       
-      if (colPositions) {
-        return {
-          headerFound: true,
-          headerLineIndex: i,
-          colPositions
-        };
+      if (word.y - lastWord.y < threshold) {
+        // 同一行
+        currentRow.push(word);
+      } else {
+        // 新的一行，先对当前行按 x 坐标排序
+        currentRow.sort((a, b) => a.x - b.x);
+        rows.push(currentRow);
+        currentRow = [word];
       }
     }
     
-    return {
-      headerFound: false,
-      headerLineIndex: -1,
-      colPositions: {}
-    };
-  }
-
-  /**
-   * 尝试解析单行表头文本
-   */
-  private tryParseHeaderLine(headerLine: string): { [key: string]: number } | null {
-    // 按空白分割成可能的单元格
-    const cells = this.splitIntoCells(headerLine);
-    
-    if (cells.length < 4) {
-      return null;
-    }
-    
-    const positions: { [key: string]: number } = {};
-    
-    // 尝试匹配各列
-    for (let i = 0; i < cells.length; i++) {
-      const cellText = cells[i].toLowerCase();
-      
-      if (!positions.date && this.matchKeywords(cellText, HEADER_KEYWORDS.DATE)) {
-        positions.date = i;
-        console.log(`找到日期列在位置 ${i}: ${cells[i]}`);
-      } else if (!positions.stockCode && this.matchKeywords(cellText, HEADER_KEYWORDS.STOCK_CODE)) {
-        positions.stockCode = i;
-        console.log(`找到证券代码列在位置 ${i}: ${cells[i]}`);
-      } else if (!positions.stockName && this.matchKeywords(cellText, HEADER_KEYWORDS.STOCK_NAME)) {
-        positions.stockName = i;
-        console.log(`找到证券名称列在位置 ${i}: ${cells[i]}`);
-      } else if (!positions.amount && this.matchKeywords(cellText, HEADER_KEYWORDS.AMOUNT)) {
-        positions.amount = i;
-        console.log(`找到发生金额列在位置 ${i}: ${cells[i]}`);
-      }
-    }
-    
-    // 放宽条件：找到任意两个字段就可以了
-    const foundFields = Object.keys(positions).length;
-    
-    if (foundFields >= 2) {
-      console.log('找到足够的表头字段，继续解析');
-      return positions;
-    }
-    
-    return null;
-  }
-
-  /**
-   * 检查文本是否匹配任意关键词
-   */
-  private matchKeywords(text: string, keywords: string[]): boolean {
-    return keywords.some(keyword => 
-      text.includes(keyword.toLowerCase())
-    );
-  }
-
-  /**
-   * 将行文本分割成单元格（考虑各种空白字符）
-   */
-  private splitIntoCells(line: string): string[] {
-    return line
-      .split(/[\s\t]+/)
-      .map(cell => cell.trim())
-      .filter(cell => cell.length > 0);
-  }
-
-  /**
-   * 提取数据行
-   */
-  private extractDataRows(lines: string[], headerInfo: any): ParsedTableRow[] {
-    const rows: ParsedTableRow[] = [];
-    const { headerLineIndex, colPositions } = headerInfo;
-    
-    for (let i = headerLineIndex + 1; i < lines.length; i++) {
-      const line = lines[i];
-      const cells = this.splitIntoCells(line);
-      
-      if (cells.length < 2) continue; // 降低要求，只要有2个以上单元格就尝试
-      
-      const row: ParsedTableRow = {
-        date: this.extractDate(cells, colPositions.date),
-        stockCode: this.extractStockCode(cells, colPositions.stockCode),
-        stockName: this.extractStockName(cells, colPositions.stockName),
-        amount: this.extractAmount(cells, colPositions.amount)
-      };
-      
-      // 放宽条件：只要有日期或金额就算有效行
-      if (row.date || row.amount) {
-        rows.push(row);
-        console.log('找到有效数据行:', row);
-      }
-    }
+    // 处理最后一行
+    currentRow.sort((a, b) => a.x - b.x);
+    rows.push(currentRow);
     
     return rows;
   }
 
   /**
-   * 提取日期
+   * 找到表头行
    */
-  private extractDate(cells: string[], position: number | undefined): string | null {
-    if (position === undefined || position >= cells.length) {
-      // 尝试从第一个有效单元格找日期
-      for (const cell of cells) {
-        const date = this.tryParseDate(cell);
-        if (date) return date;
+  private findHeaderRow(rows: WordBox[][]): number {
+    // 在前3行中找表头
+    for (let i = 0; i < Math.min(rows.length, 3); i++) {
+      const row = rows[i];
+      const hasKeywords = this.checkRowForKeywords(row);
+      if (hasKeywords) {
+        return i;
       }
-      return null;
     }
-    
-    return this.tryParseDate(cells[position]);
+    return -1;
   }
 
   /**
-   * 尝试解析日期字符串
+   * 检查一行是否包含表头关键词
+   */
+  private checkRowForKeywords(row: WordBox[]): boolean {
+    const text = row.map(w => w.text).join(' ').toLowerCase();
+    let foundCount = 0;
+    
+    for (const category of Object.values(HEADER_KEYWORDS)) {
+      for (const keyword of category) {
+        if (text.includes(keyword.toLowerCase())) {
+          foundCount++;
+          break;
+        }
+      }
+    }
+    
+    return foundCount >= 2; // 至少找到2个关键词
+  }
+
+  /**
+   * 映射每列的含义
+   */
+  private mapColumns(headerRow: WordBox[]): { 
+    date?: number; 
+    stockCode?: number; 
+    stockName?: number; 
+    amount?: number; 
+  } {
+    const mapping: any = {};
+    
+    for (let i = 0; i < headerRow.length; i++) {
+      const word = headerRow[i].text.toLowerCase();
+      
+      if (!mapping.date && HEADER_KEYWORDS.DATE.some(k => word.includes(k.toLowerCase()))) {
+        mapping.date = i;
+      } else if (!mapping.stockCode && HEADER_KEYWORDS.STOCK_CODE.some(k => word.includes(k.toLowerCase()))) {
+        mapping.stockCode = i;
+      } else if (!mapping.stockName && HEADER_KEYWORDS.STOCK_NAME.some(k => word.includes(k.toLowerCase()))) {
+        mapping.stockName = i;
+      } else if (!mapping.amount && HEADER_KEYWORDS.AMOUNT.some(k => word.includes(k.toLowerCase()))) {
+        mapping.amount = i;
+      }
+    }
+    
+    return mapping;
+  }
+
+  /**
+   * 解析单行数据
+   */
+  private parseDataRow(row: WordBox[], columnMapping: any): ParsedTableRow {
+    return {
+      date: columnMapping.date !== undefined && columnMapping.date < row.length 
+        ? this.tryParseDate(row[columnMapping.date].text) 
+        : this.tryFindDateInRow(row),
+      stockCode: columnMapping.stockCode !== undefined && columnMapping.stockCode < row.length 
+        ? this.tryParseStockCode(row[columnMapping.stockCode].text) 
+        : this.tryFindStockCodeInRow(row),
+      stockName: columnMapping.stockName !== undefined && columnMapping.stockName < row.length 
+        ? this.tryParseStockName(row[columnMapping.stockName].text) 
+        : this.tryFindStockNameInRow(row),
+      amount: columnMapping.amount !== undefined && columnMapping.amount < row.length 
+        ? this.tryParseAmount(row[columnMapping.amount].text) 
+        : this.tryFindAmountInRow(row)
+    };
+  }
+
+  /**
+   * 不从表头，直接从所有行中提取数据
+   */
+  private parseWithoutHeader(rows: WordBox[][]): { 
+    structuredData: any; 
+    calculation?: ProfitCalculation 
+  } {
+    console.log('尝试无表头解析...');
+    const dataRows: ParsedTableRow[] = [];
+    
+    for (const row of rows) {
+      const parsedRow: ParsedTableRow = {
+        date: this.tryFindDateInRow(row),
+        stockCode: this.tryFindStockCodeInRow(row),
+        stockName: this.tryFindStockNameInRow(row),
+        amount: this.tryFindAmountInRow(row)
+      };
+      
+      if (parsedRow.date || parsedRow.amount) {
+        dataRows.push(parsedRow);
+        console.log('无表头解析到数据行:', parsedRow);
+      }
+    }
+    
+    if (dataRows.length === 0) {
+      console.warn('无表头解析也未找到数据');
+      return { structuredData: this.getFallbackResult() };
+    }
+    
+    return this.calculateResult(dataRows);
+  }
+
+  /**
+   * 在一行中尝试找日期
+   */
+  private tryFindDateInRow(row: WordBox[]): string | null {
+    for (const word of row) {
+      const date = this.tryParseDate(word.text);
+      if (date) return date;
+    }
+    return null;
+  }
+
+  /**
+   * 在一行中尝试找股票代码
+   */
+  private tryFindStockCodeInRow(row: WordBox[]): string | null {
+    for (const word of row) {
+      const code = this.tryParseStockCode(word.text);
+      if (code) return code;
+    }
+    return null;
+  }
+
+  /**
+   * 在一行中尝试找股票名称
+   */
+  private tryFindStockNameInRow(row: WordBox[]): string | null {
+    for (const word of row) {
+      const name = this.tryParseStockName(word.text);
+      if (name) return name;
+    }
+    return null;
+  }
+
+  /**
+   * 在一行中尝试找金额
+   */
+  private tryFindAmountInRow(row: WordBox[]): number | null {
+    for (const word of row) {
+      const amount = this.tryParseAmount(word.text);
+      if (amount !== null) return amount;
+    }
+    return null;
+  }
+
+  /**
+   * 解析日期
    */
   private tryParseDate(text: string): string | null {
-    // 尝试匹配 8位数字日期 (20260525)
+    // 尝试匹配 8位数字日期 (20260303)
     const match8Digit = text.match(/(\d{8})/);
     if (match8Digit) {
       return match8Digit[1];
     }
     
-    // 尝试匹配带时间的格式 (20260525 09:30:00)
-    const matchDateTime = text.match(/(\d{8})\s+\d{2}:\d{2}/);
-    if (matchDateTime) {
-      return matchDateTime[1];
-    }
-    
-    // 尝试匹配带分隔符的格式 (2026-05-25 或 2026/05/25)
-    const matchWithSeparators = text.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+    // 尝试匹配带分隔符的格式
+    const matchWithSeparators = text.match(/(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})/);
     if (matchWithSeparators) {
       const year = matchWithSeparators[1];
       const month = matchWithSeparators[2].padStart(2, '0');
@@ -295,136 +415,91 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
       return `${year}${month}${day}`;
     }
     
-    // 尝试匹配 6位数字日期 (260525) - 假设是 20xx 年
-    const match6Digit = text.match(/(\d{6})/);
-    if (match6Digit) {
-      const year = '20' + match6Digit[1].substring(0, 2);
-      const monthDay = match6Digit[1].substring(2);
-      return year + monthDay;
-    }
-    
     return null;
   }
 
   /**
-   * 提取证券代码
+   * 解析股票代码
    */
-  private extractStockCode(cells: string[], position: number | undefined): string | null {
-    if (position !== undefined && position < cells.length) {
-      return cells[position].replace(/[^\d]/g, '').slice(0, 6);
+  private tryParseStockCode(text: string): string | null {
+    // 6位纯数字
+    const match = text.match(/(\d{6})/);
+    if (match) {
+      return match[1];
     }
-    
-    // 备用：找6位纯数字
-    for (const cell of cells) {
-      const match = cell.match(/(\d{6})/);
-      if (match) {
-        return match[1];
-      }
-    }
-    
     return null;
   }
 
   /**
-   * 提取证券名称
+   * 解析股票名称
    */
-  private extractStockName(cells: string[], position: number | undefined): string | null {
-    if (position !== undefined && position < cells.length) {
-      // 移除纯数字和符号
-      const name = cells[position].replace(/[\d\.\-]+/g, '').trim();
-      if (name.length > 0) {
-        return name;
+  private tryParseStockName(text: string): string | null {
+    // 至少包含2个中文字符
+    const chineseChars = text.match(/[\u4e00-\u9fa5]+/g);
+    if (chineseChars) {
+      const combined = chineseChars.join('');
+      if (combined.length >= 2) {
+        return combined;
       }
     }
-    
-    // 备用：找包含中文字符的单元格
-    for (const cell of cells) {
-      if (/[\u4e00-\u9fa5]/.test(cell) && cell.length <= 8) {
-        return cell.replace(/[^\u4e00-\u9fa5a-zA-Z]/g, '').trim();
-      }
-    }
-    
     return null;
   }
 
   /**
-   * 提取发生金额
+   * 解析金额
    */
-  private extractAmount(cells: string[], position: number | undefined): number | null {
-    if (position !== undefined && position < cells.length) {
-      return this.tryParseNumber(cells[position]);
-    }
-    
-    // 备用：找带小数点的数字（优先找负数或带负号的）
-    for (const cell of cells) {
-      const num = this.tryParseNumber(cell);
-      if (num !== null) {
-        return num;
-      }
-    }
-    
-    return null;
-  }
-
-  /**
-   * 尝试解析数字
-   */
-  private tryParseNumber(text: string): number | null {
-    // 清理文本
-    const cleaned = text.replace(/[^0-9\.\-]/g, '');
+  private tryParseAmount(text: string): number | null {
+    // 清理文本，保留数字、小数点、负号
+    const cleaned = text.replace(/[^\d\.\-]/g, '');
     const num = parseFloat(cleaned);
     return isNaN(num) ? null : num;
   }
 
   /**
-   * 根据规则计算最终结果
+   * 计算最终结果
    */
-  private calculateResult(rows: ParsedTableRow[]): { structuredData: any; calculation?: ProfitCalculation } {
-    if (rows.length === 0) {
-      return { structuredData: this.getFallbackResult() };
-    }
-
-    // 1. 提取所有日期
-    const validDates = rows
+  private calculateResult(dataRows: ParsedTableRow[]): { 
+    structuredData: any; 
+    calculation?: ProfitCalculation 
+  } {
+    // 提取所有有效日期
+    const validDates = dataRows
       .map(r => r.date)
       .filter((d): d is string => d !== null && d.length === 8);
     
-    // 2. 计算开单日期（最小值）
-    const openDate = validDates.length > 0 ? Math.min(...validDates.map(d => parseInt(d, 10))) : null;
-    
-    // 3. 计算持仓天数
+    // 计算开单日期和持仓天数
+    let openDate: string | null = null;
     let holdDays: number | null = null;
-    if (validDates.length >= 2) {
+    
+    if (validDates.length > 0) {
       const dateNums = validDates.map(d => parseInt(d, 10));
       const minDate = Math.min(...dateNums);
       const maxDate = Math.max(...dateNums);
+      
+      openDate = minDate.toString();
       
       const minMonth = Math.floor(minDate / 100);
       const maxMonth = Math.floor(maxDate / 100);
       
       if (minMonth === maxMonth) {
-        // 同月份
         holdDays = (maxDate % 100) - (minDate % 100) + 1;
       } else {
-        // 跨月份
         const maxDay = maxDate % 100;
         const minDay = minDate % 100;
         holdDays = maxDay + 31 - minDay;
       }
-    } else if (validDates.length === 1) {
-      // 只有一天
-      holdDays = 1;
     }
     
-    // 4. 提取股票代码和名称（用第一条有效数据）
-    const firstValidRow = rows.find(r => r.stockCode || r.stockName);
+    // 提取股票代码和名称
+    const firstValidRow = dataRows.find(r => r.stockCode || r.stockName);
     const stockCode = firstValidRow?.stockCode || null;
     const stockName = firstValidRow?.stockName || null;
     
-    // 5. 计算盈亏百分比
+    // 计算盈亏
     let profitPercent: number | null = null;
     let calculation: ProfitCalculation | undefined;
-    const validAmounts = rows
+    
+    const validAmounts = dataRows
       .map(r => r.amount)
       .filter((a): a is number => a !== null);
     
@@ -434,13 +509,10 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
       const negativeAbsSum = Math.abs(negativeAmounts.reduce((a, b) => a + b, 0));
       
       if (negativeAbsSum !== 0) {
-        // 总和 / 负数绝对值总和
         profitPercent = totalSum / negativeAbsSum;
-        // 保留2位小数
-        profitPercent = Math.round(profitPercent * 100) / 100;
+        profitPercent = Math.round(profitPercent * 10000) / 10000; // 保留4位小数
       }
       
-      // 保存计算过程
       calculation = {
         allAmounts: validAmounts,
         totalSum,
@@ -448,11 +520,19 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
         negativeAbsSum,
         profitPercent
       };
+      
+      console.log('金额计算:', {
+        allAmounts: validAmounts,
+        totalSum,
+        negativeAmounts,
+        negativeAbsSum,
+        profitPercent
+      });
     }
     
     return {
       structuredData: {
-        openDate: openDate ? openDate.toString() : null,
+        openDate,
         stockCode,
         stockName,
         profitPercent,
@@ -463,38 +543,7 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
   }
 
   /**
-   * 备用数据提取方案：不依赖表头，直接从文本中提取
-   */
-  private extractDataRowsFallback(lines: string[]): ParsedTableRow[] {
-    const rows: ParsedTableRow[] = [];
-    
-    // 遍历所有行，尝试直接提取数据
-    for (const line of lines) {
-      const cells = this.splitIntoCells(line);
-      
-      // 尝试从这一行提取数据
-      const row: ParsedTableRow = {
-        date: this.extractDate(cells, undefined),
-        stockCode: this.extractStockCode(cells, undefined),
-        stockName: this.extractStockName(cells, undefined),
-        amount: this.extractAmount(cells, undefined)
-      };
-      
-      // 如果至少有日期和金额，就认为是有效行
-      if (row.date && row.amount) {
-        rows.push(row);
-        console.log('备用方案找到有效行:', row);
-      } else if (row.date || row.stockCode) {
-        // 只有部分数据也可能有用
-        rows.push(row);
-      }
-    }
-    
-    return rows;
-  }
-  
-  /**
-   * 返回备用结果（目前为空，后续可以改进）
+   * 返回备用结果
    */
   private getFallbackResult(): any {
     return {
