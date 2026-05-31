@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2, Table2, BarChart3, Calendar, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2, Table2, BarChart3, Calendar, ChevronUp, ChevronDown, Image } from 'lucide-react';
 import { Button, Input, Select, Modal, Toggle } from '@/components/common';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
-import type { TradingRecord, TradingRecordInput, TradingType, MonthlyAnalysis, AnalysisResult } from '@/types';
+import type { TradingRecord, TradingRecordInput, TradingType, MonthlyAnalysis, AnalysisResult, ParsedTradeData } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 import { validateTradingRecord } from '@/utils/validationUtils';
+import { ImageImportModal } from './ImageImportModal';
 
 type ValidationError = { field: string; message: string };
 
@@ -100,6 +101,7 @@ export const DataEditor: React.FC = () => {
   const [editingMonthly, setEditingMonthly] = useState<MonthlyAnalysis | null>(null);
   const [isMonthlyModalOpen, setIsMonthlyModalOpen] = useState(false);
   const [monthlyFormData, setMonthlyFormData] = useState<Partial<MonthlyAnalysis>>({});
+  const [isImageImportModalOpen, setIsImageImportModalOpen] = useState(false);
 
   // 处理排序点击
   const handleSort = (key: 'openDate' | 'stockCode') => {
@@ -306,6 +308,20 @@ export const DataEditor: React.FC = () => {
     handleCloseMonthlyModal();
   };
 
+  // 图片导入处理
+  const handleImageImport = (data: ParsedTradeData) => {
+    // 填充表单数据
+    setFormData({
+      ...emptyRecord,
+      openDate: data.openDate,
+      stockName: data.stockName,
+      stockCode: data.stockCode,
+      profitPercent: data.profitPercent,
+      holdDays: data.holdDays,
+    });
+    setIsModalOpen(true); // 打开编辑表单
+  };
+
   const handleDeleteMonthly = (month: string) => {
     if (confirm('确定要删除这个月份的数据吗？')) {
       deleteCustomMonthly(month);
@@ -352,6 +368,10 @@ export const DataEditor: React.FC = () => {
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${updateStatus === 'loading' ? 'animate-spin' : ''}`} />
             手动更新统计数据
+          </Button>
+          <Button variant="secondary" onClick={() => setIsImageImportModalOpen(true)}>
+            <Image className="mr-2 h-4 w-4" />
+            从图片导入
           </Button>
           <Button onClick={() => handleOpenModal()}>
             <Plus className="mr-2 h-4 w-4" />
@@ -893,6 +913,13 @@ export const DataEditor: React.FC = () => {
           </Button>
         </div>
       </Modal>
+
+      {/* 图片导入模态框 */}
+      <ImageImportModal
+        isOpen={isImageImportModalOpen}
+        onClose={() => setIsImageImportModalOpen(false)}
+        onImport={handleImageImport}
+      />
     </div>
   );
 };
