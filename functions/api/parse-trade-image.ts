@@ -153,7 +153,7 @@ async function handleCloudflareAi(imageFile: File, context: { env: Env }): Promi
     const imageBuffer = await imageFile.arrayBuffer();
 
     const aiResponse = await context.env.AI.run(
-      '@cf/qwen/qwen2.5-vl-3b-instruct',
+      '@cf/meta/llama-3.2-11b-vision-instruct',
       {
         messages: [
           {
