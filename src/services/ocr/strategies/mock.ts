@@ -22,15 +22,15 @@ export class MockOcrStrategy implements OcrStrategyHandler {
       profitPercent
     };
 
-    // 返回模拟数据
+    // 返回模拟数据 - 加上明显的警告
     return {
       success: true,
       data: {
-        rawText: '模拟识别的原始文本',
+        rawText: '[MOCK MODE] 这是模拟数据，不是真实识别结果！',
         structuredData: {
           openDate: '20260518',
           stockCode: '603999',
-          stockName: '读者传媒',
+          stockName: '[模拟数据] 读者传媒',
           profitPercent,
           holdDays: 8,
         },

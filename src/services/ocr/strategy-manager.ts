@@ -1,5 +1,5 @@
 import { OcrStrategy, OcrConfig, OcrResult, OcrStrategyHandler } from '../../types';
-import { getOcrConfig } from '../../config/ocr';
+import { getOcrConfig, saveOcrStrategy } from '../../config/ocr';
 import { MockOcrStrategy } from './strategies/mock';
 import { TesseractOcrStrategy } from './strategies/tesseract';
 import { CloudflareAiOcrStrategy } from './strategies/cloudflare-ai';
@@ -32,6 +32,10 @@ export class OcrStrategyManager {
 
   setConfig(config: Partial<OcrConfig>): void {
     this.currentConfig = { ...this.currentConfig, ...config };
+    // 如果修改了策略，保存到 localStorage
+    if (config.strategy) {
+      saveOcrStrategy(config.strategy);
+    }
   }
 
   getConfig(): OcrConfig {
@@ -43,8 +47,8 @@ export class OcrStrategyManager {
     const strategy = this.strategies.get(strategyName);
     
     if (!strategy) {
-      console.warn(`Strategy ${strategyName} not found, falling back to MOCK`);
-      return this.strategies.get(OcrStrategy.MOCK)!;
+      console.warn(`Strategy ${strategyName} not found, falling back to Tesseract`);
+      return this.strategies.get(OcrStrategy.TESSERACT)!;
     }
     
     return strategy;
