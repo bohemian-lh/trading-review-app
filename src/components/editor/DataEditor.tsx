@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { Button, Input, Select, Modal } from '@/components/common';
 import { useDataStore } from '@/stores';
-import { r2StorageService } from '@/services/r2Service';
 import type { TradingRecord, TradingRecordInput, TradingType } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 
@@ -64,7 +63,7 @@ function validateForm(data: TradingRecordInput): ValidationError[] {
 }
 
 export const DataEditor: React.FC = () => {
-  const { records, addRecord, updateRecord, deleteRecord, isSaving } = useDataStore();
+  const { records, addRecord, updateRecord, deleteRecord, isSaving, saveToR2 } = useDataStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<TradingRecord | null>(null);
   const [formData, setFormData] = useState<TradingRecordInput>(emptyRecord);
@@ -187,15 +186,9 @@ export const DataEditor: React.FC = () => {
     setUpdateMessage('正在更新统计数据...');
 
     try {
-      const result = await r2StorageService.updateStats(records);
-      
-      if (result.success) {
-        setUpdateStatus('success');
-        setUpdateMessage(result.message);
-      } else {
-        setUpdateStatus('error');
-        setUpdateMessage(result.message);
-      }
+      await saveToR2();
+      setUpdateStatus('success');
+      setUpdateMessage('统计数据已更新');
     } catch (error) {
       setUpdateStatus('error');
       setUpdateMessage(error instanceof Error ? error.message : '更新失败');

@@ -6,29 +6,6 @@ import { extractMonth } from '@/utils/dateUtils';
 import { generateId } from '@/utils';
 import { r2StorageService } from '@/services/r2Service';
 
-const isDev = import.meta.env.DEV;
-const STORAGE_KEY = 'trading-review-storage';
-
-function loadFromLocalStorage(): TradingRecord[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (data) {
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('从 localStorage 加载失败:', error);
-  }
-  return [];
-}
-
-function saveToLocalStorage(records: TradingRecord[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-  } catch (error) {
-    console.error('保存到 localStorage 失败:', error);
-  }
-}
-
 interface DataState {
   records: TradingRecord[];
   isLoading: boolean;
@@ -39,6 +16,7 @@ interface DataState {
 
   setRecords: (records: TradingRecord[]) => void;
   addRecord: (record: Omit<TradingRecord, 'id'>) => void;
+  addRecords: (records: TradingRecord[]) => void;
   updateRecord: (id: string, updates: Partial<TradingRecord>) => void;
   deleteRecord: (id: string) => void;
   clearRecords: () => void;
@@ -69,6 +47,17 @@ export const useDataStore = create<DataState>((set, get) => ({
     };
     set((state) => ({
       records: [...state.records, newRecord],
+    }));
+    await get().saveToR2();
+  },
+
+  addRecords: async (recordsData) => {
+    const newRecords: TradingRecord[] = recordsData.map((record) => ({
+      ...record,
+      id: record.id || generateId(),
+    }));
+    set((state) => ({
+      records: [...state.records, ...newRecords],
     }));
     await get().saveToR2();
   },
@@ -109,16 +98,11 @@ export const useDataStore = create<DataState>((set, get) => ({
   loadFromR2: async () => {
     set({ isLoading: true, error: null });
     try {
-      if (isDev) {
-        const records = loadFromLocalStorage();
-        set({ records, isInitialized: true });
+      const result = await r2StorageService.getRecords();
+      if (result.success && result.records) {
+        set({ records: result.records, isInitialized: true });
       } else {
-        const result = await r2StorageService.getRecords();
-        if (result.success && result.records) {
-          set({ records: result.records, isInitialized: true });
-        } else {
-          set({ isInitialized: true });
-        }
+        set({ isInitialized: true });
       }
     } catch (error) {
       set({
@@ -133,14 +117,10 @@ export const useDataStore = create<DataState>((set, get) => ({
   saveToR2: async () => {
     const state = get();
     if (!state.isInitialized) return;
-    
+
     set({ isSaving: true });
     try {
-      if (isDev) {
-        saveToLocalStorage(state.records);
-      } else {
-        await r2StorageService.saveRecords(state.records);
-      }
+      await r2StorageService.saveRecords(state.records);
     } catch (error) {
       console.error('保存失败:', error);
     } finally {
