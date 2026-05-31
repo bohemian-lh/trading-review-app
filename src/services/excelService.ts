@@ -192,7 +192,7 @@ function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
     const value = row['数值'];
     
     if (key) {
-      analysisMap.set(key, value === 'N/A' ? 'N/A' : Number(value));
+      analysisMap.set(key, parseValue(value));
     }
   }
 
@@ -245,7 +245,10 @@ function parseValue(value: unknown): number | 'N/A' {
   if (value === 'N/A' || value === '' || value === undefined) {
     return 'N/A';
   }
-  return Number(value);
+  // 移除可能的百分号
+  const strValue = String(value).trim().replace('%', '');
+  const num = parseFloat(strValue);
+  return isNaN(num) ? 'N/A' : num;
 }
 
 function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
@@ -259,6 +262,13 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     ? tradingType as TradingType 
     : '齐飞水底';
 
+  // 解析盈亏情况，可能带有 %
+  const profitStr = String(row['盈亏情况'] || '').trim().replace('%', '');
+  const profitPercent = parseFloat(profitStr) || 0;
+  
+  // 解析持仓时间
+  const holdDays = parseInt(String(row['持仓时间'] || '').trim(), 10) || 0;
+
   return {
     id: generateId(),
     openDate: String(row['开单时间'] || ''),
@@ -267,8 +277,8 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     tradingType: validTradingType,
     isSystem: row['是否符合系统'] === '是' ? '是' : '否',
     hasMistake: row['有无大的失误'] === '是' ? '是' : '否',
-    profitPercent: Number(row['盈亏情况']) || 0,
-    holdDays: Number(row['持仓时间']) || 0,
+    profitPercent,
+    holdDays,
     chart1: (row['股票走势1'] as string) || '',
     chart2: (row['股票走势2'] as string) || '',
     keyChart1: (row['关键分时1'] as string) || '',
@@ -326,14 +336,14 @@ export function exportTable2ToExcel(analysis: AnalysisResult, filename: string):
 
   const data = [
     HEADERS_2,
-    ['系统盈利胜率', formatValue(analysis.systemProfitRatio)],
-    ['系统无失误盈利胜率', formatValue(analysis.systemNoMistakeProfitRatio)],
-    ['系统有失误盈利胜率', formatValue(analysis.systemWithMistakeProfitRatio)],
-    ['非系统盈利胜率', formatValue(analysis.nonSystemProfitRatio)],
-    ['系统盈利平均持仓天数', formatValue(analysis.systemProfitAvgHoldDays)],
-    ['系统亏损平均持仓天数', formatValue(analysis.systemLossAvgHoldDays)],
-    ['非系统盈利平均持仓天数', formatValue(analysis.nonSystemProfitAvgHoldDays)],
-    ['非系统亏损平均持仓天数', formatValue(analysis.nonSystemLossAvgHoldDays)],
+    ['系统盈利胜率', formatValue(analysis.systemProfitRatio, true)],
+    ['系统无失误盈利胜率', formatValue(analysis.systemNoMistakeProfitRatio, true)],
+    ['系统有失误盈利胜率', formatValue(analysis.systemWithMistakeProfitRatio, true)],
+    ['非系统盈利胜率', formatValue(analysis.nonSystemProfitRatio, true)],
+    ['系统盈利平均持仓天数', formatValue(analysis.systemProfitAvgHoldDays, false)],
+    ['系统亏损平均持仓天数', formatValue(analysis.systemLossAvgHoldDays, false)],
+    ['非系统盈利平均持仓天数', formatValue(analysis.nonSystemProfitAvgHoldDays, false)],
+    ['非系统亏损平均持仓天数', formatValue(analysis.nonSystemLossAvgHoldDays, false)],
   ];
 
   const worksheet = XLSX.utils.aoa_to_sheet(data);
@@ -354,14 +364,14 @@ export function exportTable3ToExcel(monthlyAnalysis: MonthlyAnalysis[], filename
     HEADERS_3,
     ...monthlyAnalysis.map((item) => [
       item.month,
-      formatValue(item.systemProfitRatio),
-      formatValue(item.systemNoMistakeProfitRatio),
-      formatValue(item.systemWithMistakeProfitRatio),
-      formatValue(item.nonSystemProfitRatio),
-      formatValue(item.systemProfitAvgHoldDays),
-      formatValue(item.systemLossAvgHoldDays),
-      formatValue(item.nonSystemProfitAvgHoldDays),
-      formatValue(item.nonSystemLossAvgHoldDays),
+      formatValue(item.systemProfitRatio, true),
+      formatValue(item.systemNoMistakeProfitRatio, true),
+      formatValue(item.systemWithMistakeProfitRatio, true),
+      formatValue(item.nonSystemProfitRatio, true),
+      formatValue(item.systemProfitAvgHoldDays, false),
+      formatValue(item.systemLossAvgHoldDays, false),
+      formatValue(item.nonSystemProfitAvgHoldDays, false),
+      formatValue(item.nonSystemLossAvgHoldDays, false),
     ]),
   ];
 
@@ -418,28 +428,28 @@ export function exportAllToExcel(
 
   const table2Data = [
     HEADERS_2,
-    ['系统盈利胜率', formatValue(finalAnalysis.systemProfitRatio)],
-    ['系统无失误盈利胜率', formatValue(finalAnalysis.systemNoMistakeProfitRatio)],
-    ['系统有失误盈利胜率', formatValue(finalAnalysis.systemWithMistakeProfitRatio)],
-    ['非系统盈利胜率', formatValue(finalAnalysis.nonSystemProfitRatio)],
-    ['系统盈利平均持仓天数', formatValue(finalAnalysis.systemProfitAvgHoldDays)],
-    ['系统亏损平均持仓天数', formatValue(finalAnalysis.systemLossAvgHoldDays)],
-    ['非系统盈利平均持仓天数', formatValue(finalAnalysis.nonSystemProfitAvgHoldDays)],
-    ['非系统亏损平均持仓天数', formatValue(finalAnalysis.nonSystemLossAvgHoldDays)],
+    ['系统盈利胜率', formatValue(finalAnalysis.systemProfitRatio, true)],
+    ['系统无失误盈利胜率', formatValue(finalAnalysis.systemNoMistakeProfitRatio, true)],
+    ['系统有失误盈利胜率', formatValue(finalAnalysis.systemWithMistakeProfitRatio, true)],
+    ['非系统盈利胜率', formatValue(finalAnalysis.nonSystemProfitRatio, true)],
+    ['系统盈利平均持仓天数', formatValue(finalAnalysis.systemProfitAvgHoldDays, false)],
+    ['系统亏损平均持仓天数', formatValue(finalAnalysis.systemLossAvgHoldDays, false)],
+    ['非系统盈利平均持仓天数', formatValue(finalAnalysis.nonSystemProfitAvgHoldDays, false)],
+    ['非系统亏损平均持仓天数', formatValue(finalAnalysis.nonSystemLossAvgHoldDays, false)],
   ];
 
   const table3Data = [
     HEADERS_3,
     ...finalMonthly.map((item) => [
       item.month,
-      formatValue(item.systemProfitRatio),
-      formatValue(item.systemNoMistakeProfitRatio),
-      formatValue(item.systemWithMistakeProfitRatio),
-      formatValue(item.nonSystemProfitRatio),
-      formatValue(item.systemProfitAvgHoldDays),
-      formatValue(item.systemLossAvgHoldDays),
-      formatValue(item.nonSystemProfitAvgHoldDays),
-      formatValue(item.nonSystemLossAvgHoldDays),
+      formatValue(item.systemProfitRatio, true),
+      formatValue(item.systemNoMistakeProfitRatio, true),
+      formatValue(item.systemWithMistakeProfitRatio, true),
+      formatValue(item.nonSystemProfitRatio, true),
+      formatValue(item.systemProfitAvgHoldDays, false),
+      formatValue(item.systemLossAvgHoldDays, false),
+      formatValue(item.nonSystemProfitAvgHoldDays, false),
+      formatValue(item.nonSystemLossAvgHoldDays, false),
     ]),
   ];
 
@@ -466,9 +476,12 @@ export function exportAllToExcel(
   XLSX.writeFile(workbook, filename);
 }
 
-function formatValue(value: number | 'N/A'): string {
+function formatValue(value: number | 'N/A', addPercent: boolean = true): string {
   if (value === 'N/A') return 'N/A';
-  return `${value.toFixed(2)}%`;
+  if (addPercent) {
+    return `${value.toFixed(2)}%`;
+  }
+  return `${value.toFixed(0)}`;
 }
 
 export function exportToExcel(records: TradingRecord[], filename: string): void {

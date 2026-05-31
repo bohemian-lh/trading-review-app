@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2, Table2, BarChart3, Calendar } from 'lucide-react';
+import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2, Table2, BarChart3, Calendar, ChevronUp, ChevronDown } from 'lucide-react';
 import { Button, Input, Select, Modal, Toggle } from '@/components/common';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
 import type { TradingRecord, TradingRecordInput, TradingType, MonthlyAnalysis, AnalysisResult } from '@/types';
@@ -36,6 +36,11 @@ interface Filters {
   month: string;
   tradingType: string;
   isSystem: string;
+}
+
+interface SortConfig {
+  key: 'openDate' | 'stockCode' | null;
+  direction: 'asc' | 'desc';
 }
 
 function validateForm(data: TradingRecordInput): { field: string; message: string }[] {
@@ -86,15 +91,36 @@ export const DataEditor: React.FC = () => {
     tradingType: '',
     isSystem: '',
   });
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
+    key: 'openDate',
+    direction: 'desc',
+  });
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [updateMessage, setUpdateMessage] = useState('');
   const [editingMonthly, setEditingMonthly] = useState<MonthlyAnalysis | null>(null);
   const [isMonthlyModalOpen, setIsMonthlyModalOpen] = useState(false);
   const [monthlyFormData, setMonthlyFormData] = useState<Partial<MonthlyAnalysis>>({});
 
-  // 计算筛选后的数据
+  // 处理排序点击
+  const handleSort = (key: 'openDate' | 'stockCode') => {
+    setSortConfig((prev) => {
+      if (prev.key === key) {
+        return {
+          key,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      return {
+        key,
+        direction: key === 'openDate' ? 'desc' : 'asc',
+      };
+    });
+  };
+
+  // 计算筛选和排序后的数据
   const filteredRecords = useMemo(() => {
-    return records.filter((record) => {
+    // 先筛选
+    let result = records.filter((record) => {
       if (filters.month && !record.openDate.startsWith(filters.month)) {
         return false;
       }
@@ -106,7 +132,25 @@ export const DataEditor: React.FC = () => {
       }
       return true;
     });
-  }, [records, filters]);
+
+    // 再排序
+    if (sortConfig.key) {
+      result = [...result].sort((a, b) => {
+        const aValue = a[sortConfig.key!];
+        const bValue = b[sortConfig.key!];
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
+    return result;
+  }, [records, filters, sortConfig]);
 
   // 获取所有可用的月份选项
   const monthOptions = useMemo(() => {
@@ -380,9 +424,33 @@ export const DataEditor: React.FC = () => {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">开单时间</th>
+              <th 
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('openDate')}
+              >
+                <div className="flex items-center gap-1">
+                  开单时间
+                  {sortConfig.key === 'openDate' && (
+                    sortConfig.direction === 'asc' 
+                      ? <ChevronUp className="h-4 w-4" /> 
+                      : <ChevronDown className="h-4 w-4" />
+                  )}
+                </div>
+              </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">股票名称</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">股票代码</th>
+              <th 
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('stockCode')}
+              >
+                <div className="flex items-center gap-1">
+                  股票代码
+                  {sortConfig.key === 'stockCode' && (
+                    sortConfig.direction === 'asc' 
+                      ? <ChevronUp className="h-4 w-4" /> 
+                      : <ChevronDown className="h-4 w-4" />
+                  )}
+                </div>
+              </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">交易类型</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">系统</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">失误</th>
@@ -721,9 +789,10 @@ export const DataEditor: React.FC = () => {
               </label>
               <Input
                 type="number"
+                step="0.1"
                 value={formData.profitPercent}
-                onChange={(e) => setFormData({ ...formData, profitPercent: Number(e.target.value) })}
-                placeholder="例如: 5.2"
+                onChange={(e) => setFormData({ ...formData, profitPercent: parseFloat(e.target.value) || 0 })}
+                placeholder="例如: 16.1 或 -15.3"
               />
             </div>
             <div>
@@ -732,8 +801,10 @@ export const DataEditor: React.FC = () => {
               </label>
               <Input
                 type="number"
+                step="1"
+                min="0"
                 value={formData.holdDays}
-                onChange={(e) => setFormData({ ...formData, holdDays: Number(e.target.value) })}
+                onChange={(e) => setFormData({ ...formData, holdDays: parseInt(e.target.value, 10) || 0 })}
                 placeholder="例如: 3"
                 error={getFieldError('holdDays')}
               />
