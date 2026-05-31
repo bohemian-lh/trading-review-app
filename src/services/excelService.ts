@@ -163,7 +163,7 @@ function parseTable1(worksheet: XLSX.WorkSheet): {
   records: TradingRecord[];
   errors: string[];
 } {
-  const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { defval: '' });
+  const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { defval: '' });
   const records: TradingRecord[] = [];
   const errors: string[] = [];
 
@@ -183,7 +183,7 @@ function parseTable1(worksheet: XLSX.WorkSheet): {
 }
 
 function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
-  const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { defval: '' });
+  const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { defval: '' });
   const analysisMap = new Map<string, number | 'N/A'>();
 
   for (let i = 1; i < jsonData.length; i++) {
@@ -212,7 +212,7 @@ function parseTable3(worksheet: XLSX.WorkSheet): {
   monthlyAnalysis: MonthlyAnalysis[];
   errors: string[];
 } {
-  const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { defval: '' });
+  const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { defval: '' });
   const monthlyAnalysis: MonthlyAnalysis[] = [];
   const errors: string[] = [];
 
