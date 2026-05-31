@@ -4,6 +4,9 @@ import { Button, Input, Select, Modal } from '@/components/common';
 import { useDataStore } from '@/stores';
 import type { TradingRecord, TradingRecordInput, TradingType } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
+import { validateTradingRecord } from '@/utils/validationUtils';
+
+type ValidationError = { field: string; message: string };
 
 const TRADING_TYPE_OPTIONS = [
   { value: '齐飞水底', label: '齐飞水底' },
@@ -29,37 +32,15 @@ const emptyRecord: TradingRecordInput = {
   preMarket: '否',
 };
 
-interface ValidationError {
-  field: string;
-  message: string;
-}
-
 interface Filters {
   month: string;
   tradingType: string;
   isSystem: string;
 }
 
-function validateForm(data: TradingRecordInput): ValidationError[] {
-  const errors: ValidationError[] = [];
-
-  if (!data.openDate || !/^\d{8}$/.test(data.openDate)) {
-    errors.push({ field: 'openDate', message: '开单时间必须为8位数字，格式：yyyymmdd' });
-  }
-
-  if (!data.stockName || !data.stockName.trim()) {
-    errors.push({ field: 'stockName', message: '股票名称不能为空' });
-  }
-
-  if (!data.stockCode || !data.stockCode.trim()) {
-    errors.push({ field: 'stockCode', message: '股票代码不能为空' });
-  }
-
-  if (data.holdDays < 0) {
-    errors.push({ field: 'holdDays', message: '持仓时间不能为负数' });
-  }
-
-  return errors;
+function validateForm(data: TradingRecordInput): { field: string; message: string }[] {
+  const result = validateTradingRecord(data);
+  return result.errors.map(err => ({ field: err.field, message: err.message }));
 }
 
 export const DataEditor: React.FC = () => {
@@ -363,7 +344,7 @@ export const DataEditor: React.FC = () => {
                   <td className="px-4 py-3 text-sm space-x-2">
                     <button
                       onClick={() => handleOpenModal(record)}
-                      className="text-primary-600 hover:text-primary-900"
+                      className="text-blue-600 hover:text-blue-900"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>

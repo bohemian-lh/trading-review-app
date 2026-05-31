@@ -6,6 +6,17 @@ import { extractMonth } from '@/utils/dateUtils';
 import { generateId } from '@/utils';
 import { r2StorageService } from '@/services/r2Service';
 
+function debounce<T extends (...args: unknown[]) => unknown>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  return function (...args: Parameters<T>) {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
+
 interface DataState {
   records: TradingRecord[];
   isLoading: boolean;
@@ -13,6 +24,7 @@ interface DataState {
   isInitialized: boolean;
   error: string | null;
   currentFileName: string | null;
+  version: number | null;
 
   setRecords: (records: TradingRecord[]) => void;
   addRecord: (record: Omit<TradingRecord, 'id'>) => void;
@@ -27,109 +39,135 @@ interface DataState {
   saveToR2: () => Promise<void>;
 }
 
-export const useDataStore = create<DataState>((set, get) => ({
-  records: [],
-  isLoading: false,
-  isSaving: false,
-  isInitialized: false,
-  error: null,
-  currentFileName: null,
+export const useDataStore = create<DataState>((set, get) => {
+  let debouncedSave: (() => void) | null = null;
 
-  setRecords: async (records) => {
-    set({ records, error: null });
-    await get().saveToR2();
-  },
-
-  addRecord: async (recordData) => {
-    const newRecord: TradingRecord = {
-      ...recordData,
-      id: generateId(),
-    };
-    set((state) => ({
-      records: [...state.records, newRecord],
-    }));
-    await get().saveToR2();
-  },
-
-  addRecords: async (recordsData) => {
-    const newRecords: TradingRecord[] = recordsData.map((record) => ({
-      ...record,
-      id: record.id || generateId(),
-    }));
-    set((state) => ({
-      records: [...state.records, ...newRecords],
-    }));
-    await get().saveToR2();
-  },
-
-  updateRecord: async (id, updates) => {
-    set((state) => ({
-      records: state.records.map((record) =>
-        record.id === id ? { ...record, ...updates } : record
-      ),
-    }));
-    await get().saveToR2();
-  },
-
-  deleteRecord: async (id) => {
-    set((state) => ({
-      records: state.records.filter((record) => record.id !== id),
-    }));
-    await get().saveToR2();
-  },
-
-  clearRecords: async () => {
-    set({ records: [], currentFileName: null, error: null });
-    await get().saveToR2();
-  },
-
-  setLoading: (loading) => {
-    set({ isLoading: loading });
-  },
-
-  setError: (error) => {
-    set({ error });
-  },
-
-  setCurrentFileName: (filename) => {
-    set({ currentFileName: filename });
-  },
-
-  loadFromR2: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      const result = await r2StorageService.getRecords();
-      if (result.success && result.records) {
-        set({ records: result.records, isInitialized: true });
-      } else {
-        set({ isInitialized: true });
-      }
-    } catch (error) {
-      set({
-        error: error instanceof Error ? error.message : '加载失败',
-        isInitialized: true,
-      });
-    } finally {
-      set({ isLoading: false });
+  const getDebouncedSave = () => {
+    if (!debouncedSave) {
+      debouncedSave = debounce(() => {
+        get().saveToR2();
+      }, 1000);
     }
-  },
+    return debouncedSave;
+  };
 
-  saveToR2: async () => {
-    const state = get();
-    set({ isSaving: true });
-    try {
-      const result = await r2StorageService.saveRecords(state.records);
-      if (!result.success) {
-        console.error('保存失败:', result.message);
-        set({ error: result.message });
+  return {
+    records: [],
+    isLoading: false,
+    isSaving: false,
+    isInitialized: false,
+    error: null,
+    currentFileName: null,
+    version: null,
+
+    setRecords: (records) => {
+      set({ records, error: null });
+      getDebouncedSave()();
+    },
+
+    addRecord: (recordData) => {
+      const newRecord: TradingRecord = {
+        ...recordData,
+        id: generateId(),
+      };
+      set((state) => ({
+        records: [...state.records, newRecord],
+      }));
+      getDebouncedSave()();
+    },
+
+    addRecords: (recordsData) => {
+      const newRecords: TradingRecord[] = recordsData.map((record) => ({
+        ...record,
+        id: record.id || generateId(),
+      }));
+      set((state) => ({
+        records: [...state.records, ...newRecords],
+      }));
+      getDebouncedSave()();
+    },
+
+    updateRecord: (id, updates) => {
+      set((state) => ({
+        records: state.records.map((record) =>
+          record.id === id ? { ...record, ...updates } : record
+        ),
+      }));
+      getDebouncedSave()();
+    },
+
+    deleteRecord: (id) => {
+      set((state) => ({
+        records: state.records.filter((record) => record.id !== id),
+      }));
+      getDebouncedSave()();
+    },
+
+    clearRecords: () => {
+      set({ records: [], currentFileName: null, error: null });
+      getDebouncedSave()();
+    },
+
+    setLoading: (loading) => {
+      set({ isLoading: loading });
+    },
+
+    setError: (error) => {
+      set({ error });
+    },
+
+    setCurrentFileName: (filename) => {
+      set({ currentFileName: filename });
+    },
+
+    loadFromR2: async () => {
+      set({ isLoading: true, error: null });
+      try {
+        const result = await r2StorageService.getRecords();
+        if (result.success && result.records) {
+          set({
+            records: result.records,
+            version: result.version || null,
+            isInitialized: true,
+          });
+        } else {
+          set({ isInitialized: true });
+        }
+      } catch (error) {
+        set({
+          error: error instanceof Error ? error.message : 'Load failed',
+          isInitialized: true,
+        });
+      } finally {
+        set({ isLoading: false });
       }
-    } catch (error) {
-      console.error('保存失败:', error);
-    } finally {
-      set({ isSaving: false });
-    }
-  },
-}));
+    },
+
+    saveToR2: async () => {
+      const state = get();
+      set({ isSaving: true });
+      try {
+        const result = await r2StorageService.saveRecords(state.records, state.version ?? undefined);
+        if (result.success) {
+          set({ version: result.version || null, error: null });
+        } else if (result.conflict) {
+          set({
+            error: 'Conflict detected, please refresh',
+            records: result.records || [],
+            version: result.version || null,
+          });
+        } else {
+          console.error('Save failed:', result.message);
+          set({ error: result.message });
+        }
+      } catch (error) {
+        console.error('Save failed:', error);
+      } finally {
+        set({ isSaving: false });
+      }
+    },
+  };
+});
 
 export function useAnalysisResult(): AnalysisResult {
   const records = useDataStore((state) => state.records);

@@ -37,9 +37,9 @@ export function calculateProfitRatio(
 
   let ratio: number;
   if (absProfit > absLoss) {
-    ratio = sumPositive / absLoss;
+    ratio = absProfit / absLoss;
   } else if (absProfit < absLoss) {
-    ratio = -absLoss / sumPositive;
+    ratio = -(absLoss / absProfit);
   } else {
     ratio = sumPositive > 0 ? 1.0 : -1.0;
   }

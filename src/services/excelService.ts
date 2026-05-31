@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { TradingRecord, AnalysisResult, MonthlyAnalysis } from '@/types';
+import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType } from '@/types';
 import { generateId } from '@/utils';
 
 export const SHEET_NAME_1 = '表1-交易复盘数据';
@@ -163,11 +163,11 @@ function parseTable1(worksheet: XLSX.WorkSheet): {
   records: TradingRecord[];
   errors: string[];
 } {
-  const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { defval: '' });
+  const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' });
   const records: TradingRecord[] = [];
   const errors: string[] = [];
 
-  for (let i = 1; i < jsonData.length; i++) {
+  for (let i = 0; i < jsonData.length; i++) {
     const row = jsonData[i];
     try {
       const record = mapRowToRecord(row);
@@ -183,10 +183,10 @@ function parseTable1(worksheet: XLSX.WorkSheet): {
 }
 
 function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
-  const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { defval: '' });
+  const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' });
   const analysisMap = new Map<string, number | 'N/A'>();
 
-  for (let i = 1; i < jsonData.length; i++) {
+  for (let i = 0; i < jsonData.length; i++) {
     const row = jsonData[i];
     const key = String(row['指标'] || '');
     const value = row['数值'];
@@ -212,11 +212,11 @@ function parseTable3(worksheet: XLSX.WorkSheet): {
   monthlyAnalysis: MonthlyAnalysis[];
   errors: string[];
 } {
-  const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { defval: '' });
+  const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' });
   const monthlyAnalysis: MonthlyAnalysis[] = [];
   const errors: string[] = [];
 
-  for (let i = 1; i < jsonData.length; i++) {
+  for (let i = 0; i < jsonData.length; i++) {
     const row = jsonData[i];
     try {
       const month = String(row['月份'] || '');
@@ -241,32 +241,38 @@ function parseTable3(worksheet: XLSX.WorkSheet): {
   return { monthlyAnalysis, errors };
 }
 
-function parseValue(value: any): number | 'N/A' {
+function parseValue(value: unknown): number | 'N/A' {
   if (value === 'N/A' || value === '' || value === undefined) {
     return 'N/A';
   }
   return Number(value);
 }
 
-function mapRowToRecord(row: any): TradingRecord | null {
+function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
   if (!row['开单时间'] && !row['股票名称']) {
     return null;
   }
+
+  const tradingType = row['交易类型'] as string;
+  const validTradingTypes = ['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致'] as const;
+  const validTradingType = validTradingTypes.includes(tradingType as any) 
+    ? tradingType as TradingType 
+    : '齐飞水底';
 
   return {
     id: generateId(),
     openDate: String(row['开单时间'] || ''),
     stockName: String(row['股票名称'] || ''),
     stockCode: String(row['股票代码'] || ''),
-    tradingType: row['交易类型'] || '齐飞水底',
+    tradingType: validTradingType,
     isSystem: row['是否符合系统'] === '是' ? '是' : '否',
     hasMistake: row['有无大的失误'] === '是' ? '是' : '否',
     profitPercent: Number(row['盈亏情况']) || 0,
     holdDays: Number(row['持仓时间']) || 0,
-    chart1: row['股票走势1'] || '',
-    chart2: row['股票走势2'] || '',
-    keyChart1: row['关键分时1'] || '',
-    keyChart2: row['关键分时2'] || '',
+    chart1: (row['股票走势1'] as string) || '',
+    chart2: (row['股票走势2'] as string) || '',
+    keyChart1: (row['关键分时1'] as string) || '',
+    keyChart2: (row['关键分时2'] as string) || '',
     preMarket: row['盘前是否'] === '是' ? '是' : '否',
   };
 }

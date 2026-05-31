@@ -1,12 +1,49 @@
 import type { StorageFile, UploadProgress, TradingRecord } from '@/types';
+import type { RecordsResponse } from '@/types/validation';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+// 确保使用相对路径，在同一域名下直接请求
+const API_BASE_URL = '';
+
+interface FilesResponse {
+  success: boolean;
+  files?: StorageFile[];
+}
+
+interface UploadResponse {
+  success: boolean;
+  message: string;
+  key: string;
+  filename: string;
+}
 
 class R2StorageService {
-  private accessToken: string;
 
-  constructor() {
-    this.accessToken = import.meta.env.VITE_R2_ACCESS_TOKEN || '';
+  private getHeaders(includeContentType = true): Record<string, string> {
+    const headers: Record<string, string> = {};
+    if (includeContentType) {
+      headers['Content-Type'] = 'application/json';
+    }
+    // 临时：不发送 Authorization 头
+    return headers;
+  }
+
+  private async handleResponse<T>(response: Response): Promise<T> {
+    const text = await response.text();
+    let data: T;
+    
+    try {
+      data = text ? JSON.parse(text) : {} as T;
+    } catch {
+      throw new Error(`Invalid JSON response: ${text}`);
+    }
+
+    // 409冲突响应不抛错误，因为我们需要保留conflict、records和version信息
+    if (!response.ok && response.status !== 409) {
+      const errorMessage = (data as any)?.message || `HTTP ${response.status}`;
+      throw new Error(errorMessage);
+    }
+
+    return data;
   }
 
   async listFiles(): Promise<StorageFile[]> {
@@ -15,14 +52,10 @@ class R2StorageService {
         headers: this.getHeaders(),
       });
 
-      if (!response.ok) {
-        throw new Error(`获取文件列表失败: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await this.handleResponse<FilesResponse>(response);
       return data.files || [];
     } catch (error) {
-      console.error('列出文件失败:', error);
+      console.error('Listing files failed:', error);
       return [];
     }
   }
@@ -35,48 +68,39 @@ class R2StorageService {
     };
 
     try {
-      onProgress?.({ ...progress, status: 'uploading', progress: 10 });
+      onProgress?.({ ...progress, progress: 10 });
 
-      const uploadUrlResponse = await fetch(
-        `${API_BASE_URL}/api/r2-token?action=upload&filename=${encodeURIComponent(file.name)}`,
-        {
-          method: 'GET',
-          headers: this.getHeaders(),
-        }
-      );
+      const formData = new FormData();
+      formData.append('file', file);
 
-      if (!uploadUrlResponse.ok) {
-        throw new Error('获取上传URL失败');
-      }
+      onProgress?.({ ...progress, progress: 30 });
 
-      const { uploadUrl } = await uploadUrlResponse.json();
-      onProgress?.({ ...progress, status: 'uploading', progress: 30 });
-
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
+      const response = await fetch(`${API_BASE_URL}/api/files`, {
+        method: 'POST',
         headers: {
-          'Content-Type': file.type,
+          ...this.getHeaders(false),
         },
+        body: formData,
       });
 
-      if (!uploadResponse.ok) {
-        throw new Error('上传文件失败');
+      onProgress?.({ ...progress, progress: 70 });
+
+      const data = await this.handleResponse<UploadResponse>(response);
+
+      if (!data.success) {
+        throw new Error(data.message || 'Upload failed');
       }
 
-      onProgress?.({ ...progress, status: 'uploading', progress: 90 });
+      onProgress?.({ ...progress, progress: 100, status: 'completed' });
 
-      const result: StorageFile = {
-        key: file.name,
-        filename: file.name,
+      return {
+        key: data.key,
+        filename: data.filename,
         lastModified: new Date(),
         size: file.size,
       };
-
-      onProgress?.({ ...progress, status: 'completed', progress: 100 });
-      return result;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       onProgress?.({ ...progress, status: 'error', error: errorMessage });
       throw error;
     }
@@ -84,46 +108,33 @@ class R2StorageService {
 
   async downloadFile(filename: string): Promise<Blob> {
     try {
-      const downloadUrlResponse = await fetch(
-        `${API_BASE_URL}/api/r2-token?action=download&filename=${encodeURIComponent(filename)}`,
-        {
-          method: 'GET',
-          headers: this.getHeaders(),
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/api/file?filename=${encodeURIComponent(filename)}`, {
+        headers: this.getHeaders(false),
+      });
 
-      if (!downloadUrlResponse.ok) {
-        throw new Error('获取下载URL失败');
-      }
-
-      const { downloadUrl } = await downloadUrlResponse.json();
-
-      const response = await fetch(downloadUrl);
       if (!response.ok) {
-        throw new Error('下载文件失败');
+        throw new Error(`Download failed: HTTP ${response.status}`);
       }
 
       return await response.blob();
     } catch (error) {
-      throw new Error(`下载失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      throw new Error(`Download failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   async deleteFile(filename: string): Promise<void> {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/files/${encodeURIComponent(filename)}`,
+        `${API_BASE_URL}/api/file?filename=${encodeURIComponent(filename)}`,
         {
           method: 'DELETE',
           headers: this.getHeaders(),
         }
       );
 
-      if (!response.ok) {
-        throw new Error('删除文件失败');
-      }
+      await this.handleResponse(response);
     } catch (error) {
-      throw new Error(`删除失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      throw new Error(`Delete failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -131,6 +142,8 @@ class R2StorageService {
     success: boolean;
     message: string;
     records?: TradingRecord[];
+    version?: number;
+    conflict?: boolean;
   }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/records`, {
@@ -138,80 +151,40 @@ class R2StorageService {
         headers: this.getHeaders(),
       });
 
-      const text = await response.text();
-      
-      if (!response.ok) {
-        let errorMessage = `获取记录失败: HTTP ${response.status}`;
-        if (text) {
-          try {
-            const errorData = JSON.parse(text);
-            errorMessage = errorData.message || errorMessage;
-          } catch {
-            errorMessage = text || errorMessage;
-          }
-        }
-        throw new Error(errorMessage);
-      }
-
-      if (!text) {
-        return { success: true, message: '成功', records: [] };
-      }
-
-      return JSON.parse(text);
+      const data = await this.handleResponse<RecordsResponse>(response);
+      return data;
     } catch (error) {
-      console.error('获取记录失败:', error);
+      console.error('Get records failed:', error);
       return {
         success: false,
-        message: error instanceof Error ? error.message : '未知错误',
+        message: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
 
-  async saveRecords(records: TradingRecord[]): Promise<{
+  async saveRecords(records: TradingRecord[], version?: number): Promise<{
     success: boolean;
     message: string;
+    version?: number;
+    conflict?: boolean;
+    records?: TradingRecord[];
   }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/records`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ records }),
+        body: JSON.stringify({ records, version }),
       });
 
-      const text = await response.text();
-      
-      if (!response.ok) {
-        let errorMessage = `保存记录失败: HTTP ${response.status}`;
-        if (text) {
-          try {
-            const errorData = JSON.parse(text);
-            errorMessage = errorData.message || errorMessage;
-          } catch {
-            errorMessage = text || errorMessage;
-          }
-        }
-        throw new Error(errorMessage);
-      }
-
-      if (!text) {
-        return { success: true, message: '保存成功' };
-      }
-
-      return JSON.parse(text);
+      const data = await this.handleResponse<RecordsResponse>(response);
+      return data;
     } catch (error) {
-      console.error('保存记录失败:', error);
+      console.error('Save records failed:', error);
       return {
         success: false,
-        message: error instanceof Error ? error.message : '未知错误',
+        message: error instanceof Error ? error.message : 'Unknown error',
       };
     }
-  }
-
-  private getHeaders(): Record<string, string> {
-    return {
-      'Content-Type': 'application/json',
-      ...(this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {}),
-    };
   }
 }
 
