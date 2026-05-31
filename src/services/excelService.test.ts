@@ -1,6 +1,5 @@
 import * as XLSX from 'xlsx';
 import { parseExcelFile, SHEET_NAME_1, SHEET_NAME_2, SHEET_NAME_3 } from './excelService';
-import type { TradingRecord, AnalysisResult, MonthlyAnalysis } from '@/types';
 
 // 创建测试用的 Excel 文件
 function createTestExcelFile(): File {
