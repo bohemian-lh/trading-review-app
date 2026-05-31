@@ -3,6 +3,7 @@ import { Upload, Download, FileSpreadsheet, Plus, Check, X } from 'lucide-react'
 import { Button, Modal } from '@/components/common';
 import { parseExcelFile, exportAllToExcel, type ImportTableType, type ImportMode, type ImportOptions } from '@/services/excelService';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
+import { r2StorageService } from '@/services/r2Service';
 import type { TradingRecord } from '@/types';
 
 const TABLE_OPTIONS: { value: ImportTableType; label: string; description: string }[] = [
@@ -30,13 +31,9 @@ export const ExcelUploader: React.FC = () => {
 
   const {
     records,
-    setRecords,
-    addRecords,
-    clearRecords,
     setLoading,
     setError,
     currentFileName,
-    setCurrentFileName,
   } = useDataStore();
   const analysis = useAnalysisResult();
   const monthlyAnalysis = useMonthlyAnalysis();
@@ -101,7 +98,7 @@ export const ExcelUploader: React.FC = () => {
 
   const handleConfirmImport = async () => {
     if (!previewData?.records || previewData.records.length === 0) {
-      setIsModalOpen(false);
+      setError('没有可导入的记录');
       return;
     }
 
@@ -109,19 +106,21 @@ export const ExcelUploader: React.FC = () => {
     setError(null);
 
     try {
+      let newRecords: TradingRecord[];
+
       if (importMode === 'overwrite') {
-        await clearRecords();
-      }
-
-      if (importMode === 'append') {
-        await addRecords(previewData.records);
+        newRecords = previewData.records;
       } else {
-        await setRecords(previewData.records);
+        newRecords = [...records, ...previewData.records];
       }
 
-      if (fileToImport) {
-        setCurrentFileName(fileToImport.name);
-      }
+      await r2StorageService.saveRecords(newRecords);
+
+      useDataStore.setState({
+        records: newRecords,
+        currentFileName: fileToImport?.name || null,
+        error: null
+      });
 
       setIsModalOpen(false);
       setPreviewData(null);
