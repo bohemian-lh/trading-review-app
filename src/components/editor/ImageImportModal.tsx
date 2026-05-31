@@ -1,13 +1,20 @@
 import React, { useState, useRef } from 'react';
 import { X, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { Button, Input } from '../common';
-import type { ParsedTradeData } from '@/types';
+import { Button, Input, Select } from '../common';
+import type { ParsedTradeData, OcrStrategy } from '@/types';
+import { ocrManager } from '@/services/ocr';
 
 interface ImageImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImport: (data: ParsedTradeData) => void;
 }
+
+const STRATEGY_OPTIONS = [
+  { value: 'mock', label: '模拟模式（用于测试）' },
+  { value: 'tesseract', label: 'Tesseract.js（本地识别）' },
+  { value: 'cloudflare-ai', label: 'Cloudflare AI（云端识别）' },
+];
 
 export const ImageImportModal: React.FC<ImageImportModalProps> = ({
   isOpen,
@@ -18,6 +25,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [parsedData, setParsedData] = useState<ParsedTradeData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedStrategy, setSelectedStrategy] = useState<OcrStrategy>(ocrManager.getConfig().strategy);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -38,21 +46,48 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append('image', file);
+      // 更新策略配置
+      if (selectedStrategy !== ocrManager.getConfig().strategy) {
+        ocrManager.setConfig({ strategy: selectedStrategy });
+      }
 
-      const response = await fetch('/api/parse-trade-image', {
-        method: 'POST',
-        body: formData
-      });
+      // 根据策略选择处理方式
+      let result;
+      
+      if (selectedStrategy === 'cloudflare-ai') {
+        // Cloudflare AI 需要通过后端 API
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('strategy', selectedStrategy);
 
-      const result = await response.json();
+        const response = await fetch('/api/parse-trade-image', {
+          method: 'POST',
+          body: formData
+        });
 
-      if (result.success && result.data) {
-        setParsedData(result.data);
+        result = await response.json();
+        
+        if (!result.success) {
+          throw new Error(result.error || '识别失败');
+        }
+        
+        result = result.data;
+      } else {
+        // Tesseract 或 Mock 在前端处理
+        const ocrResult = await ocrManager.parseImage(file);
+        
+        if (ocrResult.success && ocrResult.data) {
+          result = ocrResult.data.structuredData;
+        } else {
+          throw new Error(ocrResult.error || '识别失败');
+        }
+      }
+
+      if (result) {
+        setParsedData(result);
         setStep('preview');
       } else {
-        throw new Error(result.error || '识别失败');
+        throw new Error('识别失败');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '识别失败，请重试');
@@ -102,6 +137,22 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
           {/* Step 1: Upload */}
           {step === 'upload' && (
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  识别策略
+                </label>
+                <Select
+                  value={selectedStrategy}
+                  onChange={(e) => setSelectedStrategy(e.target.value as OcrStrategy)}
+                  options={STRATEGY_OPTIONS}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {selectedStrategy === 'mock' && '使用模拟数据，用于测试界面流程'}
+                  {selectedStrategy === 'tesseract' && '使用本地 OCR 引擎，完全免费，不需要网络'}
+                  {selectedStrategy === 'cloudflare-ai' && '使用 Cloudflare AI 服务，识别精度更高'}
+                </p>
+              </div>
+
               <div
                 className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors"
                 onClick={() => fileInputRef.current?.click()}

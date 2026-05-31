@@ -1,6 +1,7 @@
 export * from './trading';
 export * from './analysis';
 export * from './storage';
+export * from './ocr';
 
 export interface ValidationResult {
   isValid: boolean;
