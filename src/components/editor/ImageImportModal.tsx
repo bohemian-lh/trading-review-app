@@ -30,10 +30,26 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
   const [selectedStrategy, setSelectedStrategy] = useState<OcrStrategy>(ocrManager.getConfig().strategy);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // 每次打开模态框时重置所有状态
+  useEffect(() => {
+    if (isOpen) {
+      setStep('upload');
+      setImagePreview(null);
+      setParsedData(null);
+      setCalculation(undefined);
+      setShowCalculation(false);
+      setError(null);
+      setSelectedStrategy(ocrManager.getConfig().strategy);
+    }
+  }, [isOpen]);
+  
   // 监听粘贴事件
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
-      if (!isOpen || step !== 'upload') return;
+      // 严格检查：只有在 upload 阶段才允许粘贴
+      if (!isOpen || step !== 'upload') {
+        return;
+      }
       
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -67,6 +83,9 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
   }, [isOpen, step]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // 只有在 upload 阶段才处理文件选择
+    if (step !== 'upload') return;
+    
     const file = e.target.files?.[0];
     if (!file) return;
 
