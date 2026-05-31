@@ -5,10 +5,10 @@ export class MockOcrStrategy implements OcrStrategyHandler {
 
   async parseImage(_imageFile: File): Promise<OcrResult> {
     // 模拟识别延迟
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // 模拟金额数据
-    const allAmounts = [18639.09, -9786.83, 9850.23];
+    // 模拟金额数据 - 使用更明显的模拟值
+    const allAmounts = [999999.99, -888888.88, 777777.77];
     const negativeAmounts = allAmounts.filter(a => a < 0);
     const totalSum = allAmounts.reduce((a, b) => a + b, 0);
     const negativeAbsSum = Math.abs(negativeAmounts.reduce((a, b) => a + b, 0));
@@ -22,17 +22,17 @@ export class MockOcrStrategy implements OcrStrategyHandler {
       profitPercent
     };
 
-    // 返回模拟数据 - 加上明显的警告
+    // 返回模拟数据 - 加上非常明显的警告标记
     return {
       success: true,
       data: {
-        rawText: '[MOCK MODE] 这是模拟数据，不是真实识别结果！',
+        rawText: '[⚠️ MOCK MODE ⚠️] 这是模拟数据，不是真实识别结果！！！',
         structuredData: {
-          openDate: '20260518',
-          stockCode: '603999',
-          stockName: '[模拟数据] 读者传媒',
+          openDate: '00000000', // 明显的假日期
+          stockCode: '000000', // 明显的假代码
+          stockName: '【⚠️ 模拟数据 ⚠️】请切换到 Tesseract',
           profitPercent,
-          holdDays: 8,
+          holdDays: 999, // 明显的假天数
         },
         calculation
       },
