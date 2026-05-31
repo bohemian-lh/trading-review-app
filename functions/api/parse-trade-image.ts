@@ -152,17 +152,6 @@ async function handleCloudflareAi(imageFile: File, context: { env: Env }): Promi
 
     const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 
-    try {
-      await context.env.AI.run(MODEL, {
-        messages: [{ role: 'user', content: 'agree' }],
-        max_tokens: 1,
-      });
-    } catch (e: any) {
-      if (!e?.message?.includes('agree')) {
-        console.log('License agreement accepted or already accepted');
-      }
-    }
-
     const imageBuffer = await imageFile.arrayBuffer();
 
     const aiResponse = await context.env.AI.run(
