@@ -1,11 +1,11 @@
 import { OcrStrategy, OcrStrategyHandler, OcrResult, ProfitCalculation } from '../../../types';
 
-// 表头关键词定义
+// 表头关键词定义 - 增加更多关键词
 const HEADER_KEYWORDS = {
-  DATE: ['成交日期', '日期', 'date'],
-  STOCK_CODE: ['证券代码', '代码', 'code'],
-  STOCK_NAME: ['证券名称', '名称', 'name'],
-  AMOUNT: ['发生金额', '金额', 'amount']
+  DATE: ['成交日期', '日期', 'date', '发生日期'],
+  STOCK_CODE: ['证券代码', '代码', 'code', '股票代码'],
+  STOCK_NAME: ['证券名称', '名称', 'name', '股票名称'],
+  AMOUNT: ['发生金额', '金额', 'amount', '发生']
 };
 
 // 解析结果类型
@@ -81,6 +81,9 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
   }
 
   private parseTableData(rawText: string): { structuredData: any; calculation?: ProfitCalculation } {
+    console.log('=== 开始解析 OCR 结果 ===');
+    console.log('原始识别文本:', rawText);
+    
     // 1. 清理和分割文本
     const lines = this.cleanAndSplitText(rawText);
     console.log('清理后的行数据:', lines);
@@ -94,17 +97,23 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
     const headerInfo = this.findAndParseHeader(lines);
     console.log('表头识别结果:', headerInfo);
     
-    if (!headerInfo.headerFound) {
-      console.warn('未找到有效表头，尝试备用方案');
-      return { structuredData: this.getFallbackResult() };
+    let dataRows: ParsedTableRow[] = [];
+    
+    if (headerInfo.headerFound) {
+      // 3. 提取数据行
+      dataRows = this.extractDataRows(lines, headerInfo);
+      console.log('提取到的数据行:', dataRows);
     }
     
-    // 3. 提取数据行
-    const dataRows = this.extractDataRows(lines, headerInfo);
-    console.log('提取到的数据行:', dataRows);
+    // 如果没有找到数据行，尝试备用方案
+    if (dataRows.length === 0) {
+      console.warn('未找到有效数据行，尝试备用识别方案');
+      dataRows = this.extractDataRowsFallback(lines);
+      console.log('备用方案提取到的数据行:', dataRows);
+    }
     
     if (dataRows.length === 0) {
-      console.warn('未找到数据行');
+      console.warn('所有方案都未找到数据行');
       return { structuredData: this.getFallbackResult() };
     }
     
@@ -185,11 +194,11 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
       }
     }
     
-    // 至少需要找到日期和金额才能继续
-    const requiredFields = ['date', 'amount'];
-    const foundRequired = requiredFields.every(field => positions[field] !== undefined);
+    // 放宽条件：找到任意两个字段就可以了
+    const foundFields = Object.keys(positions).length;
     
-    if (foundRequired) {
+    if (foundFields >= 2) {
+      console.log('找到足够的表头字段，继续解析');
       return positions;
     }
     
@@ -226,7 +235,7 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
       const line = lines[i];
       const cells = this.splitIntoCells(line);
       
-      if (cells.length < 4) continue; // 跳过单元格太少的行
+      if (cells.length < 2) continue; // 降低要求，只要有2个以上单元格就尝试
       
       const row: ParsedTableRow = {
         date: this.extractDate(cells, colPositions.date),
@@ -235,8 +244,10 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
         amount: this.extractAmount(cells, colPositions.amount)
       };
       
-      if (row.date) { // 只有找到日期才算有效行
+      // 放宽条件：只要有日期或金额就算有效行
+      if (row.date || row.amount) {
         rows.push(row);
+        console.log('找到有效数据行:', row);
       }
     }
     
@@ -276,9 +287,20 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
     }
     
     // 尝试匹配带分隔符的格式 (2026-05-25 或 2026/05/25)
-    const matchWithSeparators = text.match(/(\d{4})[-\/](\d{2})[-\/](\d{2})/);
+    const matchWithSeparators = text.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
     if (matchWithSeparators) {
-      return `${matchWithSeparators[1]}${matchWithSeparators[2]}${matchWithSeparators[3]}`;
+      const year = matchWithSeparators[1];
+      const month = matchWithSeparators[2].padStart(2, '0');
+      const day = matchWithSeparators[3].padStart(2, '0');
+      return `${year}${month}${day}`;
+    }
+    
+    // 尝试匹配 6位数字日期 (260525) - 假设是 20xx 年
+    const match6Digit = text.match(/(\d{6})/);
+    if (match6Digit) {
+      const year = '20' + match6Digit[1].substring(0, 2);
+      const monthDay = match6Digit[1].substring(2);
+      return year + monthDay;
     }
     
     return null;
@@ -440,6 +462,37 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
     };
   }
 
+  /**
+   * 备用数据提取方案：不依赖表头，直接从文本中提取
+   */
+  private extractDataRowsFallback(lines: string[]): ParsedTableRow[] {
+    const rows: ParsedTableRow[] = [];
+    
+    // 遍历所有行，尝试直接提取数据
+    for (const line of lines) {
+      const cells = this.splitIntoCells(line);
+      
+      // 尝试从这一行提取数据
+      const row: ParsedTableRow = {
+        date: this.extractDate(cells, undefined),
+        stockCode: this.extractStockCode(cells, undefined),
+        stockName: this.extractStockName(cells, undefined),
+        amount: this.extractAmount(cells, undefined)
+      };
+      
+      // 如果至少有日期和金额，就认为是有效行
+      if (row.date && row.amount) {
+        rows.push(row);
+        console.log('备用方案找到有效行:', row);
+      } else if (row.date || row.stockCode) {
+        // 只有部分数据也可能有用
+        rows.push(row);
+      }
+    }
+    
+    return rows;
+  }
+  
   /**
    * 返回备用结果（目前为空，后续可以改进）
    */
