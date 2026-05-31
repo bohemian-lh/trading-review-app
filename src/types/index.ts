@@ -18,3 +18,18 @@ export interface AppError {
   message: string;
   severity: 'low' | 'medium' | 'high';
 }
+
+// OCR 图像识别相关类型
+export interface ParsedTradeData {
+  openDate: string;
+  stockCode: string;
+  stockName: string;
+  profitPercent: number | null;
+  holdDays: number | null;
+}
+
+export interface ParseImageResponse {
+  success: boolean;
+  data?: ParsedTradeData;
+  error?: string;
+}
