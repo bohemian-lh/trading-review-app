@@ -30,8 +30,8 @@ export interface TradingRecordInput {
   tradingType: TradingType;
   isSystem: YesNo;
   hasMistake: YesNo;
-  profitPercent: number;
-  holdDays: number;
+  profitPercent: number | null;
+  holdDays: number | null;
   chart1?: string;
   chart2?: string;
   keyChart1?: string;

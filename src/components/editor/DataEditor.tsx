@@ -27,8 +27,8 @@ const emptyRecord: TradingRecordInput = {
   tradingType: '齐飞水底',
   isSystem: '是',
   hasMistake: '否',
-  profitPercent: 0,
-  holdDays: 0,
+  profitPercent: null,
+  holdDays: null,
   preMarket: '否',
 };
 
@@ -44,7 +44,7 @@ interface SortConfig {
 }
 
 function validateForm(data: TradingRecordInput): { field: string; message: string }[] {
-  const result = validateTradingRecord(data);
+  const result = validateTradingRecord(data as Partial<TradingRecord>);
   return result.errors.map(err => ({ field: err.field, message: err.message }));
 }
 
@@ -202,10 +202,17 @@ export const DataEditor: React.FC = () => {
       return;
     }
 
+    // 验证通过后，确保这些字段是有效的数字（不可能为 null）
+    const saveData = {
+      ...formData,
+      profitPercent: formData.profitPercent as number,
+      holdDays: formData.holdDays as number,
+    };
+
     if (editingRecord) {
-      updateRecord(editingRecord.id, formData);
+      updateRecord(editingRecord.id, saveData);
     } else {
-      addRecord(formData);
+      addRecord(saveData);
     }
     handleCloseModal();
   };
@@ -785,14 +792,21 @@ export const DataEditor: React.FC = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                盈亏%
+                盈亏% <span className="text-red-500">*</span>
               </label>
               <Input
                 type="number"
                 step="0.1"
-                value={formData.profitPercent}
-                onChange={(e) => setFormData({ ...formData, profitPercent: parseFloat(e.target.value) || 0 })}
+                value={formData.profitPercent !== null ? formData.profitPercent : ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFormData({ 
+                    ...formData, 
+                    profitPercent: val === '' ? null : parseFloat(val)
+                  });
+                }}
                 placeholder="例如: 16.1 或 -15.3"
+                error={getFieldError('profitPercent')}
               />
             </div>
             <div>
@@ -803,8 +817,14 @@ export const DataEditor: React.FC = () => {
                 type="number"
                 step="1"
                 min="0"
-                value={formData.holdDays}
-                onChange={(e) => setFormData({ ...formData, holdDays: parseInt(e.target.value, 10) || 0 })}
+                value={formData.holdDays !== null ? formData.holdDays : ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFormData({ 
+                    ...formData, 
+                    holdDays: val === '' ? null : parseInt(val, 10)
+                  });
+                }}
                 placeholder="例如: 3"
                 error={getFieldError('holdDays')}
               />
