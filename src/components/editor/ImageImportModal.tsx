@@ -189,11 +189,25 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                   onChange={(e) => setSelectedStrategy(e.target.value as OcrStrategy)}
                   options={STRATEGY_OPTIONS}
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  {selectedStrategy === 'mock' && '使用模拟数据，用于测试界面流程'}
-                  {selectedStrategy === 'tesseract' && '使用本地 OCR 引擎，完全免费，不需要网络'}
-                  {selectedStrategy === 'cloudflare-ai' && '使用 Cloudflare AI 服务，识别精度更高'}
-                </p>
+                <div className="mt-1">
+                  {selectedStrategy === 'mock' && (
+                    <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
+                      ⚠️ 警告：当前使用的是模拟数据！<br/>
+                      这仅用于测试界面流程，不会真正识别图片内容。<br/>
+                      请选择 Tesseract 或 Cloudflare AI 进行真实识别。
+                    </div>
+                  )}
+                  {selectedStrategy === 'tesseract' && (
+                    <p className="text-xs text-gray-500">
+                      ✓ 使用本地 OCR 引擎，完全免费，不需要网络
+                    </p>
+                  )}
+                  {selectedStrategy === 'cloudflare-ai' && (
+                    <p className="text-xs text-gray-500">
+                      使用 Cloudflare AI 服务，识别精度更高
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div
