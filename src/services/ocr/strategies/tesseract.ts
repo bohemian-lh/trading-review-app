@@ -1,4 +1,4 @@
-import { OcrStrategy, OcrStrategyHandler, OcrResult } from '../../../types';
+import { OcrStrategy, OcrStrategyHandler, OcrResult, ProfitCalculation } from '../../../types';
 
 // 表头关键词定义
 const HEADER_KEYWORDS = {
@@ -60,13 +60,14 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
       console.log('原始识别文本:\n', rawText);
 
       // 解析表格数据
-      const structuredData = this.parseTableData(rawText);
+      const { structuredData, calculation } = this.parseTableData(rawText);
 
       return {
         success: true,
         data: {
           rawText,
           structuredData,
+          calculation
         },
       };
 
@@ -79,14 +80,14 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
     }
   }
 
-  private parseTableData(rawText: string): any {
+  private parseTableData(rawText: string): { structuredData: any; calculation?: ProfitCalculation } {
     // 1. 清理和分割文本
     const lines = this.cleanAndSplitText(rawText);
     console.log('清理后的行数据:', lines);
     
     if (lines.length < 2) {
       console.warn('行数太少，无法识别表格');
-      return this.getFallbackResult();
+      return { structuredData: this.getFallbackResult() };
     }
     
     // 2. 定位表头行并识别列位置
@@ -95,8 +96,7 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
     
     if (!headerInfo.headerFound) {
       console.warn('未找到有效表头，尝试备用方案');
-      // 备用方案：尝试解析所有行并找规律
-      return this.getFallbackResult();
+      return { structuredData: this.getFallbackResult() };
     }
     
     // 3. 提取数据行
@@ -105,14 +105,14 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
     
     if (dataRows.length === 0) {
       console.warn('未找到数据行');
-      return this.getFallbackResult();
+      return { structuredData: this.getFallbackResult() };
     }
     
     // 4. 按照规则计算结果
-    const result = this.calculateResult(dataRows);
-    console.log('最终计算结果:', result);
+    const { structuredData, calculation } = this.calculateResult(dataRows);
+    console.log('最终计算结果:', { structuredData, calculation });
     
-    return result;
+    return { structuredData, calculation };
   }
 
   /**
@@ -357,9 +357,9 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
   /**
    * 根据规则计算最终结果
    */
-  private calculateResult(rows: ParsedTableRow[]): any {
+  private calculateResult(rows: ParsedTableRow[]): { structuredData: any; calculation?: ProfitCalculation } {
     if (rows.length === 0) {
-      return this.getFallbackResult();
+      return { structuredData: this.getFallbackResult() };
     }
 
     // 1. 提取所有日期
@@ -401,30 +401,42 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
     
     // 5. 计算盈亏百分比
     let profitPercent: number | null = null;
+    let calculation: ProfitCalculation | undefined;
     const validAmounts = rows
       .map(r => r.amount)
       .filter((a): a is number => a !== null);
     
     if (validAmounts.length > 0) {
       const totalSum = validAmounts.reduce((a, b) => a + b, 0);
-      const negativeSum = validAmounts
-        .filter(a => a < 0)
-        .reduce((a, b) => a + b, 0);
+      const negativeAmounts = validAmounts.filter(a => a < 0);
+      const negativeAbsSum = Math.abs(negativeAmounts.reduce((a, b) => a + b, 0));
       
-      if (negativeSum !== 0) {
+      if (negativeAbsSum !== 0) {
         // 总和 / 负数绝对值总和
-        profitPercent = totalSum / Math.abs(negativeSum);
+        profitPercent = totalSum / negativeAbsSum;
         // 保留2位小数
         profitPercent = Math.round(profitPercent * 100) / 100;
       }
+      
+      // 保存计算过程
+      calculation = {
+        allAmounts: validAmounts,
+        totalSum,
+        negativeAmounts,
+        negativeAbsSum,
+        profitPercent
+      };
     }
     
     return {
-      openDate: openDate ? openDate.toString() : null,
-      stockCode,
-      stockName,
-      profitPercent,
-      holdDays
+      structuredData: {
+        openDate: openDate ? openDate.toString() : null,
+        stockCode,
+        stockName,
+        profitPercent,
+        holdDays
+      },
+      calculation
     };
   }
 
