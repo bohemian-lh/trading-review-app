@@ -35,6 +35,11 @@ export const ExcelUploader: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [uploadToR2, setUploadToR2] = useState(true);
 
+  // 调试日志：监听 isModalOpen 变化
+  useEffect(() => {
+    console.log('isModalOpen changed:', isModalOpen);
+  }, [isModalOpen]);
+
   const {
     records,
     setLoading,
@@ -88,6 +93,7 @@ export const ExcelUploader: React.FC = () => {
   }, []);
 
   const processFile = useCallback(async (file: File) => {
+    console.log('=== processFile START ===');
     console.log('Processing file:', file.name);
     setFileToImport(file);
     setPreviewData(null);
@@ -105,7 +111,12 @@ export const ExcelUploader: React.FC = () => {
 
     try {
       const result = await parseExcelFile(file, options);
-      console.log('Parse result:', JSON.stringify(result, null, 2));
+      console.log('Parse completed - Success!');
+      console.log('Parse result (summary):', {
+        hasRecords: !!result.records,
+        recordCount: result.records?.length || 0,
+        errorCount: result.errors?.length || 0
+      });
 
       const recordCount = result.records?.length || 0;
       console.log('Record count:', recordCount);
@@ -120,11 +131,14 @@ export const ExcelUploader: React.FC = () => {
         errors: result.errors,
       });
 
+      console.log('About to open modal...');
       setIsModalOpen(true);
+      console.log('setIsModalOpen(true) called');
     } catch (err) {
       console.error('Error parsing file:', err);
       setError(err instanceof Error ? err.message : '解析文件失败');
     } finally {
+      console.log('=== processFile END ===');
       setLoading(false);
     }
   }, [selectedTable, importMode, setLoading, setError]);
@@ -155,10 +169,13 @@ export const ExcelUploader: React.FC = () => {
   );
 
   const handleConfirmImport = async () => {
+    console.log('=== handleConfirmImport START ===');
     console.log('handleConfirmImport called');
-    console.log('previewData:', previewData);
+    console.log('previewData:', previewData ? 'exists' : 'null');
     console.log('records currently in store:', records.length);
     console.log('importMode:', importMode);
+    console.log('uploadToR2:', uploadToR2);
+    console.log('fileToImport:', fileToImport?.name);
 
     if (!previewData?.records || previewData.records.length === 0) {
       console.log('No records to import, showing error');
@@ -172,41 +189,47 @@ export const ExcelUploader: React.FC = () => {
     try {
       // 首先上传文件到R2（如果选择了）
       if (uploadToR2 && fileToImport) {
+        console.log('Step 1: Uploading file to R2...');
         await handleUploadToR2(fileToImport);
+        console.log('Step 1: File upload completed');
+      } else {
+        console.log('Step 1: Skipping file upload (uploadToR2 is false or no file)');
       }
 
       let newRecords: TradingRecord[];
 
       if (importMode === 'overwrite') {
-        console.log('Using overwrite mode, new records:', previewData.records.length);
+        console.log('Step 2: Using overwrite mode, new records:', previewData.records.length);
         newRecords = previewData.records;
       } else {
-        console.log('Using append mode, existing:', records.length, 'new:', previewData.records.length);
+        console.log('Step 2: Using append mode, existing:', records.length, 'new:', previewData.records.length);
         newRecords = [...records, ...previewData.records];
       }
 
-      console.log('Saving to R2, total records:', newRecords.length);
+      console.log('Step 3: Saving to R2, total records:', newRecords.length);
       const saveResult = await r2StorageService.saveRecords(newRecords);
-      console.log('Save result:', saveResult);
+      console.log('Step 3: Save result:', { success: saveResult.success, message: saveResult.message });
 
       if (!saveResult.success) {
         throw new Error(saveResult.message);
       }
 
+      console.log('Step 4: Updating local store...');
       useDataStore.setState({
         records: newRecords,
         currentFileName: fileToImport?.name || null,
         error: null
       });
 
-      console.log('Import completed successfully');
+      console.log('Step 5: Import completed successfully!');
       setIsModalOpen(false);
       setPreviewData(null);
       setFileToImport(null);
     } catch (err) {
-      console.error('Import failed:', err);
+      console.error('❌ Import failed:', err);
       setError(err instanceof Error ? err.message : '导入失败');
     } finally {
+      console.log('=== handleConfirmImport END ===');
       setLoading(false);
     }
   };

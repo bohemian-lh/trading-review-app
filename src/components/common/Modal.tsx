@@ -18,6 +18,8 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   size = 'md',
 }) => {
+  console.log('Modal rendering, isOpen:', isOpen);
+  
   const sizeStyles = {
     sm: 'max-w-md',
     md: 'max-w-lg',
@@ -27,7 +29,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-50" onClose={onClose}>
+      <Dialog as="div" className="relative z-[9999]" onClose={onClose}>
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-300"
@@ -37,10 +39,10 @@ export const Modal: React.FC<ModalProps> = ({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black bg-opacity-25" />
+          <div className="fixed inset-0 bg-black bg-opacity-25" style={{ zIndex: 9998 }} />
         </Transition.Child>
 
-        <div className="fixed inset-0 overflow-y-auto">
+        <div className="fixed inset-0 overflow-y-auto" style={{ zIndex: 9999 }}>
           <div className="flex min-h-full items-center justify-center p-4 text-center">
             <Transition.Child
               as={Fragment}
@@ -56,6 +58,7 @@ export const Modal: React.FC<ModalProps> = ({
                   'w-full transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all',
                   sizeStyles[size]
                 )}
+                style={{ zIndex: 10000 }}
               >
                 {title && (
                   <Dialog.Title

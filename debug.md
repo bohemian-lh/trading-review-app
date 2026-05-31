@@ -120,3 +120,66 @@ functions/
 2. **_routes.json 和多个 Functions 文件造成路由冲突**
 3. **通配符路由匹配的复杂性**
 4. **Files.ts 中的多导出函数冲突** - 导致 /api/files 失败
+
+---
+
+### 问题 5：_redirects 路由配置干扰 API 请求
+**症状**：即使修复了 Functions，API 仍然 404
+**诊断步骤**：
+1. 分析发现 public/_redirects 文件中有一条 catch-all 规则 `/* /index.html 200`
+2. 该规则会匹配所有请求，包括 API 请求，导致它们被重定向到前端而不是 Functions
+3. 修改 _redirects，添加 API 路径的优先级规则
+
+**解决策略**：
+更新 _redirects 文件：
+```
+# 优先让 API 请求通过，不重定向
+/api/* /api/:splat 200
+# 其他所有请求重定向到 index.html（SPA 路由）
+/* /index.html 200
+```
+
+---
+
+### 问题 6：全局 loading 状态导致组件卸载
+**症状**：选择文件后，解析成功但 Modal 弹窗不显示
+**诊断步骤**：
+1. 添加详细调试日志，观察状态变化
+2. 发现 Modal 组件始终收到 isOpen: false
+3. 追踪发现 ExcelUploader 组件在调用 setIsModalOpen(true) 后立即被卸载
+4. 最终定位到 App.tsx 中的逻辑：当 isLoading 为 true 时，整个应用会显示加载界面，导致组件卸载！
+
+**解决策略**：
+修改 App.tsx，让它只在初始化阶段（isInitialized 为 false）时才显示加载界面，之后忽略 isLoading 状态变化，避免组件被意外卸载。
+
+---
+
+## 完整修复历史
+
+| 问题 | 修复方案 | 状态 |
+|------|----------|------|
+| 构建缺少 functions 目录 | 修改 build 脚本添加 cp 命令 | ✅ |
+| _routes.json 干扰路由 | 删除该文件 | ✅ |
+| Functions 文件冲突 | 简化为明确结构 | ✅ |
+| files.ts 多导出冲突 | 简化为单个 onRequest | ✅ |
+| _redirects 干扰 API | 添加 API 优先级规则 | ✅ |
+| 全局 loading 卸载组件 | 修改 App.tsx 逻辑 | ✅ |
+
+---
+
+## 当前部署状态（2026-05-31）
+
+- 最新部署地址：https://002929fc.trading-review-app.pages.dev
+- ✅ 所有 API 端点正常工作
+- ✅ 文件上传/下载功能正常
+- ✅ Modal 弹窗正常显示
+- ✅ 数据导入/导出功能完整
+
+---
+
+## 关键教训
+
+1. **Cloudflare Pages Functions 需要正确的目录结构** - functions 目录必须在部署根目录
+2. **_redirects 的路由优先级很重要** - API 路径需要明确的排除规则
+3. **全局状态会影响组件生命周期** - loading 状态要谨慎处理，避免意外卸载组件
+4. **调试日志是解决复杂问题的关键** - 在每个关键步骤添加日志能快速定位问题

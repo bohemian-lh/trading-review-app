@@ -114,11 +114,10 @@ const Navigation: React.FC = () => {
 
 const App: React.FC = () => {
   useInitializeStore();
-  const isLoading = useDataStore((state) => state.isLoading);
   const isInitialized = useDataStore((state) => state.isInitialized);
   const error = useDataStore((state) => state.error);
 
-  if (!isInitialized || isLoading) {
+  if (!isInitialized) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
