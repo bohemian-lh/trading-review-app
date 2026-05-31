@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, Image as ImageIcon, Loader2, Clipboard } from 'lucide-react';
+import { X, Upload, Image as ImageIcon, Loader2, Clipboard, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button, Input, Select } from '../common';
-import type { ParsedTradeData, OcrStrategy } from '@/types';
+import type { ParsedTradeData, OcrStrategy, ProfitCalculation } from '@/types';
 import { ocrManager } from '@/services/ocr';
 
 interface ImageImportModalProps {
@@ -24,6 +24,8 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
   const [step, setStep] = useState<'upload' | 'parsing' | 'preview'>('upload');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [parsedData, setParsedData] = useState<ParsedTradeData | null>(null);
+  const [calculation, setCalculation] = useState<ProfitCalculation | undefined>(undefined);
+  const [showCalculation, setShowCalculation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedStrategy, setSelectedStrategy] = useState<OcrStrategy>(ocrManager.getConfig().strategy);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,6 +91,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
 
       // 根据策略选择处理方式
       let result;
+      let calculated;
       
       if (selectedStrategy === 'cloudflare-ai') {
         // Cloudflare AI 需要通过后端 API
@@ -114,6 +117,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
         
         if (ocrResult.success && ocrResult.data) {
           result = ocrResult.data.structuredData;
+          calculated = ocrResult.data.calculation;
         } else {
           throw new Error(ocrResult.error || '识别失败');
         }
@@ -121,6 +125,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
 
       if (result) {
         setParsedData(result);
+        setCalculation(calculated);
         setStep('preview');
       } else {
         throw new Error('识别失败');
@@ -143,6 +148,8 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
     setStep('upload');
     setImagePreview(null);
     setParsedData(null);
+    setCalculation(undefined);
+    setShowCalculation(false);
     setError(null);
   };
 
@@ -233,14 +240,23 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
 
           {/* Step 3: Preview */}
           {step === 'preview' && parsedData && (
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto">
               <div className="p-3 bg-green-50 text-green-800 rounded text-sm flex items-start gap-2">
                 <div className="mt-0.5">✓</div>
                 <div>
                   识别成功！请确认以下数据是否正确，可直接编辑
                 </div>
               </div>
+              
+              {/* 原截图显示 */}
+              {imagePreview && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">原截图</label>
+                  <img src={imagePreview} alt="原交易截图" className="max-w-full h-auto rounded border" />
+                </div>
+              )}
 
+              {/* 识别的数据编辑 */}
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">开单时间</label>
@@ -284,6 +300,50 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                   />
                 </div>
               </div>
+              
+              {/* 计算过程展示 */}
+              {calculation && (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setShowCalculation(!showCalculation)}
+                    className="flex items-center gap-2 w-full text-left text-sm font-medium text-gray-700 hover:text-gray-900"
+                  >
+                    {showCalculation ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    计算过程
+                  </button>
+                  
+                  {showCalculation && (
+                    <div className="p-3 bg-gray-50 rounded text-sm space-y-2">
+                      <div>
+                        <span className="font-medium">发生金额列表: </span>
+                        <span>{calculation.allAmounts.join(', ')}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">总金额: </span>
+                        <span>{calculation.totalSum.toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">负数金额列表: </span>
+                        <span>{calculation.negativeAmounts.join(', ')}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">负数绝对值总和: </span>
+                        <span>{calculation.negativeAbsSum.toFixed(2)}</span>
+                      </div>
+                      <div className="pt-2 border-t border-gray-200">
+                        <span className="font-medium">盈亏计算: </span>
+                        <span>{calculation.totalSum.toFixed(2)} ÷ {calculation.negativeAbsSum.toFixed(2)} = {(calculation.totalSum / calculation.negativeAbsSum).toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">最终盈亏: </span>
+                        <span className={calculation.profitPercent && calculation.profitPercent > 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                          {calculation.profitPercent !== null ? `${(calculation.profitPercent * 100).toFixed(2)}%` : '-'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <p className="text-sm text-gray-500">
                 其他字段（交易类型、是否系统等）将在下一步填写
