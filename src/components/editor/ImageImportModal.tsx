@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, Image as ImageIcon, Loader2, Clipboard, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Upload, Image as ImageIcon, Loader2, Clipboard } from 'lucide-react';
 import { Button, Input, Select } from '../common';
-import type { ParsedTradeData, OcrStrategy, ProfitCalculation } from '@/types';
+import type { ParsedTradeData } from '@/types';
 import { ocrManager } from '@/services/ocr';
 
 interface ImageImportModalProps {
@@ -23,19 +23,21 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
 }) => {
   const [step, setStep] = useState<'upload' | 'parsing' | 'preview'>('upload');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [parsedData, setParsedData] = useState<ParsedTradeData | null>(null);
-  const [calculation, setCalculation] = useState<ProfitCalculation | undefined>(undefined);
-  const [showCalculation, setShowCalculation] = useState(false);
+  const [parsedData, setParsedData] = useState<ParsedTradeData & { amountValues?: number[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedStrategy, setSelectedStrategy] = useState<OcrStrategy>(ocrManager.getConfig().strategy);
+  const [selectedStrategy, setSelectedStrategy] = useState(ocrManager.getConfig().strategy);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // 编辑状态
   const [editOpenDate, setEditOpenDate] = useState<string>('');
   const [editStockCode, setEditStockCode] = useState<string>('');
   const [editStockName, setEditStockName] = useState<string>('');
-  const [editAmountsExpression, setEditAmountsExpression] = useState<string>('');
   const [editHoldDays, setEditHoldDays] = useState<number | null>(null);
+  // 盈亏计算相关的三个输入
+  const [editAmounts, setEditAmounts] = useState<string>('');
+  const [editNegativeAmounts, setEditNegativeAmounts] = useState<string>('');
+  const [calculatedProfit, setCalculatedProfit] = useState<number | null>(null);
+  // 最终数据
   const [finalOpenDate, setFinalOpenDate] = useState<string>('');
   const [finalStockCode, setFinalStockCode] = useState<string>('');
   const [finalStockName, setFinalStockName] = useState<string>('');
@@ -48,8 +50,6 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
       setStep('upload');
       setImagePreview(null);
       setParsedData(null);
-      setCalculation(undefined);
-      setShowCalculation(false);
       setError(null);
       setSelectedStrategy(ocrManager.getConfig().strategy);
     }
@@ -57,27 +57,38 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
   
   // 当识别结果返回时，初始化编辑状态
   useEffect(() => {
-    if (parsedData && calculation) {
+    if (parsedData) {
       setEditOpenDate(parsedData.openDate || '');
       setEditStockCode(parsedData.stockCode || '');
       setEditStockName(parsedData.stockName || '');
       setEditHoldDays(parsedData.holdDays ?? null);
       
       // 初始化金额表达式
-      const amountStrs = calculation.allAmounts.map(a => 
-        a >= 0 ? a.toString() : `(${a.toString()})`
-      );
-      const expression = amountStrs.join(' + ');
-      setEditAmountsExpression(expression);
+      if (parsedData.amountValues && parsedData.amountValues.length > 0) {
+        // 第一行：所有金额，用 + 连接
+        const allAmountsStr = parsedData.amountValues.map(amount => 
+          amount >= 0 ? amount.toString() : `(${amount.toString()})`
+        ).join(' + ');
+        setEditAmounts(allAmountsStr);
+        
+        // 第二行：所有负数金额
+        const negativeAmounts = parsedData.amountValues.filter(amount => amount < 0);
+        const negativeAmountsStr = negativeAmounts.map(amount => 
+          `(${amount.toString()})`
+        ).join(' + ');
+        setEditNegativeAmounts(negativeAmountsStr);
+        
+        // 第三行：自动计算
+        recalculateProfit(allAmountsStr, negativeAmountsStr);
+      }
       
       // 初始化最终数据
       setFinalOpenDate(parsedData.openDate || '');
       setFinalStockCode(parsedData.stockCode || '');
       setFinalStockName(parsedData.stockName || '');
       setFinalHoldDays(parsedData.holdDays ?? null);
-      setFinalProfit(parsedData.profitPercent ?? null);
     }
-  }, [parsedData, calculation]);
+  }, [parsedData]);
   
   // 监听编辑变化，自动同步到最终数据
   useEffect(() => {
@@ -87,49 +98,52 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
     setFinalHoldDays(editHoldDays);
   }, [editOpenDate, editStockCode, editStockName, editHoldDays]);
   
-  // 当表达式变化时重新计算盈亏
+  // 当金额表达式变化时重新计算
   useEffect(() => {
-    if (editAmountsExpression) {
-      recalculateProfitFromExpression(editAmountsExpression);
-    }
-  }, [editAmountsExpression]);
+    recalculateProfit(editAmounts, editNegativeAmounts);
+  }, [editAmounts, editNegativeAmounts]);
   
   // 从表达式重新计算盈亏
-  const recalculateProfitFromExpression = (expr: string) => {
+  const recalculateProfit = (allAmountsStr: string, negativeAmountsStr: string) => {
     try {
-      // 提取表达式中的所有数字
-      const numbers: number[] = [];
-      // 匹配带括号的负数和正数
-      const matches = expr.match(/\(?\-?\d+\.?\d*\)?/g) || [];
+      // 解析第一行：所有金额的总和
+      const allAmounts = parseAmountsFromString(allAmountsStr);
+      const totalSum = allAmounts.reduce((sum, num) => sum + num, 0);
       
-      for (const match of matches) {
-        const cleaned = match.replace(/[()]/g, '');
-        const num = parseFloat(cleaned);
-        if (!isNaN(num)) {
-          numbers.push(num);
-        }
-      }
-      
-      if (numbers.length === 0) {
-        setFinalProfit(null);
-        return;
-      }
-      
-      const totalSum = numbers.reduce((a, b) => a + b, 0);
-      const negativeAmounts = numbers.filter(a => a < 0);
-      const negativeAbsSum = Math.abs(negativeAmounts.reduce((a, b) => a + b, 0));
+      // 解析第二行：负数金额绝对值总和
+      const negativeAmounts = parseAmountsFromString(negativeAmountsStr);
+      const negativeAbsSum = Math.abs(negativeAmounts.reduce((sum, num) => sum + num, 0));
       
       let profit: number | null = null;
       if (negativeAbsSum !== 0) {
         profit = totalSum / negativeAbsSum;
-        profit = Math.round(profit * 10000) / 10000;
+        profit = Math.round(profit * 10000) / 10000; // 保留4位小数
       }
       
+      setCalculatedProfit(profit);
       setFinalProfit(profit);
       
     } catch (e) {
       console.error('表达式计算失败:', e);
+      setCalculatedProfit(null);
+      setFinalProfit(null);
     }
+  };
+  
+  // 从字符串中解析出数字
+  const parseAmountsFromString = (str: string): number[] => {
+    const numbers: number[] = [];
+    const matches = str.match(/\(?\-?\d+\.?\d*\)?/g) || [];
+    
+    for (const match of matches) {
+      const cleaned = match.replace(/[()]/g, '');
+      const num = parseFloat(cleaned);
+      if (!isNaN(num)) {
+        numbers.push(num);
+      }
+    }
+    
+    return numbers;
   };
   
   // 监听粘贴事件
@@ -199,7 +213,6 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
 
       // 根据策略选择处理方式
       let result;
-      let calculated;
       
       if (selectedStrategy === 'cloudflare-ai') {
         // Cloudflare AI 需要通过后端 API
@@ -219,15 +232,12 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
         }
         
         result = jsonResult.data;
-        // Cloudflare AI 返回的 structuredData 里可能包含 calculation
-        calculated = result?.calculation;
       } else {
         // Tesseract 或 Mock 在前端处理
         const ocrResult = await ocrManager.parseImage(file);
         
         if (ocrResult.success && ocrResult.data) {
           result = ocrResult.data.structuredData;
-          calculated = ocrResult.data.calculation;
         } else {
           throw new Error(ocrResult.error || '识别失败');
         }
@@ -235,7 +245,6 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
 
       if (result) {
         setParsedData(result);
-        setCalculation(calculated);
         setStep('preview');
       } else {
         throw new Error('识别失败');
@@ -266,8 +275,6 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
     setStep('upload');
     setImagePreview(null);
     setParsedData(null);
-    setCalculation(undefined);
-    setShowCalculation(false);
     setError(null);
   };
 
@@ -344,7 +351,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                 </label>
                 <Select
                   value={selectedStrategy}
-                  onChange={(e) => setSelectedStrategy(e.target.value as OcrStrategy)}
+                  onChange={(e) => setSelectedStrategy(e.target.value as any)}
                   options={STRATEGY_OPTIONS}
                 />
                 <div className="mt-1">
@@ -355,12 +362,12 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                   )}
                   {selectedStrategy === 'tesseract' && (
                     <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
-                      ✓ 本地识别，无需网络。使用坐标定位表格。
+                      ✓ 本地识别，无需网络。
                     </div>
                   )}
                   {selectedStrategy === 'cloudflare-ai' && (
                     <div className="p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
-                      ✓ 使用 AI 视觉模型，识别精度最高。需要网络和 AI 绑定配置。
+                      ✓ 使用 AI 视觉模型，识别精度最高。需要网络。
                     </div>
                   )}
                 </div>
@@ -502,41 +509,46 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                         </div>
                       </td>
                     </tr>
-                    {/* 盈亏计算（重点） */}
+                    {/* 盈亏计算（重点）- 三行输入 */}
                     <tr>
                       <td className="px-4 py-2 text-sm text-gray-600 align-middle">
                         <div className="space-y-1">
                           <div>盈亏计算</div>
-                          <button
-                            type="button"
-                            onClick={() => setShowCalculation(!showCalculation)}
-                            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
-                          >
-                            {showCalculation ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                            {showCalculation ? '收起' : '查看说明'}
-                          </button>
                         </div>
                       </td>
                       <td className="px-4 py-2 border-l">
                         <div className="space-y-2">
-                          <Input
-                            value={editAmountsExpression}
-                            onChange={(e) => setEditAmountsExpression(e.target.value)}
-                            placeholder="9774.28 + (-6460.55) + ..."
-                          />
-                          {showCalculation && (
-                            <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-                              <p>格式：金额之间用 + 连接，负数用括号包裹</p>
-                              <p>示例：9774.28 + (-6460.55) + (-3310.28)</p>
+                          <div>
+                            <label className="text-xs text-gray-500">所有发生金额</label>
+                            <Input
+                              value={editAmounts}
+                              onChange={(e) => setEditAmounts(e.target.value)}
+                              placeholder="9774.28 + (-6460.55) + (-3310.28) + (-9870.84)"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">所有负数金额</label>
+                            <Input
+                              value={editNegativeAmounts}
+                              onChange={(e) => setEditNegativeAmounts(e.target.value)}
+                              placeholder="(-6460.55) + (-3310.28) + (-9870.84)"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">计算盈亏（自动）</label>
+                            <div className={`px-3 py-2 border rounded text-sm font-medium
+                              ${calculatedProfit && calculatedProfit >= 0 ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}
+                            `}>
+                              {calculatedProfit !== null ? calculatedProfit : '-'}
                             </div>
-                          )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-2 border-l">
                         <div className={`px-3 py-2 border rounded text-sm font-medium
                           ${finalProfit && finalProfit >= 0 ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}
                         `}>
-                          {finalProfit !== null ? `${finalProfit}` : '-'}
+                          {finalProfit !== null ? finalProfit : '-'}
                         </div>
                       </td>
                     </tr>
@@ -558,7 +570,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                       </td>
                       <td className="px-4 py-2 border-l">
                         <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-sm">
-                          {finalHoldDays !== null ? `${finalHoldDays}` : '-'}
+                          {finalHoldDays !== null ? finalHoldDays : '-'}
                         </div>
                       </td>
                     </tr>

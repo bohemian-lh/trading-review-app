@@ -1,4 +1,4 @@
-import { OcrStrategy, OcrStrategyHandler, OcrResult, ProfitCalculation } from '../../../types';
+import { OcrStrategy, OcrStrategyHandler, OcrResult } from '../../../types';
 
 export class TesseractOcrStrategy implements OcrStrategyHandler {
   readonly name = OcrStrategy.TESSERACT;
@@ -87,7 +87,7 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
       // 打印前20个文字块用于调试
       console.log('前20个文字块:');
       textBlocks.slice(0, 20).forEach((block, i) => {
-        console.log(`${i}: "${block.text}" at (x:${Math.round(block.x0)}, y:${Math.round(block.y0)})`);
+        console.log(`${i}: "${block.text}" at x:${Math.round(block.x0)}, y:${Math.round(block.y0)}`);
       });
 
       // 使用固定表头模式解析
@@ -97,8 +97,7 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
         success: true,
         data: {
           rawText: tesseractResult.data?.text || '',
-          structuredData: result.structuredData,
-          calculation: result.calculation
+          structuredData: result.structuredData
         }
       };
 
@@ -128,7 +127,6 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
    */
   private parseWithFixedHeader(blocks: Array<{ text: string; x0: number; y0: number; x1: number; y1: number; index: number }>): { 
     structuredData: any; 
-    calculation?: ProfitCalculation 
   } {
     console.log('=== 固定表头解析模式 ===');
     
@@ -167,7 +165,7 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
       const nameHeader = headerBlocks.find(h => h.keyword === '证券名称');
       const amountHeader = headerBlocks.find(h => h.keyword === '发生金额');
       
-      // 找到表头的平均 y 坐标
+      // 找到表头的平均y坐标
       const headerYValues = headerBlocks.map(h => h.y0);
       const avgHeaderY = headerYValues.reduce((a, b) => a + b, 0) / headerYValues.length;
       console.log(`表头平均 y: ${Math.round(avgHeaderY)}`);
@@ -179,26 +177,26 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
       if (nameHeader) xCoordinates.push(nameHeader.x0);
       if (amountHeader) xCoordinates.push(amountHeader.x0);
       
-      // 排序 x 坐标
+      // 排序x坐标
       xCoordinates.sort((a, b) => a - b);
       console.log('列分界点 x:', xCoordinates.map(x => Math.round(x)));
       
-      // 2. 按 y 坐标分组出行（排除表头行）
+      // 2. 按y坐标聚类分出行（排除表头行）
       const rows = this.groupIntoRows(blocks);
       console.log(`找到 ${rows.length} 行数据`);
       
-      // 3. 对每一行，根据 x 坐标确定列归属
+      // 3. 对每一行，根据x坐标确定列归属
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
         const row = rows[rowIndex];
         const rowY = row.reduce((a, b) => a + b.y0, 0) / row.length;
         
-        // 跳过表头行（y 接近表头）
+        // 跳过表头行（y接近表头）
         if (Math.abs(rowY - avgHeaderY) < 30) {
           console.log(`跳过第 ${rowIndex} 行，可能是表头`);
           continue;
         }
         
-        // 对这一行的每个块，根据 x 分配到对应列
+        // 对这一行的每个块，根据x分配到对应列
         let dateText: string | null = null;
         let codeText: string | null = null;
         let nameText: string | null = null;
@@ -286,7 +284,7 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
   }
 
   /**
-   * 根据 x 坐标和列分界点确定属于哪一列
+   * 根据x坐标和列分界点确定属于哪一列
    */
   private getColumnIndex(x: number, boundaries: number[]): number {
     if (boundaries.length === 0) return -1;
@@ -301,7 +299,7 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
   }
 
   /**
-   * 按 y 坐标聚类分出行
+   * 按y坐标聚类分出行
    */
   private groupIntoRows(blocks: Array<{ x0: number; y0: number }>): Array<Array<{ x0: number; y0: number; text: string }>> {
     const yThreshold = 15;
@@ -367,21 +365,20 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
       success: true,
       data: {
         rawText: text,
-        structuredData: result.structuredData,
-        calculation: result.calculation
+        structuredData: result.structuredData
       }
     };
   }
 
   /**
-   * 计算最终结果
+   * 计算最终结果：只做识别，不做复杂计算
    */
   private calculateResult(
     dateValues: string[], 
     stockCodeValues: string[], 
     stockNameValues: string[], 
     amountValues: number[]
-  ): { structuredData: any; calculation?: ProfitCalculation } {
+  ): { structuredData: any; } {
     
     let openDate: string | null = null;
     let holdDays: number | null = null;
@@ -415,31 +412,14 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
     const stockCode = stockCodeValues.length > 0 ? stockCodeValues[0] : null;
     const stockName = stockNameValues.length > 0 ? stockNameValues[0] : null;
     
-    let profitPercent: number | null = null;
-    let calculation: ProfitCalculation | undefined;
-    
-    if (amountValues.length > 0) {
-      const totalSum = amountValues.reduce((a, b) => a + b, 0);
-      const negativeAmounts = amountValues.filter(a => a < 0);
-      const negativeAbsSum = Math.abs(negativeAmounts.reduce((a, b) => a + b, 0));
-      
-      if (negativeAbsSum !== 0) {
-        profitPercent = totalSum / negativeAbsSum;
-        profitPercent = Math.round(profitPercent * 10000) / 10000;
-      }
-      
-      calculation = {
-        allAmounts: amountValues,
-        totalSum,
-        negativeAmounts,
-        negativeAbsSum,
-        profitPercent
-      };
-    }
-    
     return {
-      structuredData: { openDate, stockCode, stockName, profitPercent, holdDays },
-      calculation
+      structuredData: { 
+        openDate, 
+        stockCode, 
+        stockName, 
+        holdDays,
+        amountValues // 直接返回原始金额数组，前端来计算
+      }
     };
   }
 
