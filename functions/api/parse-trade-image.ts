@@ -187,28 +187,44 @@ async function handleCloudflareAi(imageFile: File, context: { env: Env }): Promi
 
     console.log('AI raw response:', JSON.stringify(aiResponse));
 
+    // 安全地获取响应文本
     let responseText = '';
-    if (typeof aiResponse === 'object' && aiResponse.response) {
-      responseText = aiResponse.response;
-    } else if (typeof aiResponse === 'string') {
+    if (typeof aiResponse === 'string') {
       responseText = aiResponse;
-    } else if (aiResponse.result?.response) {
-      responseText = aiResponse.result.response;
+    } else if (typeof aiResponse === 'object' && aiResponse !== null) {
+      // 尝试多种可能的响应格式
+      if (typeof aiResponse.response === 'string') {
+        responseText = aiResponse.response;
+      } else if (typeof aiResponse.result?.response === 'string') {
+        responseText = aiResponse.result.response;
+      } else if (Array.isArray(aiResponse) && aiResponse.length > 0 && typeof aiResponse[0] === 'string') {
+        responseText = aiResponse[0];
+      } else {
+        // 如果找不到，直接字符串化整个对象用于调试
+        responseText = JSON.stringify(aiResponse);
+      }
     }
 
-    if (!responseText) {
+    console.log('Final responseText:', responseText);
+
+    if (!responseText || typeof responseText !== 'string') {
       return {
         success: false,
-        error: 'AI 未返回有效响应'
+        error: 'AI 未返回有效响应，原始响应: ' + JSON.stringify(aiResponse)
       };
     }
 
     const structuredData = parseAiResponse(responseText);
 
     if (!structuredData) {
+      // 安全地截断字符串
+      const displayText = responseText && typeof responseText.substring === 'function' 
+        ? responseText.substring(0, 200) 
+        : JSON.stringify(responseText).substring(0, 200);
+      
       return {
         success: false,
-        error: 'AI 返回的数据格式无法解析，原始响应：' + responseText.substring(0, 200)
+        error: 'AI 返回的数据格式无法解析，原始响应：' + displayText
       };
     }
 
