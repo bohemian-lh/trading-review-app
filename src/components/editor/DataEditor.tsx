@@ -5,7 +5,7 @@ import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
 import type { TradingRecord, TradingRecordInput, TradingType, MonthlyAnalysis, AnalysisResult, ParsedTradeData } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 import { validateTradingRecord } from '@/utils/validationUtils';
-import { ImageImportModal } from './ImageImportModal';
+import { ImportModal } from './ImportModal';
 
 type ValidationError = { field: string; message: string };
 
@@ -914,8 +914,8 @@ export const DataEditor: React.FC = () => {
         </div>
       </Modal>
 
-      {/* 图片导入模态框 */}
-      <ImageImportModal
+      {/* 导入模态框 */}
+      <ImportModal
         isOpen={isImageImportModalOpen}
         onClose={() => setIsImageImportModalOpen(false)}
         onImport={handleImageImport}
