@@ -14,7 +14,7 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
         };
       }
 
-      console.log('=== 开始识别图像（坐标模式）===');
+      console.log('=== 开始识别图像（固定表头模式）===');
       
       let tesseractResult: any = null;
       
@@ -73,17 +73,25 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
         return this.parseWithPureText(tesseractResult.data?.text || '');
       }
 
-      // 打印前10个文字块的信息
-      console.log('前10个文字块:');
-      words.slice(0, 10).forEach((w, i) => {
-        console.log(`${i}:`, JSON.stringify({
-          text: w.text,
-          bbox: w.bbox || { x0: w.x0, y0: w.y0, x1: w.x1, y1: w.y1 }
-        }));
+      // 标准化文字块坐标
+      const textBlocks = words.map((word, index) => {
+        let text = word.text || '';
+        let x0 = word.bbox?.x0 ?? word.x0 ?? 0;
+        let y0 = word.bbox?.y0 ?? word.y0 ?? 0;
+        let x1 = word.bbox?.x1 ?? word.x1 ?? 0;
+        let y1 = word.bbox?.y1 ?? word.y1 ?? 0;
+        
+        return { text, x0, y0, x1, y1, index };
       });
 
-      // 使用坐标信息解析表格
-      const result = this.parseWithCoordinates(words);
+      // 打印前20个文字块用于调试
+      console.log('前20个文字块:');
+      textBlocks.slice(0, 20).forEach((block, i) => {
+        console.log(`${i}: "${block.text}" at (x:${Math.round(block.x0)}, y:${Math.round(block.y0)})`);
+      });
+
+      // 使用固定表头模式解析
+      const result = this.parseWithFixedHeader(textBlocks);
       
       return {
         success: true,
@@ -114,147 +122,212 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
   }
 
   /**
-   * 使用坐标信息按列固定规则解析表格
-   * 固定规则：
-   * - 第一列：日期
-   * - 第二列：股票代码
-   * - 第三列：股票名称
-   * - 第四列：发生金额
+   * 固定表头解析模式：
+   * 1. 先找包含表头关键词的文字块确定列位置
+   * 2. 按确定的列位置提取数据
    */
-  private parseWithCoordinates(words: any[]): { 
+  private parseWithFixedHeader(blocks: Array<{ text: string; x0: number; y0: number; x1: number; y1: number; index: number }>): { 
     structuredData: any; 
     calculation?: ProfitCalculation 
   } {
-    console.log('=== 使用坐标模式解析 ===');
+    console.log('=== 固定表头解析模式 ===');
     
-    // 1. 提取所有文字块并标准化坐标
-    const textBlocks = words.map((word, index) => {
-      let text = word.text;
-      let x0 = word.bbox?.x0 ?? word.x0 ?? 0;
-      let y0 = word.bbox?.y0 ?? word.y0 ?? 0;
-      let x1 = word.bbox?.x1 ?? word.x1 ?? 0;
-      let y1 = word.bbox?.y1 ?? word.y1 ?? 0;
-      
-      return { text, x0, y0, x1, y1, index };
-    });
+    // 表头关键词
+    const headerKeywords = ['成交日期', '证券代码', '证券名称', '发生金额'];
     
-    console.log('提取文字块数量:', textBlocks.length);
-
-    if (textBlocks.length === 0) {
-      console.warn('没有找到任何文字块');
-      return { structuredData: this.getFallbackResult() };
-    }
-
-    // 2. 按 y 坐标聚类（分出行）
-    // 排序所有文字块的 y0 坐标
-    const sortedY = textBlocks.map(b => b.y0).sort((a, b) => a - b);
+    // 1. 找表头位置
+    let headerBlocks: Array<{ text: string; x0: number; y0: number; keyword: string }> = [];
     
-    // 找到 y 坐标的自然分组（聚类）
-    const yGroups: number[][] = [];
-    let currentGroup: number[] = [];
-    const yThreshold = 15; // 同一行内的 y 坐标差异阈值
-    
-    for (let i = 0; i < sortedY.length; i++) {
-      if (i === 0) {
-        currentGroup.push(sortedY[i]);
-      } else {
-        if (sortedY[i] - sortedY[i - 1] < yThreshold) {
-          currentGroup.push(sortedY[i]);
-        } else {
-          yGroups.push([...currentGroup]);
-          currentGroup = [sortedY[i]];
+    for (const block of blocks) {
+      for (const keyword of headerKeywords) {
+        if (block.text.includes(keyword)) {
+          headerBlocks.push({
+            text: block.text,
+            x0: block.x0,
+            y0: block.y0,
+            keyword
+          });
+          console.log(`找到表头: "${keyword}" at x:${Math.round(block.x0)}, y:${Math.round(block.y0)}`);
         }
       }
     }
-    if (currentGroup.length > 0) {
-      yGroups.push(currentGroup);
-    }
-    
-    console.log('找到行数量:', yGroups.length);
-    
-    // 计算每行的中心 y 坐标
-    const rowCenters = yGroups.map(g => g.reduce((a, b) => a + b, 0) / g.length);
-    console.log('行中心:', rowCenters);
 
-    // 3. 将文字块分配到行
-    const rows: any[][] = rowCenters.map(() => []);
-    
-    for (const block of textBlocks) {
-      // 找到最近的行中心
-      let minDist = Infinity;
-      let bestRowIndex = 0;
+    let dateValues: string[] = [];
+    let stockCodeValues: string[] = [];
+    let stockNameValues: string[] = [];
+    let amountValues: number[] = [];
+
+    // 如果找到了表头，按列提取数据
+    if (headerBlocks.length >= 2) {
+      console.log('使用表头定位列');
       
-      for (let i = 0; i < rowCenters.length; i++) {
-        const dist = Math.abs(block.y0 - rowCenters[i]);
-        if (dist < minDist) {
-          minDist = dist;
-          bestRowIndex = i;
+      // 按关键词分组
+      const dateHeader = headerBlocks.find(h => h.keyword === '成交日期');
+      const codeHeader = headerBlocks.find(h => h.keyword === '证券代码');
+      const nameHeader = headerBlocks.find(h => h.keyword === '证券名称');
+      const amountHeader = headerBlocks.find(h => h.keyword === '发生金额');
+      
+      // 找到表头的平均 y 坐标
+      const headerYValues = headerBlocks.map(h => h.y0);
+      const avgHeaderY = headerYValues.reduce((a, b) => a + b, 0) / headerYValues.length;
+      console.log(`表头平均 y: ${Math.round(avgHeaderY)}`);
+      
+      // 确定四个列的分界点
+      const xCoordinates: number[] = [];
+      if (dateHeader) xCoordinates.push(dateHeader.x0);
+      if (codeHeader) xCoordinates.push(codeHeader.x0);
+      if (nameHeader) xCoordinates.push(nameHeader.x0);
+      if (amountHeader) xCoordinates.push(amountHeader.x0);
+      
+      // 排序 x 坐标
+      xCoordinates.sort((a, b) => a - b);
+      console.log('列分界点 x:', xCoordinates.map(x => Math.round(x)));
+      
+      // 2. 按 y 坐标分组出行（排除表头行）
+      const rows = this.groupIntoRows(blocks);
+      console.log(`找到 ${rows.length} 行数据`);
+      
+      // 3. 对每一行，根据 x 坐标确定列归属
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        const row = rows[rowIndex];
+        const rowY = row.reduce((a, b) => a + b.y0, 0) / row.length;
+        
+        // 跳过表头行（y 接近表头）
+        if (Math.abs(rowY - avgHeaderY) < 30) {
+          console.log(`跳过第 ${rowIndex} 行，可能是表头`);
+          continue;
+        }
+        
+        // 对这一行的每个块，根据 x 分配到对应列
+        let dateText: string | null = null;
+        let codeText: string | null = null;
+        let nameText: string | null = null;
+        let amountText: string | null = null;
+        
+        for (const block of row) {
+          const colIndex = this.getColumnIndex(block.x0, xCoordinates);
+          
+          if (colIndex === 0 && !dateText) {
+            dateText = block.text;
+          } else if (colIndex === 1 && !codeText) {
+            codeText = block.text;
+          } else if (colIndex === 2 && !nameText) {
+            nameText = block.text;
+          } else if (colIndex === 3 && !amountText) {
+            amountText = block.text;
+          } else if (colIndex >= 0 && colIndex < 4) {
+            // 如果是同一列有多个块，拼接到一起
+            if (colIndex === 0) dateText = (dateText || '') + block.text;
+            if (colIndex === 1) codeText = (codeText || '') + block.text;
+            if (colIndex === 2) nameText = (nameText || '') + block.text;
+            if (colIndex === 3) amountText = (amountText || '') + block.text;
+          }
+        }
+        
+        console.log(`行 ${rowIndex}：[日期=${dateText}, 代码=${codeText}, 名称=${nameText}, 金额=${amountText}]`);
+        
+        // 解析数据
+        if (dateText) {
+          const parsedDate = this.tryParseDate(dateText);
+          if (parsedDate) dateValues.push(parsedDate);
+        }
+        
+        if (codeText) {
+          const parsedCode = this.tryParseStockCode(codeText);
+          if (parsedCode) stockCodeValues.push(parsedCode);
+        }
+        
+        if (nameText) {
+          const parsedName = this.tryParseStockName(nameText);
+          if (parsedName) stockNameValues.push(parsedName);
+        }
+        
+        if (amountText) {
+          const parsedAmount = this.tryParseAmount(amountText);
+          if (parsedAmount !== null) amountValues.push(parsedAmount);
         }
       }
+    } 
+    // 如果没找到表头，回退到坐标+文本混合模式
+    else {
+      console.log('未找到明确表头，使用坐标聚类模式');
       
-      rows[bestRowIndex].push(block);
-    }
-    
-    // 排序每行内的文字块按 x 坐标
-    for (let i = 0; i < rows.length; i++) {
-      rows[i].sort((a, b) => a.x0 - b.x0);
-    }
-    
-    console.log('解析到的行:');
-    rows.forEach((row, i) => {
-      const rowText = row.map(r => r.text).join(' | ');
-      console.log(`行 ${i}: ${rowText}`);
-    });
-
-    // 4. 按列固定规则解析数据
-    const dateValues: string[] = [];
-    const stockCodeValues: string[] = [];
-    const stockNameValues: string[] = [];
-    const amountValues: number[] = [];
-
-    for (const row of rows) {
-      if (row.length < 4) continue; // 至少需要4列数据
+      const rows = this.groupIntoRows(blocks);
       
-      // 按 x0 排序
-      const sortedRow = [...row].sort((a, b) => a.x0 - b.x0);
-      
-      // 第一列：日期
-      const dateText = sortedRow[0].text;
-      const parsedDate = this.tryParseDate(dateText);
-      if (parsedDate) {
-        dateValues.push(parsedDate);
-      }
-      
-      // 第二列：股票代码
-      const codeText = sortedRow[1].text;
-      const parsedCode = this.tryParseStockCode(codeText);
-      if (parsedCode) {
-        stockCodeValues.push(parsedCode);
-      }
-      
-      // 第三列：股票名称
-      const nameText = sortedRow[2].text;
-      const parsedName = this.tryParseStockName(nameText);
-      if (parsedName) {
-        stockNameValues.push(parsedName);
-      }
-      
-      // 第四列：发生金额
-      const amountText = sortedRow[3].text;
-      const parsedAmount = this.tryParseAmount(amountText);
-      if (parsedAmount !== null) {
-        amountValues.push(parsedAmount);
+      for (const row of rows) {
+        if (row.length < 4) continue;
+        
+        const sortedRow = [...row].sort((a, b) => a.x0 - b.x0);
+        
+        const dateText = sortedRow[0].text;
+        const codeText = sortedRow[1].text;
+        const nameText = sortedRow[2].text;
+        const amountText = sortedRow[3].text;
+        
+        const date = this.tryParseDate(dateText);
+        const code = this.tryParseStockCode(codeText);
+        const name = this.tryParseStockName(nameText);
+        const amount = this.tryParseAmount(amountText);
+        
+        if (date) dateValues.push(date);
+        if (code) stockCodeValues.push(code);
+        if (name) stockNameValues.push(name);
+        if (amount !== null) amountValues.push(amount);
       }
     }
     
-    console.log('提取结果:');
+    console.log('提取结果：');
     console.log('日期:', dateValues);
     console.log('股票代码:', stockCodeValues);
     console.log('股票名称:', stockNameValues);
     console.log('发生金额:', amountValues);
-
-    // 5. 计算最终结果
+    
     return this.calculateResult(dateValues, stockCodeValues, stockNameValues, amountValues);
+  }
+
+  /**
+   * 根据 x 坐标和列分界点确定属于哪一列
+   */
+  private getColumnIndex(x: number, boundaries: number[]): number {
+    if (boundaries.length === 0) return -1;
+    
+    for (let i = 0; i < boundaries.length - 1; i++) {
+      if (x >= boundaries[i] && x < boundaries[i + 1]) {
+        return i;
+      }
+    }
+    
+    return boundaries.length - 1;
+  }
+
+  /**
+   * 按 y 坐标聚类分出行
+   */
+  private groupIntoRows(blocks: Array<{ x0: number; y0: number }>): Array<Array<{ x0: number; y0: number; text: string }>> {
+    const yThreshold = 15;
+    const sortedBlocks = [...blocks].sort((a, b) => a.y0 - b.y0);
+    
+    const rows: Array<Array<{ x0: number; y0: number; text: string }>> = [];
+    let currentRow: Array<{ x0: number; y0: number; text: string }> = [];
+    let lastY = -Infinity;
+    
+    for (const block of sortedBlocks) {
+      if (lastY === -Infinity || block.y0 - lastY < yThreshold) {
+        currentRow.push(block as any);
+      } else {
+        if (currentRow.length > 0) {
+          rows.push([...currentRow]);
+        }
+        currentRow = [block as any];
+      }
+      lastY = block.y0;
+    }
+    
+    if (currentRow.length > 0) {
+      rows.push(currentRow);
+    }
+    
+    return rows;
   }
 
   /**
@@ -434,15 +507,5 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
     }
     
     return null;
-  }
-
-  private getFallbackResult(): any {
-    return {
-      openDate: null,
-      stockCode: null,
-      stockName: null,
-      profitPercent: null,
-      holdDays: null
-    };
   }
 }
