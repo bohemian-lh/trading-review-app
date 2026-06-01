@@ -177,7 +177,7 @@ async function handleCloudflareAi(imageFile: File, context: { env: Env }): Promi
           {
             role: 'user',
             content: [
-              { type: 'image_url', image_url: { url: `data:${imageFile.type};base64,${arrayBufferToBase64(imageBuffer)}` },
+              { type: 'image_url', image_url: { url: `data:${imageFile.type};base64,${arrayBufferToBase64(imageBuffer)}` } },
               { type: 'text', text: EXTRACT_PROMPT }
             ]
           }
