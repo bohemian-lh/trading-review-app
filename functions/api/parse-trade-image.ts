@@ -168,6 +168,8 @@ async function handleCloudflareAi(imageFile: File, context: { env: Env }): Promi
 
     const imageBuffer = await imageFile.arrayBuffer();
 
+    console.log('调用 Cloudflare AI...');
+
     const aiResponse = await context.env.AI.run(
       MODEL,
       {
@@ -175,7 +177,7 @@ async function handleCloudflareAi(imageFile: File, context: { env: Env }): Promi
           {
             role: 'user',
             content: [
-              { type: 'image_url', image_url: { url: `data:${imageFile.type};base64,${arrayBufferToBase64(imageBuffer)}` } },
+              { type: 'image_url', image_url: { url: `data:${imageFile.type};base64,${arrayBufferToBase64(imageBuffer)}` },
               { type: 'text', text: EXTRACT_PROMPT }
             ]
           }
@@ -185,46 +187,52 @@ async function handleCloudflareAi(imageFile: File, context: { env: Env }): Promi
       }
     );
 
-    console.log('AI raw response:', JSON.stringify(aiResponse));
+    console.log('=== Cloudflare AI 原始响应:', JSON.stringify(aiResponse));
 
-    // 安全地获取响应文本
     let responseText = '';
+
+    // 更简单直接的解析方式
     if (typeof aiResponse === 'string') {
       responseText = aiResponse;
     } else if (typeof aiResponse === 'object' && aiResponse !== null) {
-      // 尝试多种可能的响应格式
-      if (typeof aiResponse.response === 'string') {
+      // 直接尝试多种可能的路径
+      if (aiResponse.response) {
         responseText = aiResponse.response;
-      } else if (typeof aiResponse.result?.response === 'string') {
+      } else if (aiResponse.result?.response) {
         responseText = aiResponse.result.response;
-      } else if (Array.isArray(aiResponse) && aiResponse.length > 0 && typeof aiResponse[0] === 'string') {
-        responseText = aiResponse[0];
+      } else if (aiResponse.result) {
+        responseText = JSON.stringify(aiResponse.result);
       } else {
-        // 如果找不到，直接字符串化整个对象用于调试
         responseText = JSON.stringify(aiResponse);
       }
+    } else {
+      responseText = JSON.stringify(aiResponse);
     }
 
-    console.log('Final responseText:', responseText);
+    console.log('提取到的 responseText:', responseText);
 
-    if (!responseText || typeof responseText !== 'string') {
+    if (!responseText) {
       return {
         success: false,
-        error: 'AI 未返回有效响应，原始响应: ' + JSON.stringify(aiResponse)
+        error: 'Cloudflare AI 没有返回任何内容'
       };
     }
 
     const structuredData = parseAiResponse(responseText);
 
+    console.log('解析后的 structuredData:', JSON.stringify(structuredData));
+
     if (!structuredData) {
-      // 安全地截断字符串
-      const displayText = responseText && typeof responseText.substring === 'function' 
-        ? responseText.substring(0, 200) 
-        : JSON.stringify(responseText).substring(0, 200);
-      
+      // 如果无法解析，返回原始响应作为错误信息
+      let displayText = '';
+      if (typeof responseText === 'string') {
+        displayText = responseText.length > 200 ? responseText.substring(0, 200) : responseText;
+      } else {
+        displayText = JSON.stringify(responseText).substring(0, 200);
+      }
       return {
         success: false,
-        error: 'AI 返回的数据格式无法解析，原始响应：' + displayText
+        error: `无法解析AI响应，原始响应: ${displayText}`
       };
     }
 
@@ -239,7 +247,7 @@ async function handleCloudflareAi(imageFile: File, context: { env: Env }): Promi
     console.error('Cloudflare AI 识别失败:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Cloudflare AI 识别失败'
+      error: `Cloudflare AI 识别失败: ${error instanceof Error ? error.message : String(error)}`
     };
   }
 }
@@ -255,10 +263,19 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 function parseAiResponse(responseText: string): any | null {
   try {
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
+    console.log('开始解析 AI 响应...');
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    // 先尝试直接解析整个字符串
+    let cleanedText = responseText;
+    // 移除可能的 markdown 标记或其他多余的文字
+    // 寻找 JSON 部分
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleanedText = jsonMatch[0];
+    }
+
+    console.log('尝试解析的 JSON 字符串:', cleanedText);
+    const parsed = JSON.parse(cleanedText);
 
     const structuredData: any = {
       openDate: parsed.openDate || null,
@@ -274,9 +291,11 @@ function parseAiResponse(responseText: string): any | null {
         : parseInt(String(parsed.holdDays), 10);
     }
 
+    console.log('解析成功:', JSON.stringify(structuredData));
     return structuredData;
   } catch (e) {
     console.error('解析 AI 响应失败:', e);
+    console.error('失败的原始字符串:', responseText);
     return null;
   }
 }
@@ -289,10 +308,10 @@ async function handleMock(): Promise<OcrResult> {
     data: {
       rawText: '模拟识别的原始文本',
       structuredData: {
-        openDate: '20260525',
-        stockCode: '603999',
-        stockName: '读者传媒',
-        holdDays: 2,
+        openDate: '20250101',
+        stockCode: '600519',
+        stockName: '贵州茅台',
+        holdDays: 3,
         amountValues: [9774.28, -6460.55, -3310.28, -9870.84]
       },
     },

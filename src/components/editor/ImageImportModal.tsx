@@ -216,6 +216,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
       
       if (selectedStrategy === 'cloudflare-ai') {
         // Cloudflare AI 需要通过后端 API
+        console.log('使用 Cloudflare AI 策略，上传文件...');
         const formData = new FormData();
         formData.append('image', file);
         formData.append('strategy', selectedStrategy);
@@ -226,6 +227,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
         });
 
         const jsonResult = await response.json();
+        console.log('Cloudflare AI 响应:', jsonResult);
         
         if (!jsonResult.success) {
           throw new Error(jsonResult.error || '识别失败');
@@ -234,7 +236,9 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
         result = jsonResult.data;
       } else {
         // Tesseract 或 Mock 在前端处理
+        console.log('使用本地策略:', selectedStrategy);
         const ocrResult = await ocrManager.parseImage(file);
+        console.log('本地策略结果:', ocrResult);
         
         if (ocrResult.success && ocrResult.data) {
           result = ocrResult.data.structuredData;
@@ -243,6 +247,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
         }
       }
 
+      console.log('最终解析结果:', result);
       if (result) {
         setParsedData(result);
         setStep('preview');
@@ -250,6 +255,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
         throw new Error('识别失败');
       }
     } catch (err) {
+      console.error('上传错误:', err);
       setError(err instanceof Error ? err.message : '识别失败，请重试');
       setStep('upload');
     }
