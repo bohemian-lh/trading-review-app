@@ -13,13 +13,42 @@ export interface ParsedTextResult {
   profitPercent: number | null;
 }
 
-// 表头关键字映射
-const headerKeywords = {
-  date: ['成交日期', '日期'],
-  code: ['证券代码', '代码'],
-  name: ['证券名称', '名称'],
-  amount: ['发生金额', '金额']
+// 默认的唯一表头关键字
+export const DEFAULT_HEADER_KEYWORDS = {
+  date: '成交日期',
+  code: '证券代码',
+  name: '证券名称',
+  amount: '发生金额'
 } as const;
+
+export type HeaderKeywords = typeof DEFAULT_HEADER_KEYWORDS;
+
+// 当前使用的关键词
+let currentHeaderKeywords: HeaderKeywords = { ...DEFAULT_HEADER_KEYWORDS };
+
+/**
+ * 设置自定义关键词
+ */
+export function setHeaderKeywords(keywords: Partial<HeaderKeywords>) {
+  currentHeaderKeywords = {
+    ...DEFAULT_HEADER_KEYWORDS,
+    ...keywords
+  };
+}
+
+/**
+ * 获取当前关键词
+ */
+export function getHeaderKeywords(): HeaderKeywords {
+  return { ...currentHeaderKeywords };
+}
+
+/**
+ * 重置为默认关键词
+ */
+export function resetHeaderKeywords() {
+  currentHeaderKeywords = { ...DEFAULT_HEADER_KEYWORDS };
+}
 
 /**
  * 将一行文本按分隔符拆分为单元格
@@ -40,6 +69,7 @@ function splitLineIntoCells(line: string, separator: string | RegExp): string[] 
  */
 export function parseTradeText(text: string): ParsedTextResult {
   console.log('开始解析文本:', text.substring(0, 200));
+  console.log('使用关键词:', currentHeaderKeywords);
   
   const lines = text.split('\n')
     .map(line => line.trim())
@@ -93,21 +123,32 @@ export function parseTradeText(text: string): ParsedTextResult {
     for (let j = 0; j < cells.length; j++) {
       const cell = cells[j];
       
-      for (const [field, keywords] of Object.entries(headerKeywords)) {
-        for (const keyword of keywords) {
-          if (cell.includes(keyword)) {
-            (columnPositions as any)[field] = j;
-            hasAnyHeader = true;
-            console.log(`找到表头 ${keyword} 在列 ${j}`);
-            break;
-          }
-        }
+      // 只匹配精确相等的关键词
+      if (cell === currentHeaderKeywords.date) {
+        columnPositions.date = j;
+        hasAnyHeader = true;
+        console.log(`找到表头 ${currentHeaderKeywords.date} 在列 ${j}`);
+      }
+      if (cell === currentHeaderKeywords.code) {
+        columnPositions.code = j;
+        hasAnyHeader = true;
+        console.log(`找到表头 ${currentHeaderKeywords.code} 在列 ${j}`);
+      }
+      if (cell === currentHeaderKeywords.name) {
+        columnPositions.name = j;
+        hasAnyHeader = true;
+        console.log(`找到表头 ${currentHeaderKeywords.name} 在列 ${j}`);
+      }
+      if (cell === currentHeaderKeywords.amount) {
+        columnPositions.amount = j;
+        hasAnyHeader = true;
+        console.log(`找到表头 ${currentHeaderKeywords.amount} 在列 ${j}`);
       }
     }
     
     if (hasAnyHeader) {
       headerRowIndex = i;
-      console.log('找到完整表头行，索引:', i, '列位置:', columnPositions);
+      console.log('找到表头行，索引:', i, '列位置:', columnPositions);
       break;
     }
   }
