@@ -27,17 +27,13 @@ const EXTRACT_PROMPT = `你是一个专业的券商交易截图提取助手。�
 4. 第4列：发生金额（正数或负数，如 9774.28）
 
 【任务要求】
-从截图中提取以下5个信息：
-
+你只需要从截图中识别和提取数据，不要做任何计算！
+请从截图中提取以下信息：
 1. openDate（开单时间）：提取第1列「成交日期」中的最小值
 2. stockCode（股票代码）：提取第2列「证券代码」的第一行数据
 3. stockName（股票名称）：提取第3列「证券名称」的第一行数据
-4. profitPercent（盈亏%）：按以下公式计算：
-   - 提取第4列「发生金额」的所有数据
-   - 盈亏% = (所有金额的总和) ÷ (所有负数金额的绝对值总和)
-5. holdDays（持仓天数）：
-   - 如果第1列中最大值和最小值的前6位（年月）相同：最大值的后两位 - 最小值的后两位 + 1
-   - 如果前6位不同（跨月）：最大值的后两位 + 31 - 最小值的后两位
+4. holdDays（持仓天数）：根据日期计算（简单计算）
+5. amountValues（发生金额数组）：提取第4列「发生金额」的所有数据，按顺序放入数组
 
 【示例】
 假设你从表格中识别到以下原始表格数据：
@@ -51,43 +47,28 @@ const EXTRACT_PROMPT = `你是一个专业的券商交易截图提取助手。�
   "openDate": "20260302",
   "stockCode": "000560",
   "stockName": "我爱我家",
-  "profitPercent": -0.0047,
   "holdDays": 2,
-  "calculation": {
-    "allAmounts": [9774.28, -6460.55, -3310.28],
-    "totalSum": 3.45,
-    "negativeAmounts": [-6460.55, -3310.28],
-    "negativeAbsSum": 9770.83,
-    "profitPercent": 0.00035
-  }
+  "amountValues": [9774.28, -6460.55, -3310.28]
 }
 
 【返回格式要求】
-请你先提取所有的四列数据，然后严格只返回最终的JSON，不要返回任何其他文字！
+请严格只返回最终的JSON，不要返回任何其他文字！
 
 JSON格式如下：
 {
   "openDate": "20260303",
   "stockCode": "603999",
   "stockName": "读者传媒",
-  "profitPercent": 0.0523,
   "holdDays": 3,
-  "calculation": {
-    "allAmounts": [9774.28, -6460.55, -3310.28],
-    "totalSum": 3.45,
-    "negativeAmounts": [-6460.55, -3310.28],
-    "negativeAbsSum": 9770.83,
-    "profitPercent": 0.00035
-  }
+  "amountValues": [9774.28, -6460.55, -3310.28, -9870.84]
 }
 
 【注意事项】
-- profitPercent 保留小数点后4位，是小数形式（如 0.0523 表示 5.23%）
-- 日期必须是8位纯数字，如 20260303
-- 股票代码必须是6位纯数字
-- 金额保留原始正负号，注意金额可能有负数
-- 确保从左到右4列顺序是：日期、代码、名称、金额，不要搞错列
-- calculation 中的所有金额必须是从第4列提取的原始发生金额
+- openDate 必须是8位纯数字日期
+- stockCode 必须是6位纯数字
+- stockName 是中文股票名称
+- holdDays 简单计算：日期相减+1（如果跨月可以用简单估算）
+- amountValues 是提取到的所有发生金额的原始数组，顺序和表格一致
 - 只需要JSON，不要任何其他文字！`;
 
 export async function onRequestOptions() {
@@ -267,24 +248,14 @@ function parseAiResponse(responseText: string): any | null {
       openDate: parsed.openDate || null,
       stockCode: parsed.stockCode || null,
       stockName: parsed.stockName || null,
-      profitPercent: null,
       holdDays: null,
+      amountValues: parsed.amountValues || []
     };
-
-    if (parsed.profitPercent !== undefined && parsed.profitPercent !== null) {
-      structuredData.profitPercent = typeof parsed.profitPercent === 'number'
-        ? parsed.profitPercent
-        : parseFloat(String(parsed.profitPercent));
-    }
 
     if (parsed.holdDays !== undefined && parsed.holdDays !== null) {
       structuredData.holdDays = typeof parsed.holdDays === 'number'
         ? parsed.holdDays
         : parseInt(String(parsed.holdDays), 10);
-    }
-
-    if (parsed.calculation) {
-      structuredData.calculation = parsed.calculation;
     }
 
     return structuredData;
@@ -305,15 +276,8 @@ async function handleMock(): Promise<OcrResult> {
         openDate: '20260525',
         stockCode: '603999',
         stockName: '读者传媒',
-        profitPercent: 0.187,
         holdDays: 2,
-        calculation: {
-          allAmounts: [999999.99, -888888.88, 777777.77],
-          totalSum: 888888.88,
-          negativeAmounts: [-888888.88],
-          negativeAbsSum: 888888.88,
-          profitPercent: 1.0
-        }
+        amountValues: [9774.28, -6460.55, -3310.28, -9870.84]
       },
     },
   };
