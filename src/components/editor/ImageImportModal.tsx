@@ -13,7 +13,7 @@ interface ImageImportModalProps {
 const STRATEGY_OPTIONS = [
   { value: 'cloudflare-ai', label: 'Cloudflare AI（推荐，精度最高）' },
   { value: 'tesseract', label: 'Tesseract.js（本地识别，无需网络）' },
-  { value: 'mock', label: '模拟模式（仅测试用）' },
+  { value: 'mock', label: 'Mock（测试用）' },
 ];
 
 export const ImageImportModal: React.FC<ImageImportModalProps> = ({
@@ -30,6 +30,18 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
   const [selectedStrategy, setSelectedStrategy] = useState<OcrStrategy>(ocrManager.getConfig().strategy);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // 编辑状态
+  const [editOpenDate, setEditOpenDate] = useState<string>('');
+  const [editStockCode, setEditStockCode] = useState<string>('');
+  const [editStockName, setEditStockName] = useState<string>('');
+  const [editAmountsExpression, setEditAmountsExpression] = useState<string>('');
+  const [editHoldDays, setEditHoldDays] = useState<number | null>(null);
+  const [finalOpenDate, setFinalOpenDate] = useState<string>('');
+  const [finalStockCode, setFinalStockCode] = useState<string>('');
+  const [finalStockName, setFinalStockName] = useState<string>('');
+  const [finalProfit, setFinalProfit] = useState<number | null>(null);
+  const [finalHoldDays, setFinalHoldDays] = useState<number | null>(null);
+  
   // 每次打开模态框时重置所有状态
   useEffect(() => {
     if (isOpen) {
@@ -42,6 +54,83 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
       setSelectedStrategy(ocrManager.getConfig().strategy);
     }
   }, [isOpen]);
+  
+  // 当识别结果返回时，初始化编辑状态
+  useEffect(() => {
+    if (parsedData && calculation) {
+      setEditOpenDate(parsedData.openDate || '');
+      setEditStockCode(parsedData.stockCode || '');
+      setEditStockName(parsedData.stockName || '');
+      setEditHoldDays(parsedData.holdDays ?? null);
+      
+      // 初始化金额表达式
+      const amountStrs = calculation.allAmounts.map(a => 
+        a >= 0 ? a.toString() : `(${a.toString()})`
+      );
+      const expression = amountStrs.join(' + ');
+      setEditAmountsExpression(expression);
+      
+      // 初始化最终数据
+      setFinalOpenDate(parsedData.openDate || '');
+      setFinalStockCode(parsedData.stockCode || '');
+      setFinalStockName(parsedData.stockName || '');
+      setFinalHoldDays(parsedData.holdDays ?? null);
+      setFinalProfit(parsedData.profitPercent ?? null);
+    }
+  }, [parsedData, calculation]);
+  
+  // 监听编辑变化，自动同步到最终数据
+  useEffect(() => {
+    setFinalOpenDate(editOpenDate);
+    setFinalStockCode(editStockCode);
+    setFinalStockName(editStockName);
+    setFinalHoldDays(editHoldDays);
+  }, [editOpenDate, editStockCode, editStockName, editHoldDays]);
+  
+  // 当表达式变化时重新计算盈亏
+  useEffect(() => {
+    if (editAmountsExpression) {
+      recalculateProfitFromExpression(editAmountsExpression);
+    }
+  }, [editAmountsExpression]);
+  
+  // 从表达式重新计算盈亏
+  const recalculateProfitFromExpression = (expr: string) => {
+    try {
+      // 提取表达式中的所有数字
+      const numbers: number[] = [];
+      // 匹配带括号的负数和正数
+      const matches = expr.match(/\(?\-?\d+\.?\d*\)?/g) || [];
+      
+      for (const match of matches) {
+        const cleaned = match.replace(/[()]/g, '');
+        const num = parseFloat(cleaned);
+        if (!isNaN(num)) {
+          numbers.push(num);
+        }
+      }
+      
+      if (numbers.length === 0) {
+        setFinalProfit(null);
+        return;
+      }
+      
+      const totalSum = numbers.reduce((a, b) => a + b, 0);
+      const negativeAmounts = numbers.filter(a => a < 0);
+      const negativeAbsSum = Math.abs(negativeAmounts.reduce((a, b) => a + b, 0));
+      
+      let profit: number | null = null;
+      if (negativeAbsSum !== 0) {
+        profit = totalSum / negativeAbsSum;
+        profit = Math.round(profit * 10000) / 10000;
+      }
+      
+      setFinalProfit(profit);
+      
+    } catch (e) {
+      console.error('表达式计算失败:', e);
+    }
+  };
   
   // 监听粘贴事件
   useEffect(() => {
@@ -80,7 +169,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
     return () => {
       window.removeEventListener('paste', handlePaste);
     };
-  }, [isOpen, step]);
+  }, [isOpen, step, selectedStrategy]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     // 只有在 upload 阶段才处理文件选择
@@ -123,13 +212,15 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
           body: formData
         });
 
-        result = await response.json();
+        const jsonResult = await response.json();
         
-        if (!result.success) {
-          throw new Error(result.error || '识别失败');
+        if (!jsonResult.success) {
+          throw new Error(jsonResult.error || '识别失败');
         }
         
-        result = result.data;
+        result = jsonResult.data;
+        // Cloudflare AI 返回的 structuredData 里可能包含 calculation
+        calculated = result?.calculation;
       } else {
         // Tesseract 或 Mock 在前端处理
         const ocrResult = await ocrManager.parseImage(file);
@@ -156,9 +247,17 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
   };
 
   const handleImport = () => {
-    if (parsedData) {
-      onImport(parsedData);
+    if (finalOpenDate && finalStockCode && finalStockName && finalProfit !== null && finalHoldDays !== null) {
+      onImport({
+        openDate: finalOpenDate,
+        stockCode: finalStockCode,
+        stockName: finalStockName,
+        profitPercent: finalProfit,
+        holdDays: finalHoldDays
+      });
       handleClose();
+    } else {
+      alert('请填写完整的信息');
     }
   };
 
@@ -172,17 +271,11 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
     setError(null);
   };
 
-  const updateField = (field: keyof ParsedTradeData, value: any) => {
-    if (parsedData) {
-      setParsedData({ ...parsedData, [field]: value });
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[95vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -195,7 +288,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-4">
+        <div className="p-4 overflow-y-auto flex-1">
           {/* 步骤指示器 */}
           <div className="mb-6">
             <div className="flex items-center justify-center space-x-1 text-xs">
@@ -262,7 +355,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                   )}
                   {selectedStrategy === 'tesseract' && (
                     <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
-                      ✓ 本地 OCR 引擎，免费无需网络。中文识别精度有限，建议截图清晰。
+                      ✓ 本地识别，无需网络。使用坐标定位表格。
                     </div>
                   )}
                   {selectedStrategy === 'cloudflare-ai' && (
@@ -331,120 +424,155 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
             </div>
           )}
 
-          {/* Step 3: Preview */}
+          {/* Step 3: Preview - 全新的两列布局 */}
           {step === 'preview' && parsedData && (
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+            <div className="space-y-4">
               <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-start gap-2">
                 <div className="mt-0.5">④</div>
                 <div>
-                  <h4 className="font-medium text-green-800 text-sm">步骤4：确认提取的数据</h4>
-                  <p className="text-xs text-green-700 mt-1">请确认以下数据，可直接编辑修改</p>
+                  <h4 className="font-medium text-green-800 text-sm">步骤4：确认和编辑识别数据</h4>
+                  <p className="text-xs text-green-700 mt-1">编辑左侧的原始数据，结果会同步到右侧</p>
                 </div>
               </div>
               
-              {/* 原截图显示 */}
+              {/* 原截图预览 */}
               {imagePreview && (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">原截图</label>
-                  <img src={imagePreview} alt="原交易截图" className="max-w-full h-auto rounded border" />
+                  <img src={imagePreview} alt="原交易截图" className="max-w-full h-auto rounded border max-h-60 object-contain" />
                 </div>
               )}
 
-              {/* 识别的数据编辑 */}
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">开单时间</label>
-                  <Input
-                    value={parsedData.openDate}
-                    onChange={(e) => updateField('openDate', e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">股票代码</label>
-                  <Input
-                    value={parsedData.stockCode}
-                    onChange={(e) => updateField('stockCode', e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">股票名称</label>
-                  <Input
-                    value={parsedData.stockName}
-                    onChange={(e) => updateField('stockName', e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">盈亏%</label>
-                  <Input
-                    type="number"
-                    value={parsedData.profitPercent ?? ''}
-                    onChange={(e) => updateField('profitPercent', e.target.value ? parseFloat(e.target.value) : null)}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">持仓天数</label>
-                  <Input
-                    type="number"
-                    value={parsedData.holdDays ?? ''}
-                    onChange={(e) => updateField('holdDays', e.target.value ? parseInt(e.target.value, 10) : null)}
-                  />
-                </div>
+              {/* 两列数据编辑表格 */}
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">字段</th>
+                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b border-l">原始识别（可编辑）</th>
+                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b border-l">最终数据（自动同步）</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {/* 开单时间 */}
+                    <tr>
+                      <td className="px-4 py-2 text-sm text-gray-600 align-middle">开单时间</td>
+                      <td className="px-4 py-2 border-l">
+                        <Input
+                          value={editOpenDate}
+                          onChange={(e) => setEditOpenDate(e.target.value)}
+                          placeholder="20250101"
+                        />
+                      </td>
+                      <td className="px-4 py-2 border-l">
+                        <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-sm">
+                          {finalOpenDate || '-'}
+                        </div>
+                      </td>
+                    </tr>
+                    {/* 股票代码 */}
+                    <tr>
+                      <td className="px-4 py-2 text-sm text-gray-600 align-middle">股票代码</td>
+                      <td className="px-4 py-2 border-l">
+                        <Input
+                          value={editStockCode}
+                          onChange={(e) => setEditStockCode(e.target.value)}
+                          placeholder="600519"
+                        />
+                      </td>
+                      <td className="px-4 py-2 border-l">
+                        <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-sm">
+                          {finalStockCode || '-'}
+                        </div>
+                      </td>
+                    </tr>
+                    {/* 股票名称 */}
+                    <tr>
+                      <td className="px-4 py-2 text-sm text-gray-600 align-middle">股票名称</td>
+                      <td className="px-4 py-2 border-l">
+                        <Input
+                          value={editStockName}
+                          onChange={(e) => setEditStockName(e.target.value)}
+                          placeholder="贵州茅台"
+                        />
+                      </td>
+                      <td className="px-4 py-2 border-l">
+                        <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-sm">
+                          {finalStockName || '-'}
+                        </div>
+                      </td>
+                    </tr>
+                    {/* 盈亏计算（重点） */}
+                    <tr>
+                      <td className="px-4 py-2 text-sm text-gray-600 align-middle">
+                        <div className="space-y-1">
+                          <div>盈亏计算</div>
+                          <button
+                            type="button"
+                            onClick={() => setShowCalculation(!showCalculation)}
+                            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
+                          >
+                            {showCalculation ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            {showCalculation ? '收起' : '查看说明'}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 border-l">
+                        <div className="space-y-2">
+                          <Input
+                            value={editAmountsExpression}
+                            onChange={(e) => setEditAmountsExpression(e.target.value)}
+                            placeholder="9774.28 + (-6460.55) + ..."
+                          />
+                          {showCalculation && (
+                            <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                              <p>格式：金额之间用 + 连接，负数用括号包裹</p>
+                              <p>示例：9774.28 + (-6460.55) + (-3310.28)</p>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 border-l">
+                        <div className={`px-3 py-2 border rounded text-sm font-medium
+                          ${finalProfit && finalProfit >= 0 ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}
+                        `}>
+                          {finalProfit !== null ? `${finalProfit}` : '-'}
+                        </div>
+                      </td>
+                    </tr>
+                    {/* 持仓天数 */}
+                    <tr>
+                      <td className="px-4 py-2 text-sm text-gray-600 align-middle">持仓天数</td>
+                      <td className="px-4 py-2 border-l">
+                        <Input
+                          type="number"
+                          step="1"
+                          min="0"
+                          value={editHoldDays !== null ? editHoldDays : ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setEditHoldDays(val ? parseInt(val, 10) : null);
+                          }}
+                          placeholder="3"
+                        />
+                      </td>
+                      <td className="px-4 py-2 border-l">
+                        <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-sm">
+                          {finalHoldDays !== null ? `${finalHoldDays}` : '-'}
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              
-              {/* 计算过程展示 */}
-              {calculation && (
-                <div className="space-y-2">
-                  <button
-                    onClick={() => setShowCalculation(!showCalculation)}
-                    className="flex items-center gap-2 w-full text-left text-sm font-medium text-gray-700 hover:text-gray-900"
-                  >
-                    {showCalculation ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    查看计算过程
-                  </button>
-                  
-                  {showCalculation && (
-                    <div className="p-3 bg-gray-50 rounded text-sm space-y-2">
-                      <div>
-                        <span className="font-medium">发生金额列表: </span>
-                        <span>{calculation.allAmounts.join(', ')}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium">总金额: </span>
-                        <span>{calculation.totalSum.toFixed(2)}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium">负数金额列表: </span>
-                        <span>{calculation.negativeAmounts.join(', ')}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium">负数绝对值总和: </span>
-                        <span>{calculation.negativeAbsSum.toFixed(2)}</span>
-                      </div>
-                      <div className="pt-2 border-t border-gray-200">
-                        <span className="font-medium">盈亏计算: </span>
-                        <span>{calculation.totalSum.toFixed(2)} ÷ {calculation.negativeAbsSum.toFixed(2)} = {(calculation.totalSum / calculation.negativeAbsSum).toFixed(2)}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium">最终盈亏: </span>
-                        <span className={calculation.profitPercent && calculation.profitPercent > 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                          {calculation.profitPercent !== null ? `${(calculation.profitPercent * 100).toFixed(2)}%` : '-'}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
+              {/* 提示信息 */}
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                 <div className="flex items-start gap-2">
                   <div className="mt-0.5">⑤</div>
                   <div>
                     <h4 className="font-medium text-gray-800 text-sm">步骤5-6：完善字段并添加记录</h4>
-                    <p className="text-xs text-gray-600 mt-1">点击"继续"将进入编辑页面，填写其他字段后保存</p>
+                    <p className="text-xs text-gray-600 mt-1">点击"继续完善信息"进入编辑页面，填写其他字段后保存</p>
                   </div>
                 </div>
               </div>
