@@ -196,9 +196,55 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
 
         {/* Content */}
         <div className="p-4">
+          {/* 步骤指示器 */}
+          <div className="mb-6">
+            <div className="flex items-center justify-center space-x-1 text-xs">
+              {[
+                { step: 1, label: '选择策略', active: step === 'upload', done: false },
+                { step: 2, label: '上传图片', active: step === 'upload', done: false },
+                { step: 3, label: '识别图片', active: step === 'parsing', done: step === 'preview' },
+                { step: 4, label: '确认数据', active: step === 'preview', done: false },
+                { step: 5, label: '完善字段', active: false, done: false },
+                { step: 6, label: '添加记录', active: false, done: false },
+              ].map((item, index, array) => (
+                <React.Fragment key={item.step}>
+                  <div className="flex flex-col items-center">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium mb-1
+                      ${item.active ? 'bg-blue-500 text-white' : ''}
+                      ${item.done ? 'bg-green-500 text-white' : ''}
+                      ${!item.active && !item.done ? 'bg-gray-200 text-gray-400' : ''}
+                    `}>
+                      {item.done ? '✓' : item.step}
+                    </div>
+                    <span className={`text-[10px]
+                      ${item.active ? 'text-blue-600 font-medium' : ''}
+                      ${item.done ? 'text-green-600' : ''}
+                      ${!item.active && !item.done ? 'text-gray-400' : ''}
+                    `}>
+                      {item.label}
+                    </span>
+                  </div>
+                  {index < array.length - 1 && (
+                    <div className={`w-6 h-0.5 mt-3
+                      ${item.done ? 'bg-green-500' : 'bg-gray-200'}
+                    `} />
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+
           {/* Step 1: Upload */}
           {step === 'upload' && (
             <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+                <div className="mt-0.5">①</div>
+                <div>
+                  <h4 className="font-medium text-blue-800 text-sm">步骤1：选择识别策略</h4>
+                  <p className="text-xs text-blue-700 mt-1">选择适合您的OCR识别方式</p>
+                </div>
+              </div>
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   识别策略
@@ -224,6 +270,14 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                       ✓ 使用 AI 视觉模型，识别精度最高。需要网络和 AI 绑定配置。
                     </div>
                   )}
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+                <div className="mt-0.5">②</div>
+                <div>
+                  <h4 className="font-medium text-blue-800 text-sm">步骤2：上传图片文件</h4>
+                  <p className="text-xs text-blue-700 mt-1">选择或粘贴您的交易截图</p>
                 </div>
               </div>
 
@@ -263,6 +317,14 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
           {/* Step 2: Parsing */}
           {step === 'parsing' && (
             <div className="py-8 text-center">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start justify-center gap-2 mb-4">
+                <div className="mt-0.5">③</div>
+                <div>
+                  <h4 className="font-medium text-blue-800 text-sm">步骤3：根据规则识别图片</h4>
+                  <p className="text-xs text-blue-700 mt-1">正在识别表格数据...</p>
+                </div>
+              </div>
+              
               <Loader2 className="h-10 w-10 mx-auto text-blue-500 animate-spin mb-3" />
               <p className="text-gray-700">正在识别表格...</p>
               <p className="text-sm text-gray-500 mt-1">请稍候</p>
@@ -272,10 +334,11 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
           {/* Step 3: Preview */}
           {step === 'preview' && parsedData && (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-              <div className="p-3 bg-green-50 text-green-800 rounded text-sm flex items-start gap-2">
-                <div className="mt-0.5">✓</div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-start gap-2">
+                <div className="mt-0.5">④</div>
                 <div>
-                  识别成功！请确认以下数据是否正确，可直接编辑
+                  <h4 className="font-medium text-green-800 text-sm">步骤4：确认提取的数据</h4>
+                  <p className="text-xs text-green-700 mt-1">请确认以下数据，可直接编辑修改</p>
                 </div>
               </div>
               
@@ -340,7 +403,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                     className="flex items-center gap-2 w-full text-left text-sm font-medium text-gray-700 hover:text-gray-900"
                   >
                     {showCalculation ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    计算过程
+                    查看计算过程
                   </button>
                   
                   {showCalculation && (
@@ -376,9 +439,15 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
                 </div>
               )}
 
-              <p className="text-sm text-gray-500">
-                其他字段（交易类型、是否系统等）将在下一步填写
-              </p>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <div className="flex items-start gap-2">
+                  <div className="mt-0.5">⑤</div>
+                  <div>
+                    <h4 className="font-medium text-gray-800 text-sm">步骤5-6：完善字段并添加记录</h4>
+                    <p className="text-xs text-gray-600 mt-1">点击"继续"将进入编辑页面，填写其他字段后保存</p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -391,7 +460,7 @@ export const ImageImportModal: React.FC<ImageImportModalProps> = ({
 
           {step === 'preview' && (
             <Button onClick={handleImport}>
-              继续导入并编辑
+              继续完善信息 →
             </Button>
           )}
         </div>
