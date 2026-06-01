@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, Image as ImageIcon, Loader2, Clipboard, FileText } from 'lucide-react';
-import { Button, Input, Select } from '../common';
+import { X, Upload, Image as ImageIcon, Loader2, Clipboard, FileText, Settings } from 'lucide-react';
+import { Button, Input, Select, Modal } from '../common';
 import type { ParsedTradeData } from '@/types';
 import { ocrManager } from '@/services/ocr';
-import { parseTradeText } from '@/services/text-parser';
+import { parseTradeText, DEFAULT_HEADER_KEYWORDS } from '@/services/text-parser';
+import { useHeaderKeywordsStore } from '@/stores/headerKeywordsStore';
 
 interface ImportModalProps {
   isOpen: boolean;
@@ -34,6 +35,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   
+  // 关键词配置相关
+  const [showKeywordSettings, setShowKeywordSettings] = useState(false);
+  const { keywords, setKeywords, loadKeywords } = useHeaderKeywordsStore();
+  const [tempKeywords, setTempKeywords] = useState<Record<string, string>>({ ...DEFAULT_HEADER_KEYWORDS });
+  
   // 编辑状态
   const [editOpenDate, setEditOpenDate] = useState<string>('');
   const [editStockCode, setEditStockCode] = useState<string>('');
@@ -60,6 +66,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       setParsedData(null);
       setError(null);
       setSelectedStrategy(ocrManager.getConfig().strategy);
+      // 加载关键词配置
+      loadKeywords();
+      // 初始化临时关键词为当前关键词
+      setTempKeywords({ ...keywords });
     }
   }, [isOpen]);
   
@@ -481,14 +491,28 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               {/* 文本导入方式 */}
               {importType === 'text' && (
                 <>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
-                    <div className="mt-0.5">①-②</div>
-                    <div>
-                      <h4 className="font-medium text-blue-800 text-sm">粘贴交易记录文本</h4>
-                      <p className="text-xs text-blue-700 mt-1">
-                        支持从券商软件复制的制表符分隔数据，或 CSV 格式
-                      </p>
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2 flex-1">
+                      <div className="mt-0.5">①-②</div>
+                      <div>
+                        <h4 className="font-medium text-blue-800 text-sm">粘贴交易记录文本</h4>
+                        <p className="text-xs text-blue-700 mt-1">
+                          支持从券商软件复制的制表符分隔数据，或 CSV 格式
+                        </p>
+                      </div>
                     </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setTempKeywords({ ...keywords });
+                        setShowKeywordSettings(true);
+                      }}
+                      className="ml-2"
+                    >
+                      <Settings className="h-4 w-4 mr-1" />
+                      配置关键词
+                    </Button>
                   </div>
 
                   <div>
@@ -737,6 +761,92 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* 关键词配置模态框 */}
+      <Modal
+        isOpen={showKeywordSettings}
+        onClose={() => setShowKeywordSettings(false)}
+        title="配置表头关键词"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            设置文本解析时使用的表头关键词，用于确定每列的含义
+          </p>
+          
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                成交日期列
+              </label>
+              <Input
+                value={tempKeywords.date}
+                onChange={(e) => setTempKeywords(prev => ({ ...prev, date: e.target.value }))}
+                placeholder="成交日期"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                证券代码列
+              </label>
+              <Input
+                value={tempKeywords.code}
+                onChange={(e) => setTempKeywords(prev => ({ ...prev, code: e.target.value }))}
+                placeholder="证券代码"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                证券名称列
+              </label>
+              <Input
+                value={tempKeywords.name}
+                onChange={(e) => setTempKeywords(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="证券名称"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                发生金额列
+              </label>
+              <Input
+                value={tempKeywords.amount}
+                onChange={(e) => setTempKeywords(prev => ({ ...prev, amount: e.target.value }))}
+                placeholder="发生金额"
+              />
+            </div>
+          </div>
+          
+          <div className="flex justify-between items-center pt-2 border-t">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                const resetTo = { ...DEFAULT_HEADER_KEYWORDS };
+                setTempKeywords(resetTo);
+                setKeywords(resetTo);
+              }}
+            >
+              重置为默认
+            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setShowKeywordSettings(false)}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={() => {
+                  setKeywords(tempKeywords);
+                  setShowKeywordSettings(false);
+                }}
+              >
+                保存
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
