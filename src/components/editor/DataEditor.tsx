@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2, Table2, BarChart3, Calendar, ChevronUp, ChevronDown, Image, TrendingUp } from 'lucide-react';
-import { Button, Input, Select, Modal, Toggle } from '@/components/common';
+import { Button, Input, Select, Modal, Toggle, ZoomControls } from '@/components/common';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
 import type { TradingRecord, TradingRecordInput, TradingType, MonthlyAnalysis, AnalysisResult, ParsedTradeData } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 import { validateTradingRecord } from '@/utils/validationUtils';
 import { ImportModal } from './ImportModal';
+import { useTableZoom } from '@/hooks/useTableZoom';
 
 type ValidationError = { field: string; message: string };
 
@@ -352,360 +353,499 @@ export const DataEditor: React.FC = () => {
     ...YES_NO_OPTIONS,
   ];
 
-  const renderTable1 = () => (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">表1 - 交易记录</h2>
-        <div className="flex items-center gap-3">
-          {isSaving && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              保存中...
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            {statsNeedUpdate && (
-              <div className="flex items-center gap-1 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full text-xs font-medium">
-                <AlertCircle className="h-3.5 w-3.5" />
-                有数据需要更新
+  const renderTable1 = () => {
+    const { zoom, containerRef, showZoomHint, zoomHint, resetZoom, increaseZoom, decreaseZoom, isAtMin, isAtMax, zoomStyle } = useTableZoom();
+    
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold">表1 - 交易记录</h2>
+          <div className="flex items-center gap-3">
+            <ZoomControls
+              zoom={zoom}
+              onZoomIn={increaseZoom}
+              onZoomOut={decreaseZoom}
+              onReset={resetZoom}
+              isAtMin={isAtMin}
+              isAtMax={isAtMax}
+              hint={zoomHint}
+              showHint={showZoomHint}
+            />
+            {isSaving && (
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                保存中...
               </div>
             )}
-            <Button 
-              variant={statsNeedUpdate ? "primary" : "secondary"} 
-              onClick={handleUpdateStats}
-              disabled={updateStatus === 'loading' || records.length === 0}
-            >
-              <RefreshCw className={`mr-2 h-4 w-4 ${updateStatus === 'loading' ? 'animate-spin' : ''}`} />
-              {statsNeedUpdate ? "更新统计数据" : "手动更新统计数据"}
-            </Button>
-          </div>
-          <Button variant="secondary" onClick={() => setIsImageImportModalOpen(true)}>
-            <Image className="mr-2 h-4 w-4" />
-            从图片导入
-          </Button>
-          <Button onClick={() => handleOpenModal()}>
-            <Plus className="mr-2 h-4 w-4" />
-            添加记录
-          </Button>
-        </div>
-      </div>
-
-      {updateStatus !== 'idle' && (
-        <div className={`p-4 rounded-lg flex items-center gap-2 ${
-          updateStatus === 'success' ? 'bg-green-50 text-green-800' : 
-          updateStatus === 'error' ? 'bg-red-50 text-red-800' : 
-          'bg-blue-50 text-blue-800'
-        }`}>
-          {updateStatus === 'success' && <CheckCircle className="h-5 w-5" />}
-          {updateStatus === 'error' && <AlertCircle className="h-5 w-5" />}
-          {updateStatus === 'loading' && <RefreshCw className="h-5 w-5 animate-spin" />}
-          <span>{updateMessage}</span>
-        </div>
-      )}
-
-      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-        <div className="flex items-center gap-4 mb-4">
-          <Filter className="h-5 w-5 text-gray-600" />
-          <h3 className="font-medium text-gray-800">数据筛选</h3>
-          {(filters.month || filters.tradingType || filters.isSystem) && (
-            <button
-              onClick={resetFilters}
-              className="ml-auto text-sm text-gray-600 hover:text-gray-800"
-            >
-              重置筛选
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              月份筛选
-            </label>
-            <Select
-              value={filters.month}
-              onChange={(e) => setFilters({ ...filters, month: e.target.value })}
-              options={allMonthOptions}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              交易类型
-            </label>
-            <Select
-              value={filters.tradingType}
-              onChange={(e) => setFilters({ ...filters, tradingType: e.target.value })}
-              options={allTradingTypeOptions}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              系统符合
-            </label>
-            <Select
-              value={filters.isSystem}
-              onChange={(e) => setFilters({ ...filters, isSystem: e.target.value })}
-              options={allYesNoOptions}
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 text-sm text-gray-600">
-          共 {filteredRecords.length} 条记录 (总计 {records.length} 条)
-        </div>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
-                onClick={() => handleSort('openDate')}
-              >
-                <div className="flex items-center gap-1">
-                  开单时间
-                  {sortConfig.key === 'openDate' && (
-                    sortConfig.direction === 'asc' 
-                      ? <ChevronUp className="h-4 w-4" /> 
-                      : <ChevronDown className="h-4 w-4" />
-                  )}
-                </div>
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">股票名称</th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
-                onClick={() => handleSort('stockCode')}
-              >
-                <div className="flex items-center gap-1">
-                  股票代码
-                  {sortConfig.key === 'stockCode' && (
-                    sortConfig.direction === 'asc' 
-                      ? <ChevronUp className="h-4 w-4" /> 
-                      : <ChevronDown className="h-4 w-4" />
-                  )}
-                </div>
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">交易类型</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">系统</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">失误</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏%</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">持仓天</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredRecords.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                  {records.length === 0 ? '暂无数据，请导入Excel或添加记录' : '无符合筛选条件的记录'}
-                </td>
-              </tr>
-            ) : (
-              filteredRecords.map((record) => (
-                <tr key={record.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-900">{record.openDate}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900">{record.stockName}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900">{record.stockCode}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900">{record.tradingType}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className={`inline-flex px-2 py-1 text-xs rounded ${
-                      record.isSystem === '是' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {record.isSystem}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className={`inline-flex px-2 py-1 text-xs rounded ${
-                      record.hasMistake === '是' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-                    }`}>
-                      {record.hasMistake}
-                    </span>
-                  </td>
-                  <td className={`px-4 py-3 text-sm font-medium ${
-                    record.profitPercent >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {record.profitPercent}%
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900">{record.holdDays}</td>
-                  <td className="px-4 py-3 text-sm space-x-2">
-                    <button
-                      onClick={() => handleOpenModal(record)}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(record.id)}
-                      className="text-red-600 hover:text-red-900"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-
-  const renderTable2 = () => (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">表2 - 动态统计数据</h2>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">使用自定义数据</span>
-            <Toggle
-              checked={customAnalysis.useCustom}
-              onChange={toggleUseCustomAnalysis}
-            />
-          </div>
-          <Button variant="secondary" onClick={syncFromComputed}>
-            从计算同步
-          </Button>
-        </div>
-      </div>
-
-      <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-        <div className="flex items-start gap-2">
-          <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-yellow-800">
-              {customAnalysis.useCustom ? '当前使用自定义数据' : '当前使用自动计算数据'}
-            </p>
-            <p className="text-xs text-yellow-700 mt-1">
-              {customAnalysis.useCustom 
-                ? '你可以在下方编辑自定义数据，这些数据会被保存和导出' 
-                : '数据会根据表1自动计算，切换到自定义模式后可以编辑'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
-          {ANALYSIS_FIELDS.map(({ key, label }) => (
-            <div key={key} className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">{label}</label>
-              {customAnalysis.useCustom ? (
-                <Input
-                  type="text"
-                  value={customAnalysis.data[key] === 'N/A' ? 'N/A' : String(customAnalysis.data[key])}
-                  onChange={(e) => handleAnalysisFieldChange(key, e.target.value)}
-                  placeholder="输入数值或 N/A"
-                />
-              ) : (
-                <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-gray-700">
-                  {computedAnalysis[key] === 'N/A' ? 'N/A' : String(computedAnalysis[key])}
+            <div className="flex items-center gap-2">
+              {statsNeedUpdate && (
+                <div className="flex items-center gap-1 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full text-xs font-medium">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  有数据需要更新
                 </div>
               )}
+              <Button 
+                variant={statsNeedUpdate ? "primary" : "secondary"} 
+                onClick={handleUpdateStats}
+                disabled={updateStatus === 'loading' || records.length === 0}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${updateStatus === 'loading' ? 'animate-spin' : ''}`} />
+                {statsNeedUpdate ? "更新统计数据" : "手动更新统计数据"}
+              </Button>
             </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderTable3 = () => (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">表3 - 月度统计数据</h2>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">使用自定义数据</span>
-            <Toggle
-              checked={customMonthly.useCustom}
-              onChange={toggleUseCustomMonthly}
-            />
-          </div>
-          <Button variant="secondary" onClick={syncFromComputed}>
-            从计算同步
-          </Button>
-          {customMonthly.useCustom && (
-            <Button onClick={() => handleOpenMonthlyModal()}>
-              <Plus className="mr-2 h-4 w-4" />
-              添加月份
+            <Button variant="secondary" onClick={() => setIsImageImportModalOpen(true)}>
+              <Image className="mr-2 h-4 w-4" />
+              从图片导入
             </Button>
-          )}
+            <Button onClick={() => handleOpenModal()}>
+              <Plus className="mr-2 h-4 w-4" />
+              添加记录
+            </Button>
+          </div>
         </div>
-      </div>
 
-      <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-        <div className="flex items-start gap-2">
-          <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-yellow-800">
-              {customMonthly.useCustom ? '当前使用自定义数据' : '当前使用自动计算数据'}
-            </p>
-            <p className="text-xs text-yellow-700 mt-1">
-              {customMonthly.useCustom 
-                ? '你可以在下方添加、编辑月份数据，这些数据会被保存和导出' 
-                : '数据会根据表1自动计算，切换到自定义模式后可以编辑'}
-            </p>
+        {updateStatus !== 'idle' && (
+          <div className={`p-4 rounded-lg flex items-center gap-2 ${
+            updateStatus === 'success' ? 'bg-green-50 text-green-800' : 
+            updateStatus === 'error' ? 'bg-red-50 text-red-800' : 
+            'bg-blue-50 text-blue-800'
+          }`}>
+            {updateStatus === 'success' && <CheckCircle className="h-5 w-5" />}
+            {updateStatus === 'error' && <AlertCircle className="h-5 w-5" />}
+            {updateStatus === 'loading' && <RefreshCw className="h-5 w-5 animate-spin" />}
+            <span>{updateMessage}</span>
+          </div>
+        )}
+
+        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+          <div className="flex items-center gap-4 mb-4">
+            <Filter className="h-5 w-5 text-gray-600" />
+            <h3 className="font-medium text-gray-800">数据筛选</h3>
+            {(filters.month || filters.tradingType || filters.isSystem) && (
+              <button
+                onClick={resetFilters}
+                className="ml-auto text-sm text-gray-600 hover:text-gray-800"
+              >
+                重置筛选
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                月份筛选
+              </label>
+              <Select
+                value={filters.month}
+                onChange={(e) => setFilters({ ...filters, month: e.target.value })}
+                options={allMonthOptions}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                交易类型
+              </label>
+              <Select
+                value={filters.tradingType}
+                onChange={(e) => setFilters({ ...filters, tradingType: e.target.value })}
+                options={allTradingTypeOptions}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                系统符合
+              </label>
+              <Select
+                value={filters.isSystem}
+                onChange={(e) => setFilters({ ...filters, isSystem: e.target.value })}
+                options={allYesNoOptions}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 text-sm text-gray-600">
+            共 {filteredRecords.length} 条记录 (总计 {records.length} 条)
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-gray-200">
+          <div ref={containerRef} className="overflow-auto">
+            <div style={zoomStyle}>
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th 
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('openDate')}
+                    >
+                      <div className="flex items-center gap-1">
+                        开单时间
+                        {sortConfig.key === 'openDate' && (
+                          sortConfig.direction === 'asc' 
+                            ? <ChevronUp className="h-4 w-4" /> 
+                            : <ChevronDown className="h-4 w-4" />
+                        )}
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">股票名称</th>
+                    <th 
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('stockCode')}
+                    >
+                      <div className="flex items-center gap-1">
+                        股票代码
+                        {sortConfig.key === 'stockCode' && (
+                          sortConfig.direction === 'asc' 
+                            ? <ChevronUp className="h-4 w-4" /> 
+                            : <ChevronDown className="h-4 w-4" />
+                        )}
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">交易类型</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">系统</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">失误</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏%</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">持仓天</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                        {records.length === 0 ? '暂无数据，请导入Excel或添加记录' : '无符合筛选条件的记录'}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredRecords.map((record) => (
+                      <tr key={record.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.openDate}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.stockName}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.stockCode}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.tradingType}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`inline-flex px-2 py-1 text-xs rounded ${
+                            record.isSystem === '是' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {record.isSystem}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`inline-flex px-2 py-1 text-xs rounded ${
+                            record.hasMistake === '是' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                          }`}>
+                            {record.hasMistake}
+                          </span>
+                        </td>
+                        <td className={`px-4 py-3 text-sm font-medium ${
+                          record.profitPercent >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {record.profitPercent}%
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.holdDays}</td>
+                        <td className="px-4 py-3 text-sm space-x-2">
+                          <button
+                            onClick={() => handleOpenModal(record)}
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(record.id)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
+    );
+  };
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">月份</th>
-              {MONTHLY_FIELDS.map(({ label }) => (
-                <th key={label} className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  {label}
-                </th>
-              ))}
-              {customMonthly.useCustom && (
-                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
-              )}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {(customMonthly.useCustom ? customMonthly.data : computedMonthly).length === 0 ? (
-              <tr>
-                <td colSpan={MONTHLY_FIELDS.length + 2} className="px-4 py-8 text-center text-gray-500">
-                  暂无月度数据
-                </td>
-              </tr>
-            ) : (
-              (customMonthly.useCustom ? customMonthly.data : computedMonthly).map((item) => (
-                <tr key={item.month} className="hover:bg-gray-50">
-                  <td className="px-3 py-3 text-sm font-medium text-gray-900">{item.month}</td>
-                  {MONTHLY_FIELDS.map(({ key }) => (
-                    <td key={key} className="px-3 py-3 text-sm text-gray-700">
-                      {item[key] === 'N/A' ? 'N/A' : String(item[key])}
-                    </td>
-                  ))}
-                  {customMonthly.useCustom && (
-                    <td className="px-3 py-3 text-sm space-x-2">
-                      <button
-                        onClick={() => handleOpenMonthlyModal(item)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMonthly(item.month)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
+  const renderTable2 = () => {
+    const { zoom, containerRef, showZoomHint, zoomHint, resetZoom, increaseZoom, decreaseZoom, isAtMin, isAtMax, zoomStyle } = useTableZoom();
+    
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold">表2 - 动态统计数据</h2>
+          <div className="flex items-center gap-3">
+            <ZoomControls
+              zoom={zoom}
+              onZoomIn={increaseZoom}
+              onZoomOut={decreaseZoom}
+              onReset={resetZoom}
+              isAtMin={isAtMin}
+              isAtMax={isAtMax}
+              hint={zoomHint}
+              showHint={showZoomHint}
+            />
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">使用自定义数据</span>
+              <Toggle
+                checked={customAnalysis.useCustom}
+                onChange={toggleUseCustomAnalysis}
+              />
+            </div>
+            <Button variant="secondary" onClick={syncFromComputed}>
+              从计算同步
+            </Button>
+          </div>
+        </div>
+
+        <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-yellow-800">
+                {customAnalysis.useCustom ? '当前使用自定义数据' : '当前使用自动计算数据'}
+              </p>
+              <p className="text-xs text-yellow-700 mt-1">
+                {customAnalysis.useCustom 
+                  ? '你可以在下方编辑自定义数据，这些数据会被保存和导出' 
+                  : '数据会根据表1自动计算，切换到自定义模式后可以编辑'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div ref={containerRef}>
+            <div style={zoomStyle} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
+              {ANALYSIS_FIELDS.map(({ key, label }) => (
+                <div key={key} className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">{label}</label>
+                  {customAnalysis.useCustom ? (
+                    <Input
+                      type="text"
+                      value={customAnalysis.data[key] === 'N/A' ? 'N/A' : String(customAnalysis.data[key])}
+                      onChange={(e) => handleAnalysisFieldChange(key, e.target.value)}
+                      placeholder="输入数值或 N/A"
+                    />
+                  ) : (
+                    <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-gray-700">
+                      {computedAnalysis[key] === 'N/A' ? 'N/A' : String(computedAnalysis[key])}
+                    </div>
                   )}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  const renderTable3 = () => {
+    const { zoom, containerRef, showZoomHint, zoomHint, resetZoom, increaseZoom, decreaseZoom, isAtMin, isAtMax, zoomStyle } = useTableZoom();
+    
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold">表3 - 月度统计数据</h2>
+          <div className="flex items-center gap-3">
+            <ZoomControls
+              zoom={zoom}
+              onZoomIn={increaseZoom}
+              onZoomOut={decreaseZoom}
+              onReset={resetZoom}
+              isAtMin={isAtMin}
+              isAtMax={isAtMax}
+              hint={zoomHint}
+              showHint={showZoomHint}
+            />
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">使用自定义数据</span>
+              <Toggle
+                checked={customMonthly.useCustom}
+                onChange={toggleUseCustomMonthly}
+              />
+            </div>
+            <Button variant="secondary" onClick={syncFromComputed}>
+              从计算同步
+            </Button>
+            {customMonthly.useCustom && (
+              <Button onClick={() => handleOpenMonthlyModal()}>
+                <Plus className="mr-2 h-4 w-4" />
+                添加月份
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-yellow-800">
+                {customMonthly.useCustom ? '当前使用自定义数据' : '当前使用自动计算数据'}
+              </p>
+              <p className="text-xs text-yellow-700 mt-1">
+                {customMonthly.useCustom 
+                  ? '你可以在下方添加、编辑月份数据，这些数据会被保存和导出' 
+                  : '数据会根据表1自动计算，切换到自定义模式后可以编辑'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-gray-200">
+          <div ref={containerRef} className="overflow-auto">
+            <div style={zoomStyle}>
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">月份</th>
+                    {MONTHLY_FIELDS.map(({ label }) => (
+                      <th key={label} className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        {label}
+                      </th>
+                    ))}
+                    {customMonthly.useCustom && (
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {(customMonthly.useCustom ? customMonthly.data : computedMonthly).length === 0 ? (
+                    <tr>
+                      <td colSpan={MONTHLY_FIELDS.length + 2} className="px-4 py-8 text-center text-gray-500">
+                        暂无月度数据
+                      </td>
+                    </tr>
+                  ) : (
+                    (customMonthly.useCustom ? customMonthly.data : computedMonthly).map((item) => (
+                      <tr key={item.month} className="hover:bg-gray-50">
+                        <td className="px-3 py-3 text-sm font-medium text-gray-900">{item.month}</td>
+                        {MONTHLY_FIELDS.map(({ key }) => (
+                          <td key={key} className="px-3 py-3 text-sm text-gray-700">
+                            {item[key] === 'N/A' ? 'N/A' : String(item[key])}
+                          </td>
+                        ))}
+                        {customMonthly.useCustom && (
+                          <td className="px-3 py-3 text-sm space-x-2">
+                            <button
+                              onClick={() => handleOpenMonthlyModal(item)}
+                              className="text-blue-600 hover:text-blue-900"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMonthly(item.month)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTable4 = () => {
+    const { zoom, containerRef, showZoomHint, zoomHint, resetZoom, increaseZoom, decreaseZoom, isAtMin, isAtMax, zoomStyle } = useTableZoom();
+    
+    // 将所有统计类型的周期数据展平
+    const allStats: any[] = [];
+    for (const [statType, cycles] of Object.entries(cycleStats)) {
+      for (const cycle of cycles || []) {
+        allStats.push({ ...cycle, statType });
+      }
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold">表4-周期统计</h2>
+          <div className="flex items-center gap-3">
+            <ZoomControls
+              zoom={zoom}
+              onZoomIn={increaseZoom}
+              onZoomOut={decreaseZoom}
+              onReset={resetZoom}
+              isAtMin={isAtMin}
+              isAtMax={isAtMax}
+              hint={zoomHint}
+              showHint={showZoomHint}
+            />
+            <div className="text-sm text-gray-600">
+              共 {allStats.length} 个周期
+            </div>
+          </div>
+        </div>
+
+        {allStats.length === 0 ? (
+          <div className="bg-gray-50 p-8 text-center rounded-lg border border-gray-200">
+            <p className="text-gray-500">暂无周期统计数据</p>
+            <p className="text-sm text-gray-400 mt-2">点击「手动更新统计数据」按钮生成周期统计</p>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-gray-200">
+            <div ref={containerRef} className="overflow-auto">
+              <div style={zoomStyle}>
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">统计类型</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">开始日期</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">结束日期</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">记录数</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">完整周期</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈利总和</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">亏损绝对值总和</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏比</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {allStats.map((stat, index) => (
+                      <tr key={`${stat.statType}-${index}`} className="hover:bg-gray-50">
+                        <td className="px-3 py-3 text-sm font-medium text-gray-900">{stat.statType}</td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{stat.startDate}</td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{stat.endDate}</td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{stat.recordCount}</td>
+                        <td className="px-3 py-3 text-sm">
+                          <span className={`inline-flex px-2 py-1 text-xs rounded ${
+                            stat.isComplete ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {stat.isComplete ? '是' : '否'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{stat.profitSum}</td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{stat.lossSum}</td>
+                        <td className={`px-3 py-3 text-sm font-medium ${
+                          (stat.profitRatio ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {stat.profitRatio ?? 'N/A'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -761,74 +901,7 @@ export const DataEditor: React.FC = () => {
       {activeTab === 'table1' && renderTable1()}
       {activeTab === 'table2' && renderTable2()}
       {activeTab === 'table3' && renderTable3()}
-      {activeTab === 'table4' && (() => {
-        // 将所有统计类型的周期数据展平
-        const allStats: any[] = [];
-        for (const [statType, cycles] of Object.entries(cycleStats)) {
-          for (const cycle of cycles || []) {
-            allStats.push({ ...cycle, statType });
-          }
-        }
-
-        return (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold">表4-周期统计</h2>
-              <div className="text-sm text-gray-600">
-                共 {allStats.length} 个周期
-              </div>
-            </div>
-
-            {allStats.length === 0 ? (
-              <div className="bg-gray-50 p-8 text-center rounded-lg border border-gray-200">
-                <p className="text-gray-500">暂无周期统计数据</p>
-                <p className="text-sm text-gray-400 mt-2">点击「手动更新统计数据」按钮生成周期统计</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">统计类型</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">开始日期</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">结束日期</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">记录数</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">完整周期</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈利总和</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">亏损绝对值总和</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏比</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {allStats.map((stat, index) => (
-                      <tr key={`${stat.statType}-${index}`} className="hover:bg-gray-50">
-                        <td className="px-3 py-3 text-sm font-medium text-gray-900">{stat.statType}</td>
-                        <td className="px-3 py-3 text-sm text-gray-700">{stat.startDate}</td>
-                        <td className="px-3 py-3 text-sm text-gray-700">{stat.endDate}</td>
-                        <td className="px-3 py-3 text-sm text-gray-700">{stat.recordCount}</td>
-                        <td className="px-3 py-3 text-sm">
-                          <span className={`inline-flex px-2 py-1 text-xs rounded ${
-                            stat.isComplete ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {stat.isComplete ? '是' : '否'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 text-sm text-gray-700">{stat.profitSum}</td>
-                        <td className="px-3 py-3 text-sm text-gray-700">{stat.lossSum}</td>
-                        <td className={`px-3 py-3 text-sm font-medium ${
-                          (stat.profitRatio ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {stat.profitRatio ?? 'N/A'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        );
-      })()}
+      {activeTab === 'table4' && renderTable4()}
 
       <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingRecord ? '编辑记录' : '添加记录'} size="lg">
         <div className="space-y-4">

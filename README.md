@@ -60,7 +60,19 @@ trading-review-app/
 npm install
 ```
 
-### 开发模式
+### 本地开发模式（推荐）
+
+使用 Cloudflare Pages 本地开发环境，支持完整的 Functions 功能：
+
+```bash
+npm run dev:cf
+```
+
+访问 http://localhost:5173
+
+### 纯 Vite 开发模式（不推荐，API 将不可用）
+
+仅开发 UI 组件时使用，R2 API 功能不可用：
 
 ```bash
 npm run dev
@@ -79,6 +91,8 @@ npm run build
 ```bash
 npm run preview
 ```
+
+访问 http://localhost:4173
 
 ## 数据分析逻辑
 

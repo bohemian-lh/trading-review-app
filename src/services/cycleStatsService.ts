@@ -46,16 +46,16 @@ export function calculateProfitRatio(records: TradingRecord[]): { profitRatio: n
   // 避免除零
   if (profitSum === 0) {
     // 全是亏损
-    return { profitRatio: -100.00, profitSum: 0, lossSum };
+    return { profitRatio: -1.00, profitSum: 0, lossSum };
   }
   if (lossSum === 0) {
     // 全是盈利
-    return { profitRatio: 100.00, profitSum, lossSum: 0 };
+    return { profitRatio: 1.00, profitSum, lossSum: 0 };
   }
 
   const larger = Math.max(profitSum, lossSum);
   const smaller = Math.min(profitSum, lossSum);
-  const ratio = parseFloat(((larger / smaller) * 100).toFixed(2));
+  const ratio = parseFloat((larger / smaller).toFixed(2));
 
   return {
     profitRatio: profitSum > lossSum ? ratio : -ratio,

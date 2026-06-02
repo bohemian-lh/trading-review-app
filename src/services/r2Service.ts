@@ -108,20 +108,30 @@ class R2StorageService {
 
   async downloadFile(filename: string): Promise<Blob> {
     console.log('=== r2StorageService.downloadFile START ===');
-    console.log('Downloading filename:', filename);
-    console.log('Request URL:', `${API_BASE_URL}/api/file?filename=${encodeURIComponent(filename)}`);
+    console.log('Downloading filename (original):', filename);
+    
+    // 确保只进行一次 URL 编码
+    const encodedFilename = encodeURIComponent(filename);
+    const url = `${API_BASE_URL}/api/file?filename=${encodedFilename}`;
+    console.log('Request URL:', url);
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/file?filename=${encodeURIComponent(filename)}`, {
+      const response = await fetch(url, {
         headers: this.getHeaders(false),
       });
 
       console.log('Download response status:', response.status);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Download error response:', errorText);
-        throw new Error(`Download failed: HTTP ${response.status} - ${errorText}`);
+        let errorMessage = `HTTP ${response.status}`;
+        try {
+          const errorText = await response.text();
+          console.error('Download error response:', errorText);
+          errorMessage = errorText;
+        } catch {
+          // 如果无法解析错误文本，使用状态码
+        }
+        throw new Error(`Download failed: ${errorMessage}`);
       }
 
       const blob = await response.blob();
@@ -136,17 +146,18 @@ class R2StorageService {
 
   async deleteFile(filename: string): Promise<void> {
     console.log('=== r2StorageService.deleteFile START ===');
-    console.log('Deleting filename:', filename);
-    console.log('Request URL:', `${API_BASE_URL}/api/file?filename=${encodeURIComponent(filename)}`);
+    console.log('Deleting filename (original):', filename);
+    
+    // 确保只进行一次 URL 编码
+    const encodedFilename = encodeURIComponent(filename);
+    const url = `${API_BASE_URL}/api/file?filename=${encodedFilename}`;
+    console.log('Request URL:', url);
     
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/file?filename=${encodeURIComponent(filename)}`,
-        {
-          method: 'DELETE',
-          headers: this.getHeaders(),
-        }
-      );
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      });
 
       console.log('Delete response status:', response.status);
       

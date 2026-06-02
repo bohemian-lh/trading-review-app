@@ -44,7 +44,7 @@ export function calculateProfitRatio(
     ratio = sumPositive > 0 ? 1.0 : -1.0;
   }
 
-  return Math.round(ratio * 10) / 10;
+  return parseFloat(ratio.toFixed(2));
 }
 
 export function calculateAvgProfitRatio(
@@ -82,7 +82,7 @@ export function calculateAvgProfitRatio(
     ratio = sumPositive > 0 ? 1.0 : -1.0;
   }
 
-  return Math.round(ratio * 10) / 10;
+  return parseFloat(ratio.toFixed(2));
 }
 
 export function calculateTotalProfit(
