@@ -65,10 +65,8 @@ const MONTHLY_FIELDS: Array<{ key: keyof Omit<MonthlyAnalysis, 'month'>; label: 
   { key: 'systemNoMistakeProfitRatio', label: '系统无失误' },
   { key: 'systemWithMistakeProfitRatio', label: '系统有失误' },
   { key: 'nonSystemProfitRatio', label: '非系统' },
-  { key: 'systemProfitAvgHoldDays', label: '系统盈利持仓' },
-  { key: 'systemLossAvgHoldDays', label: '系统亏损持仓' },
-  { key: 'nonSystemProfitAvgHoldDays', label: '非系统盈利持仓' },
-  { key: 'nonSystemLossAvgHoldDays', label: '非系统亏损持仓' },
+  { key: 'avgProfitRatio', label: '平均盈亏比' },
+  { key: 'totalProfit', label: '总盈亏' },
 ];
 
 export const DataEditor: React.FC = () => {
@@ -279,10 +277,8 @@ export const DataEditor: React.FC = () => {
         systemNoMistakeProfitRatio: 'N/A',
         systemWithMistakeProfitRatio: 'N/A',
         nonSystemProfitRatio: 'N/A',
-        systemProfitAvgHoldDays: 'N/A',
-        systemLossAvgHoldDays: 'N/A',
-        nonSystemProfitAvgHoldDays: 'N/A',
-        nonSystemLossAvgHoldDays: 'N/A',
+        avgProfitRatio: 'N/A',
+        totalProfit: 'N/A',
       });
     }
     setIsMonthlyModalOpen(true);

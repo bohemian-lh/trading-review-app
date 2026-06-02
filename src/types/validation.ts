@@ -28,10 +28,8 @@ const MonthlyAnalysisSchema = z.object({
   systemNoMistakeProfitRatio: NumberOrNASchema,
   systemWithMistakeProfitRatio: NumberOrNASchema,
   nonSystemProfitRatio: NumberOrNASchema,
-  systemProfitAvgHoldDays: NumberOrNASchema,
-  systemLossAvgHoldDays: NumberOrNASchema,
-  nonSystemProfitAvgHoldDays: NumberOrNASchema,
-  nonSystemLossAvgHoldDays: NumberOrNASchema,
+  avgProfitRatio: NumberOrNASchema,
+  totalProfit: NumberOrNASchema,
 }) satisfies z.ZodType<MonthlyAnalysis>;
 
 // CustomAnalysisData schema

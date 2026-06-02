@@ -15,10 +15,8 @@ export interface MonthlyAnalysis {
   systemNoMistakeProfitRatio: number | 'N/A';
   systemWithMistakeProfitRatio: number | 'N/A';
   nonSystemProfitRatio: number | 'N/A';
-  systemProfitAvgHoldDays: number | 'N/A';
-  systemLossAvgHoldDays: number | 'N/A';
-  nonSystemProfitAvgHoldDays: number | 'N/A';
-  nonSystemLossAvgHoldDays: number | 'N/A';
+  avgProfitRatio: number | 'N/A';
+  totalProfit: number | 'N/A';
 }
 
 export interface ChartDataPoint {
