@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 
 const MIN_ZOOM = 0.5; // 50%
 const MAX_ZOOM = 2.0; // 200%
@@ -49,6 +49,14 @@ export function useTableZoom() {
     }
   }, [handleWheel]);
 
+  // memo 稳定 zoomStyle 引用 + CSS contain 隔离布局重计算
+  const zoomStyle = useMemo(() => ({
+    transform: `scale(${zoom})`,
+    transformOrigin: 'top left' as const,
+    width: `${100 / zoom}%`,
+    contain: 'layout style' as const,
+  }), [zoom]);
+
   return {
     zoom,
     setZoom,
@@ -60,10 +68,6 @@ export function useTableZoom() {
     decreaseZoom,
     isAtMin: zoom === MIN_ZOOM,
     isAtMax: zoom === MAX_ZOOM,
-    zoomStyle: {
-      transform: `scale(${zoom})`,
-      transformOrigin: 'top left',
-      width: `${100 / zoom}%`,
-    } as const,
+    zoomStyle,
   };
 }
