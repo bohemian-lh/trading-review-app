@@ -1,6 +1,6 @@
 // /api/file - 下载和删除单个文件
 export async function onRequest(context) {
-  const { request, env, url } = context;
+  const { request, env } = context;
   
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -13,7 +13,7 @@ export async function onRequest(context) {
   }
 
   try {
-    const urlObj = new URL(url);
+    const urlObj = new URL(request.url);
     const key = urlObj.searchParams.get('key');
     const filename = urlObj.searchParams.get('filename');
     
