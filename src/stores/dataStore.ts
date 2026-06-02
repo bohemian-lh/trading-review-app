@@ -7,17 +7,6 @@ import { generateId } from '@/utils';
 import { r2StorageService } from '@/services/r2Service';
 import { generateCycleStats, STAT_TYPES, recalculateSingleCycle, removeRecordFromCycle } from '@/services/cycleStatsService';
 
-function debounce<T extends (...args: unknown[]) => unknown>(
-  func: T,
-  wait: number
-): (...args: Parameters<T>) => void {
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-  return function (...args: Parameters<T>) {
-    if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
-}
-
 interface DataState {
   records: TradingRecord[];
   isLoading: boolean;
@@ -62,15 +51,21 @@ interface DataState {
 }
 
 export const useDataStore = create<DataState>((set, get) => {
-  let debouncedSave: (() => void) | null = null;
+  let debouncedSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const getDebouncedSave = () => {
-    if (!debouncedSave) {
-      debouncedSave = debounce(() => {
-        get().saveToR2();
-      }, 1000);
+  const cancelPendingSave = () => {
+    if (debouncedSaveTimer) {
+      clearTimeout(debouncedSaveTimer);
+      debouncedSaveTimer = null;
     }
-    return debouncedSave;
+  };
+
+  const scheduleDebouncedSave = () => {
+    cancelPendingSave();
+    debouncedSaveTimer = setTimeout(() => {
+      debouncedSaveTimer = null;
+      get().saveToR2();
+    }, 1000);
   };
 
   // 空的分析数据模板
@@ -112,7 +107,7 @@ export const useDataStore = create<DataState>((set, get) => {
         hasMonthlyStats: r.hasMonthlyStats ?? false
       }));
       set({ records: normalizedRecords, error: null });
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     addRecord: (recordData) => {
@@ -125,7 +120,7 @@ export const useDataStore = create<DataState>((set, get) => {
       set((state) => ({
         records: [...state.records, newRecord],
       }));
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     addRecords: (recordsData) => {
@@ -139,7 +134,7 @@ export const useDataStore = create<DataState>((set, get) => {
         records: [...state.records, ...newRecords],
         statsNeedUpdate: true,
       }));
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     updateRecord: (id, updates) => {
@@ -221,7 +216,7 @@ export const useDataStore = create<DataState>((set, get) => {
         statsNeedUpdate: needsUpdateFlag,
       });
       
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     deleteRecord: (id) => {
@@ -254,12 +249,12 @@ export const useDataStore = create<DataState>((set, get) => {
         statsNeedUpdate: needsUpdateFlag,
       }));
       
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     clearRecords: () => {
       set({ records: [], currentFileName: null, error: null });
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     setLoading: (loading) => {
@@ -277,7 +272,7 @@ export const useDataStore = create<DataState>((set, get) => {
     // 自定义分析数据操作
     setCustomAnalysis: (data) => {
       set({ customAnalysis: data });
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     updateCustomAnalysisField: (field, value) => {
@@ -287,7 +282,7 @@ export const useDataStore = create<DataState>((set, get) => {
           data: { ...state.customAnalysis.data, [field]: value },
         },
       }));
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     toggleUseCustomAnalysis: () => {
@@ -297,13 +292,13 @@ export const useDataStore = create<DataState>((set, get) => {
           useCustom: !state.customAnalysis.useCustom,
         },
       }));
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     // 自定义月度数据操作
     setCustomMonthly: (data) => {
       set({ customMonthly: data });
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     addCustomMonthly: (item) => {
@@ -313,7 +308,7 @@ export const useDataStore = create<DataState>((set, get) => {
           data: [...state.customMonthly.data, item],
         },
       }));
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     updateCustomMonthly: (month, updates) => {
@@ -325,7 +320,7 @@ export const useDataStore = create<DataState>((set, get) => {
           ),
         },
       }));
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     deleteCustomMonthly: (month) => {
@@ -335,7 +330,7 @@ export const useDataStore = create<DataState>((set, get) => {
           data: state.customMonthly.data.filter((item) => item.month !== month),
         },
       }));
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     toggleUseCustomMonthly: () => {
@@ -345,7 +340,7 @@ export const useDataStore = create<DataState>((set, get) => {
           useCustom: !state.customMonthly.useCustom,
         },
       }));
-      getDebouncedSave()();
+      scheduleDebouncedSave();
     },
 
     // 更新周期统计
@@ -362,7 +357,7 @@ export const useDataStore = create<DataState>((set, get) => {
         cycleStatsGeneratedAt: result.generatedAt,
         statsNeedUpdate: false,
       });
-      getDebouncedSave()();
+      // 不在此处自动保存，由调用方（handleUpdateStats）统一调用 saveToR2
     },
 
     loadFromR2: async () => {
@@ -401,6 +396,9 @@ export const useDataStore = create<DataState>((set, get) => {
 
     saveToR2: async () => {
       const state = get();
+      cancelPendingSave(); // 取消待处理的 debounced 保存，防止重复保存
+      if (state.records.length === 0 && !state.customAnalysis.useCustom) return;
+      
       set({ isSaving: true });
       try {
         const result = await r2StorageService.saveRecords(
@@ -422,7 +420,7 @@ export const useDataStore = create<DataState>((set, get) => {
           }));
           
           set({
-            error: 'Conflict detected, please refresh',
+            error: '数据冲突，已加载最新数据，请重试操作',
             records: normalizedRecords,
             customAnalysis: result.customAnalysis || { useCustom: false, data: { ...emptyAnalysis } },
             customMonthly: result.customMonthly || { useCustom: false, data: [] },
@@ -431,11 +429,14 @@ export const useDataStore = create<DataState>((set, get) => {
             version: result.version || null,
           });
         } else {
-          console.error('Save failed:', result.message);
-          set({ error: result.message });
+          const msg = result.error || result.message || '保存失败';
+          set({ error: msg });
+          throw new Error(msg);
         }
       } catch (error) {
-        console.error('Save failed:', error);
+        const msg = error instanceof Error ? error.message : '保存失败，请检查网络连接';
+        set({ error: msg });
+        throw error;
       } finally {
         set({ isSaving: false });
       }
