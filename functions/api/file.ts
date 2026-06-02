@@ -15,10 +15,20 @@ export async function onRequest(context) {
   }
 
   try {
-    // 从查询参数获取文件名
+    // 从查询参数获取文件名，并进行 URL 解码
     const urlObj = new URL(url);
-    const filename = urlObj.searchParams.get('filename');
-    console.log('filename from query:', filename);
+    let filename = urlObj.searchParams.get('filename');
+    console.log('filename from query (raw):', filename);
+    
+    // URL 解码
+    if (filename) {
+      try {
+        filename = decodeURIComponent(filename);
+        console.log('filename after decodeURIComponent:', filename);
+      } catch (e) {
+        console.error('decodeURIComponent failed:', e);
+      }
+    }
     
     if (!filename) {
       return json({ success: false, error: 'Filename required' }, 400, corsHeaders);
