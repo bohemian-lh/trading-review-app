@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useDataStore } from '@/stores';
-import { BaseChart } from './BaseChart';
+import { GroupBarChart } from './GroupBarChart';
 
 interface ChartDataPoint {
   period: string;
@@ -14,16 +14,13 @@ export const CycleTypeChart: React.FC = () => {
   const cycleStats = useDataStore((state) => state.cycleStats);
 
   const chartData = useMemo<ChartDataPoint[]>(() => {
-    // 获取4种交易类型的周期列表
     const type1 = cycleStats['齐飞水底'] || [];
     const type2 = cycleStats['齐飞前多踩MA'] || [];
     const type3 = cycleStats['风险释放平台转一致'] || [];
     const type4 = cycleStats['双阳平台转一致'] || [];
 
-    // 找出最大周期数
     const maxLength = Math.max(type1.length, type2.length, type3.length, type4.length);
 
-    // 构建数据点
     const points: ChartDataPoint[] = [];
     for (let i = 0; i < maxLength; i++) {
       points.push({
@@ -38,7 +35,7 @@ export const CycleTypeChart: React.FC = () => {
     return points;
   }, [cycleStats]);
 
-  const lines = [
+  const bars = [
     { dataKey: '齐飞水底', name: '齐飞水底', color: '#10b981' },
     { dataKey: '齐飞前多踩MA', name: '齐飞前多踩MA', color: '#0ea5e9' },
     { dataKey: '风险释放平台转一致', name: '风险释放平台转一致', color: '#8b5cf6' },
@@ -46,13 +43,12 @@ export const CycleTypeChart: React.FC = () => {
   ];
 
   return (
-    <BaseChart
+    <GroupBarChart
       data={chartData}
       title="周期统计（按交易类型）"
       xAxisKey="period"
-      lines={lines}
+      bars={bars}
       yAxisLabel="盈亏比"
-      minWidth={500}
     />
   );
 };
