@@ -171,9 +171,10 @@ export const BaseChart: React.FC<BaseChartProps> = ({
       </div>
       <div
         ref={containerRef}
-        className="overflow-x-auto"
+        className="overflow-x-auto touch-pan-x"
+        style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
       >
-        <div style={{ minWidth: minWidth * zoom, width: '100%' }}>
+        <div style={{ minWidth: minWidth * zoom }}>
           {chartContent}
         </div>
       </div>

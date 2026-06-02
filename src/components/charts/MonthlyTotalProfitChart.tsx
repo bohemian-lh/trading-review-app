@@ -161,9 +161,10 @@ export const MonthlyTotalProfitChart: React.FC = () => {
       
       <div
         ref={containerRef}
-        className="overflow-x-auto"
+        className="overflow-x-auto touch-pan-x"
+        style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
       >
-        <div style={{ minWidth: 500 * zoom, width: '100%' }}>
+        <div style={{ minWidth: 500 * zoom }}>
           {chartContent}
         </div>
       </div>
