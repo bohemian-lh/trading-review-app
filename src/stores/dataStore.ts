@@ -346,9 +346,17 @@ export const useDataStore = create<DataState>((set, get) => {
     // 更新周期统计
     updateCycleStats: () => {
       const state = get();
+      
+      // 清除所有记录的 cycle 标记，强制全量重新生成
+      const cleanRecords = state.records.map(r => ({
+        ...r,
+        hasCycleStats: false,
+        cycleId: undefined,
+      }));
+      
       const { result, updatedRecords } = generateCycleStats(
-        state.records,
-        state.cycleStats
+        cleanRecords,
+        Object.fromEntries(STAT_TYPES.map(type => [type, []])) as unknown as Record<CycleStatType, CycleStats[]>
       );
       
       set({
