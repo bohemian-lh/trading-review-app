@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { TradingRecord, TradingType, YesNo } from './trading';
 import type { CustomAnalysisData, CustomMonthlyData, AnalysisResult, MonthlyAnalysis } from './analysis';
+import type { CycleStats, CycleStatType } from './cycleStats';
 
-const TradingTypeSchema = z.enum(['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致']) satisfies z.ZodType<TradingType>;
+const TradingTypeSchema = z.enum(['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统']) satisfies z.ZodType<TradingType>;
 
 const YesNoSchema = z.enum(['是', '否']) satisfies z.ZodType<YesNo>;
 
@@ -59,6 +60,9 @@ export const TradingRecordSchema = z.object({
   keyChart1: z.string().optional(),
   keyChart2: z.string().optional(),
   preMarket: YesNoSchema,
+  hasCycleStats: z.boolean().default(false),
+  hasMonthlyStats: z.boolean().default(false),
+  cycleId: z.string().optional(),
 }) satisfies z.ZodType<TradingRecord>;
 
 export const TradingRecordArraySchema = z.array(TradingRecordSchema);
@@ -68,6 +72,8 @@ export const SaveRecordsRequestSchema = z.object({
   version: z.number().optional(),
   customAnalysis: CustomAnalysisDataSchema.optional(),
   customMonthly: CustomMonthlyDataSchema.optional(),
+  cycleStats: z.record(z.string(), z.array(z.any())).optional(),
+  cycleStatsGeneratedAt: z.number().optional(),
 });
 
 export interface SaveRecordsRequest {
@@ -75,6 +81,8 @@ export interface SaveRecordsRequest {
   version?: number;
   customAnalysis?: CustomAnalysisData;
   customMonthly?: CustomMonthlyData;
+  cycleStats?: Record<CycleStatType, CycleStats[]>;
+  cycleStatsGeneratedAt?: number | null;
 }
 
 export interface RecordsResponse {
@@ -84,6 +92,8 @@ export interface RecordsResponse {
   version?: number;
   customAnalysis?: CustomAnalysisData;
   customMonthly?: CustomMonthlyData;
+  cycleStats?: Record<CycleStatType, CycleStats[]>;
+  cycleStatsGeneratedAt?: number | null;
   conflict?: boolean;
 }
 

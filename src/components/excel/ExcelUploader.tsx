@@ -47,6 +47,7 @@ export const ExcelUploader: React.FC = () => {
     currentFileName,
     customAnalysis,
     customMonthly,
+    cycleStats,
   } = useDataStore();
   const analysis = useAnalysisResult();
   const monthlyAnalysis = useMonthlyAnalysis();
@@ -241,8 +242,8 @@ export const ExcelUploader: React.FC = () => {
       setError('没有数据可导出');
       return;
     }
-    exportAllToExcel(records, analysis, monthlyAnalysis, currentFileName || '交易复盘数据.xlsx', customAnalysis, customMonthly);
-  }, [records, analysis, monthlyAnalysis, currentFileName, customAnalysis, customMonthly, setError]);
+    exportAllToExcel(records, analysis, monthlyAnalysis, currentFileName || '交易复盘数据.xlsx', customAnalysis, customMonthly, cycleStats);
+  }, [records, analysis, monthlyAnalysis, currentFileName, customAnalysis, customMonthly, cycleStats, setError]);
 
   const handleUploadToR2 = useCallback(async (file: File) => {
     try {

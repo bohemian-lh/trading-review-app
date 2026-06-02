@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2, Table2, BarChart3, Calendar, ChevronUp, ChevronDown, Image } from 'lucide-react';
+import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2, Table2, BarChart3, Calendar, ChevronUp, ChevronDown, Image, TrendingUp } from 'lucide-react';
 import { Button, Input, Select, Modal, Toggle } from '@/components/common';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
 import type { TradingRecord, TradingRecordInput, TradingType, MonthlyAnalysis, AnalysisResult, ParsedTradeData } from '@/types';
@@ -14,6 +14,7 @@ const TRADING_TYPE_OPTIONS = [
   { value: '齐飞前多踩MA', label: '齐飞前多踩MA' },
   { value: '风险释放平台转一致', label: '风险释放平台转一致' },
   { value: '双阳平台转一致', label: '双阳平台转一致' },
+  { value: '非系统', label: '非系统' },
 ];
 
 const YES_NO_OPTIONS = [
@@ -74,13 +75,14 @@ export const DataEditor: React.FC = () => {
     records, addRecord, updateRecord, deleteRecord, isSaving, saveToR2,
     customAnalysis, updateCustomAnalysisField, toggleUseCustomAnalysis,
     customMonthly, addCustomMonthly, updateCustomMonthly, deleteCustomMonthly, toggleUseCustomMonthly,
-    setCustomAnalysis, setCustomMonthly
+    setCustomAnalysis, setCustomMonthly,
+    cycleStats, updateCycleStats
   } = useDataStore();
   
   const computedAnalysis = useAnalysisResult();
   const computedMonthly = useMonthlyAnalysis();
   
-  const [activeTab, setActiveTab] = useState<'table1' | 'table2' | 'table3'>('table1');
+  const [activeTab, setActiveTab] = useState<'table1' | 'table2' | 'table3' | 'table4'>('table1');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<TradingRecord | null>(null);
   const [formData, setFormData] = useState<TradingRecordInput>(emptyRecord);
@@ -246,6 +248,9 @@ export const DataEditor: React.FC = () => {
     setUpdateMessage('正在更新统计数据...');
 
     try {
+      // 更新周期统计
+      updateCycleStats();
+      // 保存到 R2
       await saveToR2();
       setUpdateStatus('success');
       setUpdateMessage('统计数据已更新');
@@ -730,12 +735,91 @@ export const DataEditor: React.FC = () => {
             <Calendar className="h-4 w-4" />
             表3 - 月度统计
           </button>
+          <button
+            onClick={() => setActiveTab('table4')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+              activeTab === 'table4'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <TrendingUp className="h-4 w-4" />
+            表4 - 周期统计
+          </button>
         </nav>
       </div>
 
       {activeTab === 'table1' && renderTable1()}
       {activeTab === 'table2' && renderTable2()}
       {activeTab === 'table3' && renderTable3()}
+      {activeTab === 'table4' && (() => {
+        // 将所有统计类型的周期数据展平
+        const allStats: any[] = [];
+        for (const [statType, cycles] of Object.entries(cycleStats)) {
+          for (const cycle of cycles || []) {
+            allStats.push({ ...cycle, statType });
+          }
+        }
+
+        return (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold">表4-周期统计</h2>
+              <div className="text-sm text-gray-600">
+                共 {allStats.length} 个周期
+              </div>
+            </div>
+
+            {allStats.length === 0 ? (
+              <div className="bg-gray-50 p-8 text-center rounded-lg border border-gray-200">
+                <p className="text-gray-500">暂无周期统计数据</p>
+                <p className="text-sm text-gray-400 mt-2">点击「手动更新统计数据」按钮生成周期统计</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">统计类型</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">开始日期</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">结束日期</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">记录数</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">完整周期</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈利总和</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">亏损绝对值总和</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏比</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {allStats.map((stat, index) => (
+                      <tr key={`${stat.statType}-${index}`} className="hover:bg-gray-50">
+                        <td className="px-3 py-3 text-sm font-medium text-gray-900">{stat.statType}</td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{stat.startDate}</td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{stat.endDate}</td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{stat.recordCount}</td>
+                        <td className="px-3 py-3 text-sm">
+                          <span className={`inline-flex px-2 py-1 text-xs rounded ${
+                            stat.isComplete ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {stat.isComplete ? '是' : '否'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{stat.profitSum}</td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{stat.lossSum}</td>
+                        <td className={`px-3 py-3 text-sm font-medium ${
+                          (stat.profitRatio ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {stat.profitRatio ?? 'N/A'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingRecord ? '编辑记录' : '添加记录'} size="lg">
         <div className="space-y-4">

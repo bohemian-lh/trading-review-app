@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { useMemo } from 'react';
-import type { TradingRecord, AnalysisResult, MonthlyAnalysis, CustomAnalysisData, CustomMonthlyData } from '@/types';
+import type { TradingRecord, AnalysisResult, MonthlyAnalysis, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType } from '@/types';
 import { calculateProfitRatio, calculateAvgProfitRatio, calculateTotalProfit, calculateAverageHoldDays } from '@/utils/calculations';
 import { extractMonth } from '@/utils/dateUtils';
 import { generateId } from '@/utils';
 import { r2StorageService } from '@/services/r2Service';
+import { generateCycleStats, STAT_TYPES } from '@/services/cycleStatsService';
 
 function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
@@ -29,9 +30,12 @@ interface DataState {
   customAnalysis: CustomAnalysisData;
   // 自定义月度数据（表3）
   customMonthly: CustomMonthlyData;
+  // 周期统计数据（表4）
+  cycleStats: Record<CycleStatType, CycleStats[]>;
+  cycleStatsGeneratedAt: number | null;
 
   setRecords: (records: TradingRecord[]) => void;
-  addRecord: (record: Omit<TradingRecord, 'id'>) => void;
+  addRecord: (record: Omit<TradingRecord, 'id' | 'hasCycleStats' | 'hasMonthlyStats'>) => void;
   addRecords: (records: TradingRecord[]) => void;
   updateRecord: (id: string, updates: Partial<TradingRecord>) => void;
   deleteRecord: (id: string) => void;
@@ -49,6 +53,8 @@ interface DataState {
   updateCustomMonthly: (month: string, updates: Partial<MonthlyAnalysis>) => void;
   deleteCustomMonthly: (month: string) => void;
   toggleUseCustomMonthly: () => void;
+  // 周期统计操作
+  updateCycleStats: () => void;
   loadFromR2: () => Promise<void>;
   saveToR2: () => Promise<void>;
 }
@@ -77,6 +83,11 @@ export const useDataStore = create<DataState>((set, get) => {
     nonSystemLossAvgHoldDays: 'N/A',
   };
 
+  // 初始化空的周期统计
+  const emptyCycleStats: Record<CycleStatType, CycleStats[]> = Object.fromEntries(
+    STAT_TYPES.map(type => [type, []])
+  ) as unknown as Record<CycleStatType, CycleStats[]>;
+
   return {
     records: [],
     isLoading: false,
@@ -87,9 +98,17 @@ export const useDataStore = create<DataState>((set, get) => {
     version: null,
     customAnalysis: { useCustom: false, data: { ...emptyAnalysis } },
     customMonthly: { useCustom: false, data: [] },
+    cycleStats: emptyCycleStats,
+    cycleStatsGeneratedAt: null,
 
     setRecords: (records) => {
-      set({ records, error: null });
+      // 确保新记录都有默认值
+      const normalizedRecords = records.map(r => ({
+        ...r,
+        hasCycleStats: r.hasCycleStats ?? false,
+        hasMonthlyStats: r.hasMonthlyStats ?? false
+      }));
+      set({ records: normalizedRecords, error: null });
       getDebouncedSave()();
     },
 
@@ -97,6 +116,8 @@ export const useDataStore = create<DataState>((set, get) => {
       const newRecord: TradingRecord = {
         ...recordData,
         id: generateId(),
+        hasCycleStats: false,
+        hasMonthlyStats: false,
       };
       set((state) => ({
         records: [...state.records, newRecord],
@@ -222,15 +243,40 @@ export const useDataStore = create<DataState>((set, get) => {
       getDebouncedSave()();
     },
 
+    // 更新周期统计
+    updateCycleStats: () => {
+      const state = get();
+      const { result, updatedRecords } = generateCycleStats(
+        state.records,
+        state.cycleStats
+      );
+      
+      set({
+        records: updatedRecords,
+        cycleStats: result.stats,
+        cycleStatsGeneratedAt: result.generatedAt,
+      });
+      getDebouncedSave()();
+    },
+
     loadFromR2: async () => {
       set({ isLoading: true, error: null });
       try {
         const result = await r2StorageService.getRecords() as any;
         if (result.success) {
+          // 确保记录都有新字段的默认值
+          const normalizedRecords = (result.records || []).map((r: any) => ({
+            ...r,
+            hasCycleStats: r.hasCycleStats ?? false,
+            hasMonthlyStats: r.hasMonthlyStats ?? false
+          }));
+          
           set({
-            records: result.records || [],
+            records: normalizedRecords,
             customAnalysis: result.customAnalysis || { useCustom: false, data: { ...emptyAnalysis } },
             customMonthly: result.customMonthly || { useCustom: false, data: [] },
+            cycleStats: result.cycleStats || emptyCycleStats,
+            cycleStatsGeneratedAt: result.cycleStatsGeneratedAt || null,
             version: result.version || null,
             isInitialized: true,
           });
@@ -255,16 +301,27 @@ export const useDataStore = create<DataState>((set, get) => {
           state.records, 
           state.version ?? undefined,
           state.customAnalysis,
-          state.customMonthly
+          state.customMonthly,
+          state.cycleStats,
+          state.cycleStatsGeneratedAt
         ) as any;
         if (result.success) {
           set({ version: result.version || null, error: null });
         } else if (result.conflict) {
+          // 确保冲突时加载的数据也有默认值
+          const normalizedRecords = (result.records || []).map((r: any) => ({
+            ...r,
+            hasCycleStats: r.hasCycleStats ?? false,
+            hasMonthlyStats: r.hasMonthlyStats ?? false
+          }));
+          
           set({
             error: 'Conflict detected, please refresh',
-            records: result.records || [],
+            records: normalizedRecords,
             customAnalysis: result.customAnalysis || { useCustom: false, data: { ...emptyAnalysis } },
             customMonthly: result.customMonthly || { useCustom: false, data: [] },
+            cycleStats: result.cycleStats || emptyCycleStats,
+            cycleStatsGeneratedAt: result.cycleStatsGeneratedAt || null,
             version: result.version || null,
           });
         } else {

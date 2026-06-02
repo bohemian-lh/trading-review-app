@@ -1,4 +1,4 @@
-import type { StorageFile, UploadProgress, TradingRecord, CustomAnalysisData, CustomMonthlyData } from '@/types';
+import type { StorageFile, UploadProgress, TradingRecord, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType } from '@/types';
 import type { RecordsResponse } from '@/types/validation';
 
 // 确保使用相对路径，在同一域名下直接请求
@@ -186,7 +186,9 @@ class R2StorageService {
     records: TradingRecord[], 
     version?: number,
     customAnalysis?: CustomAnalysisData,
-    customMonthly?: CustomMonthlyData
+    customMonthly?: CustomMonthlyData,
+    cycleStats?: Record<CycleStatType, CycleStats[]>,
+    cycleStatsGeneratedAt?: number | null
   ): Promise<{
     success: boolean;
     message: string;
@@ -195,12 +197,14 @@ class R2StorageService {
     records?: TradingRecord[];
     customAnalysis?: CustomAnalysisData;
     customMonthly?: CustomMonthlyData;
+    cycleStats?: Record<CycleStatType, CycleStats[]>;
+    cycleStatsGeneratedAt?: number | null;
   }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/records`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ records, version, customAnalysis, customMonthly }),
+        body: JSON.stringify({ records, version, customAnalysis, customMonthly, cycleStats, cycleStatsGeneratedAt }),
       });
 
       const data = await this.handleResponse<RecordsResponse>(response);
