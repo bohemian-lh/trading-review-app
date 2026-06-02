@@ -162,13 +162,9 @@ export function generateCycleStats(
     const existingComplete = (existingStats[statType] || []).filter(s => s.isComplete);
     const existingIncomplete = (existingStats[statType] || []).filter(s => !s.isComplete);
     
-    // 筛选未标记的记录
-    const unmarkedRecords = eligibleRecords.filter(r => !r.hasCycleStats);
-    
     const allCycles: CycleStats[] = [...existingComplete];
     
-    // 处理方式：先尝试与现有不完整周期合并，再生成新周期
-    let currentBatch = [...unmarkedRecords];
+    // 用该类型所有符合条件的记录（每个 statType 独立处理，允许记录跨类型）
     
     // 处理现有不完整周期
     if (existingIncomplete.length > 0) {
@@ -176,8 +172,9 @@ export function generateCycleStats(
       // 获取原不完整周期包含的记录
       const existingRecords = updatedRecords.filter(r => incomplete.recordIds.includes(r.id));
       
-      // 合并现有记录和新记录
-      const mergedRecords = [...existingRecords, ...currentBatch].sort(
+      // 合并现有记录和新记录（排除已在该不完整周期中的记录，避免重复）
+      const newRecords = eligibleRecords.filter(r => !incomplete.recordIds.includes(r.id));
+      const mergedRecords = [...existingRecords, ...newRecords].sort(
         (a, b) => a.openDate.localeCompare(b.openDate)
       );
       
@@ -206,10 +203,10 @@ export function generateCycleStats(
         }
       }
     } else {
-      // 没有现有不完整周期，直接切分
+      // 没有现有不完整周期，直接对该类型所有符合条件记录切分
       let index = 0;
-      while (index < unmarkedRecords.length) {
-        const batch = unmarkedRecords.slice(index, index + CYCLE_SIZE);
+      while (index < eligibleRecords.length) {
+        const batch = eligibleRecords.slice(index, index + CYCLE_SIZE);
         index += CYCLE_SIZE;
         
         const isComplete = batch.length === CYCLE_SIZE;
