@@ -141,6 +141,7 @@ export const useDataStore = create<DataState>((set, get) => {
       const state = get();
       const oldRecord = state.records.find(r => r.id === id);
       
+      console.log('>>> [updateRecord] id:', id, 'found:', !!oldRecord);
       if (!oldRecord) return;
       
       // 定义字段类型
@@ -396,10 +397,15 @@ export const useDataStore = create<DataState>((set, get) => {
 
     saveToR2: async () => {
       const state = get();
+      console.log('>>> [saveToR2] 被调用, records:', state.records.length, 'customAnalysis:', state.customAnalysis.useCustom);
       cancelPendingSave(); // 取消待处理的 debounced 保存，防止重复保存
-      if (state.records.length === 0 && !state.customAnalysis.useCustom) return;
+      if (state.records.length === 0 && !state.customAnalysis.useCustom) {
+        console.log('>>> [saveToR2] 提前退出：无记录且非自定义分析');
+        return;
+      }
       
       set({ isSaving: true });
+      console.log('>>> [saveToR2] 开始 POST /api/records, version:', state.version);
       try {
         const result = await r2StorageService.saveRecords(
           state.records, 
@@ -409,6 +415,7 @@ export const useDataStore = create<DataState>((set, get) => {
           state.cycleStats,
           state.cycleStatsGeneratedAt
         ) as any;
+        console.log('>>> [saveToR2] API 返回:', JSON.stringify({ success: result.success, conflict: result.conflict, error: result.error, message: result.message }));
         if (result.success) {
           set({ version: result.version || null, error: null });
         } else if (result.conflict) {
