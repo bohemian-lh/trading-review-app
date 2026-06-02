@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -37,6 +37,9 @@ export const BaseChart: React.FC<BaseChartProps> = ({
   yAxisLabel = '数值',
   showLegend = true,
 }) => {
+  const [zoom, setZoom] = useState(1);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   // 计算0轴居中的Y轴范围
   const yDomain = React.useMemo(() => {
     const values: number[] = [];
@@ -69,6 +72,18 @@ export const BaseChart: React.FC<BaseChartProps> = ({
     );
   }
 
+  const handleZoomIn = () => {
+    setZoom(prev => Math.min(prev + 0.2, 3));
+  };
+
+  const handleZoomOut = () => {
+    setZoom(prev => Math.max(prev - 0.2, 0.5));
+  };
+
+  const handleResetZoom = () => {
+    setZoom(1);
+  };
+
   const chartContent = (
     <ResponsiveContainer width="100%" height={400}>
       <LineChart
@@ -79,6 +94,7 @@ export const BaseChart: React.FC<BaseChartProps> = ({
         <XAxis
           dataKey={xAxisKey}
           tick={{ fontSize: 12 }}
+          interval={Math.floor(data.length / 6)}
         />
         <YAxis
           tick={{ fontSize: 12 }}
@@ -102,7 +118,7 @@ export const BaseChart: React.FC<BaseChartProps> = ({
         {lines.map((line) => (
           <Line
             key={line.dataKey}
-            type="monotone"
+            type="linear"
             dataKey={line.dataKey}
             name={line.name}
             stroke={line.color}
@@ -118,12 +134,48 @@ export const BaseChart: React.FC<BaseChartProps> = ({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+        <div className="flex items-center gap-2 bg-white rounded-lg shadow-sm border border-gray-200 px-3 py-2">
+          <button
+            onClick={handleZoomOut}
+            disabled={zoom <= 0.5}
+            className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="缩小"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+            </svg>
+          </button>
+          <span className="text-sm font-medium text-gray-700 w-12 text-center">{Math.round(zoom * 100)}%</span>
+          <button
+            onClick={handleZoomIn}
+            disabled={zoom >= 3}
+            className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="放大"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+          </button>
+          <button
+            onClick={handleResetZoom}
+            className="p-2 rounded-md hover:bg-gray-100"
+            title="重置"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+      </div>
       <div
+        ref={containerRef}
         className="overflow-x-auto"
-        style={{ minWidth: minWidth > 0 ? 'auto' : undefined }}
       >
-        <div style={{ minWidth }}>{chartContent}</div>
+        <div style={{ minWidth: minWidth * zoom, width: '100%' }}>
+          {chartContent}
+        </div>
       </div>
     </div>
   );
