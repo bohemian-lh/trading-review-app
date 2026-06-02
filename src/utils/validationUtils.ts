@@ -1,7 +1,7 @@
 import type { TradingRecord, ValidationResult, ValidationError } from '@/types';
 import { parseDate } from './dateUtils';
 
-const TRADING_TYPES = ['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致'];
+const TRADING_TYPES = ['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统'];
 
 export function validateTradingRecord(
   record: Partial<TradingRecord>,
@@ -85,7 +85,7 @@ export function validateTradingRecord(
       message: '有无大的失误不能为空',
       row: rowIndex,
     });
-  } else if (!['是', '否'].includes(record.hasMistake)) {
+  } else if (!['是', '否', '其他'].includes(record.hasMistake)) {
     errors.push({
       field: 'hasMistake',
       message: '有无大的失误值无效',

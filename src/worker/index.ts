@@ -7,7 +7,7 @@ interface TradingRecord {
   stockCode: string;
   tradingType: string;
   isSystem: '是' | '否';
-  hasMistake: '是' | '否';
+  hasMistake: '是' | '否' | '其他';
   profitPercent: number;
   holdDays: number;
   preMarket: '是' | '否';
