@@ -133,3 +133,26 @@ export function calculateAverageHoldDays(
   const avg = holdDays.reduce((sum, days) => sum + days, 0) / holdDays.length;
   return Math.round(avg * 100) / 100;
 }
+
+// 按交易类型维度计算盈亏比
+// 盈亏比 = 盈利交易总金额 / |亏损交易总金额|，保留两位小数
+// 若亏损交易总金额为 0，返回 0
+export function calculateProfitRatioByType(records: TradingRecord[], tradingType: string): number {
+  const typeRecords = records.filter(r => r.tradingType === tradingType);
+  
+  let profitSum = 0;
+  let lossSum = 0;
+
+  for (const r of typeRecords) {
+    if (r.profitPercent > 0) {
+      profitSum += r.profitPercent;
+    } else if (r.profitPercent < 0) {
+      lossSum += Math.abs(r.profitPercent);
+    }
+    // profitPercent === 0 忽略
+  }
+
+  if (lossSum === 0) return 0;
+  
+  return parseFloat((profitSum / lossSum).toFixed(2));
+}

@@ -20,6 +20,11 @@ const AnalysisResultSchema = z.object({
   systemLossAvgHoldDays: NumberOrNASchema,
   nonSystemProfitAvgHoldDays: NumberOrNASchema,
   nonSystemLossAvgHoldDays: NumberOrNASchema,
+  typeQifeiShuidi: z.number(),
+  typeQifeiQianDuoCaiMA: z.number(),
+  typeFengxianShifang: z.number(),
+  typeShuangyang: z.number(),
+  typeFeiXitong: z.number(),
 }) satisfies z.ZodType<AnalysisResult>;
 
 // MonthlyAnalysis schema
