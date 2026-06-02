@@ -270,11 +270,8 @@ export const ExcelUploader: React.FC = () => {
   }, [loadFiles]);
 
   const handleDownloadFromR2 = useCallback(async (file: StorageFile) => {
-    console.log('=== handleDownloadFromR2 START ===');
-    console.log('Downloading file:', file.filename);
     try {
-      const blob = await r2StorageService.downloadFile(file.filename);
-      console.log('Download completed, blob size:', blob.size);
+      const blob = await r2StorageService.downloadFile(file.key);
       
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -284,31 +281,22 @@ export const ExcelUploader: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      
-      console.log('=== handleDownloadFromR2 SUCCESS ===');
     } catch (error) {
-      console.error('❌ Failed to download file:', error);
+      console.error('Failed to download file:', error);
       setError('下载文件失败');
     }
   }, [setError]);
 
   const handleDeleteFromR2 = useCallback(async (file: StorageFile) => {
-    console.log('=== handleDeleteFromR2 START ===');
-    console.log('Deleting file:', file.filename);
-    
     if (!window.confirm(`确定要删除文件 "${file.filename}" 吗？`)) {
-      console.log('Delete cancelled by user');
       return;
     }
     
     try {
-      console.log('Calling deleteFile API...');
-      await r2StorageService.deleteFile(file.filename);
-      console.log('Delete completed, refreshing file list...');
+      await r2StorageService.deleteFile(file.key);
       await loadFiles();
-      console.log('=== handleDeleteFromR2 SUCCESS ===');
     } catch (error) {
-      console.error('❌ Failed to delete file:', error);
+      console.error('Failed to delete file:', error);
       setError('删除文件失败');
     }
   }, [loadFiles, setError]);

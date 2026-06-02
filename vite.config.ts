@@ -4,6 +4,17 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      // 将 /api 请求代理到 Cloudflare Pages 部署地址，
+      // 使 npm run dev 也能正常调用 R2 相关 API。
+      // 如部署地址不同，请修改 target。
+      '/api': {
+        target: 'https://trading-review-app.pages.dev',
+        changeOrigin: true,
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
