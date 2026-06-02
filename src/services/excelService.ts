@@ -1,10 +1,12 @@
 import * as XLSX from 'xlsx';
-import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType, CustomAnalysisData, CustomMonthlyData } from '@/types';
+import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType } from '@/types';
 import { generateId } from '@/utils';
+import { STAT_TYPES } from './cycleStatsService';
 
 export const SHEET_NAME_1 = '表1-交易复盘数据';
 export const SHEET_NAME_2 = '表2-动态数据分析';
 export const SHEET_NAME_3 = '表3-月度统计';
+export const SHEET_NAME_4 = '表4-周期统计';
 
 const HEADERS_1 = [
   '开单时间',
@@ -253,7 +255,7 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
   }
 
   const tradingType = row['交易类型'] as string;
-  const validTradingTypes = ['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致'] as const;
+  const validTradingTypes = ['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统'] as const;
   const validTradingType = validTradingTypes.includes(tradingType as any) 
     ? tradingType as TradingType 
     : '齐飞水底';
@@ -280,6 +282,8 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     keyChart1: (row['关键分时1'] as string) || '',
     keyChart2: (row['关键分时2'] as string) || '',
     preMarket: row['盘前是否'] === '是' ? '是' : '否',
+    hasCycleStats: false,
+    hasMonthlyStats: false,
   };
 }
 
@@ -385,13 +389,56 @@ export function exportTable3ToExcel(monthlyAnalysis: MonthlyAnalysis[], filename
   XLSX.writeFile(workbook, filename);
 }
 
+// 导出表4-周期统计
+export function exportTable4ToExcel(
+  cycleStats: Record<CycleStatType, CycleStats[]>,
+  filename: string
+): void {
+  const workbook = XLSX.utils.book_new();
+
+  // 将所有统计类型的周期数据展平
+  const allStats: CycleStats[] = [];
+  for (const statType of STAT_TYPES) {
+    if (cycleStats[statType]) {
+      allStats.push(...cycleStats[statType]);
+    }
+  }
+
+  const table4Data = [
+    HEADERS_4,
+    ...allStats.map((stat) => [
+      stat.statType,
+      stat.cycleId,
+      stat.startDate,
+      stat.endDate,
+      stat.recordCount,
+      stat.isComplete ? '是' : '否',
+      stat.profitSum,
+      stat.lossSum,
+      stat.profitRatio ?? 'N/A',
+      new Date(stat.createdAt).toLocaleString(),
+      new Date(stat.updatedAt).toLocaleString(),
+    ]),
+  ];
+
+  const worksheet4 = XLSX.utils.aoa_to_sheet(table4Data);
+  worksheet4['!cols'] = [
+    { wch: 18 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 8 },
+    { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 20 },
+  ];
+
+  XLSX.utils.book_append_sheet(workbook, worksheet4, SHEET_NAME_4);
+  XLSX.writeFile(workbook, filename);
+}
+
 export function exportAllToExcel(
   records: TradingRecord[],
   analysis: AnalysisResult,
   monthlyAnalysis: MonthlyAnalysis[],
   filename: string,
   customAnalysis?: CustomAnalysisData,
-  customMonthly?: CustomMonthlyData
+  customMonthly?: CustomMonthlyData,
+  cycleStats?: Record<CycleStatType, CycleStats[]>
 ): void {
   const workbook = XLSX.utils.book_new();
 
@@ -463,6 +510,44 @@ export function exportAllToExcel(
   XLSX.utils.book_append_sheet(workbook, worksheet2, SHEET_NAME_2);
   XLSX.utils.book_append_sheet(workbook, worksheet3, SHEET_NAME_3);
 
+  // 添加 Sheet4 如果有周期统计数据
+  if (cycleStats) {
+    // 将所有统计类型的周期数据展平
+    const allStats: CycleStats[] = [];
+    for (const statType of STAT_TYPES) {
+      if (cycleStats[statType]) {
+        allStats.push(...cycleStats[statType]);
+      }
+    }
+
+    if (allStats.length > 0) {
+      const table4Data = [
+        HEADERS_4,
+        ...allStats.map((stat) => [
+          stat.statType,
+          stat.cycleId,
+          stat.startDate,
+          stat.endDate,
+          stat.recordCount,
+          stat.isComplete ? '是' : '否',
+          stat.profitSum,
+          stat.lossSum,
+          stat.profitRatio ?? 'N/A',
+          new Date(stat.createdAt).toLocaleString(),
+          new Date(stat.updatedAt).toLocaleString(),
+        ]),
+      ];
+
+      const worksheet4 = XLSX.utils.aoa_to_sheet(table4Data);
+      worksheet4['!cols'] = [
+        { wch: 18 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 8 },
+        { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 20 },
+      ];
+
+      XLSX.utils.book_append_sheet(workbook, worksheet4, SHEET_NAME_4);
+    }
+  }
+
   XLSX.writeFile(workbook, filename);
 }
 
@@ -477,6 +562,21 @@ function formatValue(value: number | 'N/A', addPercent: boolean = true): string 
 export function exportToExcel(records: TradingRecord[], filename: string): void {
   exportTable1ToExcel(records, filename);
 }
+
+// 表4的表头
+const HEADERS_4 = [
+  '统计类型',
+  '周期ID',
+  '开始日期',
+  '结束日期',
+  '记录数',
+  '是否完整周期',
+  '盈利总和',
+  '亏损绝对值总和',
+  '盈亏比',
+  '创建时间',
+  '更新时间'
+];
 
 const MONTHS = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'];
 const STOCKS = [
@@ -495,7 +595,8 @@ const TRADING_TYPES = [
   '齐飞水底',
   '齐飞前多踩MA',
   '风险释放平台转一致',
-  '双阳平台转一致'
+  '双阳平台转一致',
+  '非系统'
 ];
 
 function generateRandomProfit(): number {
