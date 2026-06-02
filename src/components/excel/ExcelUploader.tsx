@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Check, X, Wifi, WifiOff, RefreshCw, Trash2, FileText } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Plus, Check, X, Wifi, WifiOff, RefreshCw, Trash2, FileText, Database } from 'lucide-react';
 import { Button, Modal } from '@/components/common';
-import { parseExcelFile, exportAllToExcel, type ImportTableType, type ImportMode, type ImportOptions } from '@/services/excelService';
+import { parseExcelFile, exportAllToExcel, generateTestExcel, type ImportTableType, type ImportMode, type ImportOptions } from '@/services/excelService';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
 import { r2StorageService } from '@/services/r2Service';
 import type { TradingRecord, StorageFile, UploadProgress } from '@/types';
@@ -523,6 +523,22 @@ export const ExcelUploader: React.FC = () => {
         )}
       </div>
 
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <h3 className="text-sm font-medium text-gray-700 mb-3">工具</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <Button variant="secondary" onClick={generateTestExcel} className="flex items-center justify-center">
+            <Database className="mr-2 h-4 w-4" />
+            生成测试数据 Excel
+          </Button>
+          {records.length > 0 && (
+            <Button variant="secondary" onClick={handleExport} className="flex items-center justify-center">
+              <Download className="mr-2 h-4 w-4" />
+              导出 Excel
+            </Button>
+          )}
+        </div>
+      </div>
+
       {records.length > 0 && (
         <div className="flex items-center justify-between bg-gray-50 rounded-lg p-4">
           <div>
@@ -532,12 +548,6 @@ export const ExcelUploader: React.FC = () => {
             <p className="text-xs text-gray-500">
               共 {records.length} 条交易记录
             </p>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button variant="secondary" onClick={handleExport}>
-              <Download className="mr-2 h-4 w-4" />
-              导出 Excel
-            </Button>
           </div>
         </div>
       )}

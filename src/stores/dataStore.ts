@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useMemo } from 'react';
 import type { TradingRecord, AnalysisResult, MonthlyAnalysis, CustomAnalysisData, CustomMonthlyData } from '@/types';
-import { calculateProfitRatio, calculateAverageHoldDays } from '@/utils/calculations';
+import { calculateProfitRatio, calculateAvgProfitRatio, calculateTotalProfit, calculateAverageHoldDays } from '@/utils/calculations';
 import { extractMonth } from '@/utils/dateUtils';
 import { generateId } from '@/utils';
 import { r2StorageService } from '@/services/r2Service';
@@ -332,10 +332,8 @@ export function useMonthlyAnalysis(): MonthlyAnalysis[] {
         systemNoMistakeProfitRatio: calculateProfitRatio(monthRecords, '是', '否'),
         systemWithMistakeProfitRatio: calculateProfitRatio(monthRecords, '是', '是'),
         nonSystemProfitRatio: calculateProfitRatio(monthRecords, '否'),
-        systemProfitAvgHoldDays: calculateAverageHoldDays(monthRecords, '是', 'positive'),
-        systemLossAvgHoldDays: calculateAverageHoldDays(monthRecords, '是', 'negative'),
-        nonSystemProfitAvgHoldDays: calculateAverageHoldDays(monthRecords, '否', 'positive'),
-        nonSystemLossAvgHoldDays: calculateAverageHoldDays(monthRecords, '否', 'negative'),
+        avgProfitRatio: calculateAvgProfitRatio(monthRecords),
+        totalProfit: calculateTotalProfit(monthRecords),
       };
     });
   }, [records, customMonthly]);
