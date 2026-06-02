@@ -24,7 +24,6 @@ export const MonthlyProfitRatioChart: React.FC = () => {
     { dataKey: 'avgProfitRatio', name: '平均盈亏比', color: '#8b5cf6' },
     { dataKey: 'systemProfitRatio', name: '符合系统', color: '#0ea5e9' },
     { dataKey: 'nonSystemProfitRatio', name: '不符合系统', color: '#ef4444' },
-    { dataKey: 'totalProfit', name: '月总盈亏', color: '#10b981' },
   ];
 
   return (

@@ -7,7 +7,8 @@ import {
   MonthlyProfitRatioChart,
   SystemMistakeChart,
   CycleSystemChart,
-  CycleTypeChart
+  CycleTypeChart,
+  MonthlyTotalProfitChart
 } from '@/components/charts';
 import { useDataStore, useAnalysisResult } from '@/stores';
 import { useInitializeStore } from '@/hooks/useInitializeStore';
@@ -65,7 +66,7 @@ const Dashboard: React.FC = () => {
             <div key={index} className="border rounded-lg p-4">
               <p className="text-sm text-gray-500 font-medium">{item.label}</p>
               <p className={`text-xl font-bold ${item.color}`}>
-                {typeof item.value === 'number' ? item.value.toFixed(1) : item.value}
+                {typeof item.value === 'number' ? item.value.toFixed(2) : item.value}
               </p>
             </div>
           ))}
@@ -73,6 +74,10 @@ const Dashboard: React.FC = () => {
       </div>
 
       <div className="space-y-6">
+        {/* 新增的月度总盈亏图表 */}
+        <div className="bg-white shadow rounded-lg p-6">
+          <MonthlyTotalProfitChart />
+        </div>
         <div className="bg-white shadow rounded-lg p-6">
           <MonthlyProfitRatioChart />
         </div>
