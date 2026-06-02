@@ -202,9 +202,7 @@ export const DataEditor: React.FC = () => {
   };
 
   const handleSave = async () => {
-    console.log('>>> [SAVE] handleSave 触发, editingRecord:', !!editingRecord, 'isSaving:', useDataStore.getState().isSaving);
     const errors = validateForm(formData);
-    console.log('>>> [SAVE] 验证结果:', errors.length === 0 ? '通过' : errors.map((e: ValidationError) => e.field + ':' + e.message));
     if (errors.length > 0) {
       setValidationErrors(errors);
       return;
@@ -227,12 +225,9 @@ export const DataEditor: React.FC = () => {
     }
 
     try {
-      console.log('>>> [SAVE] 调用 saveToR2 前, records:', useDataStore.getState().records.length);
       await saveToR2();
-      console.log('>>> [SAVE] saveToR2 成功，关闭弹窗');
       handleCloseModal();
     } catch (error) {
-      console.error('>>> [SAVE] saveToR2 失败:', error);
       setSaveError(error instanceof Error ? error.message : '保存失败');
       // 保持弹窗打开，让用户看到错误后重试
     }
