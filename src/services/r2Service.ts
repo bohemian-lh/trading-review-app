@@ -39,7 +39,7 @@ class R2StorageService {
 
     // 409冲突响应不抛错误，因为我们需要保留conflict、records和version信息
     if (!response.ok && response.status !== 409) {
-      const errorMessage = (data as any)?.message || `HTTP ${response.status}`;
+      const errorMessage = (data as any)?.error || (data as any)?.message || `HTTP ${response.status}`;
       throw new Error(errorMessage);
     }
 
