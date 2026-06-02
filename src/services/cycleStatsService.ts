@@ -76,7 +76,7 @@ function matchesStatType(record: TradingRecord, statType: CycleStatType): boolea
     case '系统有失误':
       return record.isSystem === '是' && record.hasMistake === '是';
     case '非系统':
-      return record.isSystem === '否' || record.tradingType === '非系统';
+      return record.isSystem === '否';
     case '齐飞水底':
       return record.tradingType === '齐飞水底';
     case '齐飞前多踩MA':
