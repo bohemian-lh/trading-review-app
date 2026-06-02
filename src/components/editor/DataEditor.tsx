@@ -100,6 +100,7 @@ export const DataEditor: React.FC = () => {
   });
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [updateMessage, setUpdateMessage] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [editingMonthly, setEditingMonthly] = useState<MonthlyAnalysis | null>(null);
   const [isMonthlyModalOpen, setIsMonthlyModalOpen] = useState(false);
   const [monthlyFormData, setMonthlyFormData] = useState<Partial<MonthlyAnalysis>>({});
@@ -189,6 +190,7 @@ export const DataEditor: React.FC = () => {
       setFormData({ ...emptyRecord, openDate: getDefaultOpenDate() });
     }
     setValidationErrors([]);
+    setSaveError(null);
     setIsModalOpen(true);
   };
 
@@ -199,12 +201,15 @@ export const DataEditor: React.FC = () => {
     setValidationErrors([]);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const errors = validateForm(formData);
     if (errors.length > 0) {
       setValidationErrors(errors);
       return;
     }
+
+    setSaveError(null);
+    const { saveToR2 } = useDataStore.getState();
 
     // 验证通过后，确保这些字段是有效的数字（不可能为 null）
     const saveData = {
@@ -218,7 +223,14 @@ export const DataEditor: React.FC = () => {
     } else {
       addRecord(saveData);
     }
-    handleCloseModal();
+
+    try {
+      await saveToR2();
+      handleCloseModal();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : '保存失败');
+      // 保持弹窗打开，让用户看到错误后重试
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -1024,12 +1036,22 @@ export const DataEditor: React.FC = () => {
           </div>
         </div>
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-          <Button variant="secondary" onClick={handleCloseModal}>
+          {saveError && (
+            <div className="flex-1 flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">{saveError}</span>
+            </div>
+          )}
+          <Button variant="secondary" onClick={handleCloseModal} disabled={isSaving}>
             取消
           </Button>
-          <Button onClick={handleSave}>
-            <Save className="mr-2 h-4 w-4" />
-            保存
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-4 w-4" />
+            )}
+            {isSaving ? '保存中...' : '保存'}
           </Button>
         </div>
       </Modal>

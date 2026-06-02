@@ -35,3 +35,6 @@ workers/_assets/
 # Temporary files
 *.tmp
 *.temp
+
+# Test data
+交易复盘测试数据.xlsx
