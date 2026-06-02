@@ -26,6 +26,8 @@ export interface ChartDataPoint {
   systemNoMistakeProfitRatio: number | 'N/A';
   systemWithMistakeProfitRatio: number | 'N/A';
   nonSystemProfitRatio: number | 'N/A';
+  avgProfitRatio: number | 'N/A';
+  totalProfit: number | 'N/A';
 }
 
 // 自定义分析数据（表2）

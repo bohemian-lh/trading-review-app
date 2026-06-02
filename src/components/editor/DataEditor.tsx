@@ -76,7 +76,8 @@ export const DataEditor: React.FC = () => {
     customAnalysis, updateCustomAnalysisField, toggleUseCustomAnalysis,
     customMonthly, addCustomMonthly, updateCustomMonthly, deleteCustomMonthly, toggleUseCustomMonthly,
     setCustomAnalysis, setCustomMonthly,
-    cycleStats, updateCycleStats
+    cycleStats, updateCycleStats,
+    statsNeedUpdate
   } = useDataStore();
   
   const computedAnalysis = useAnalysisResult();
@@ -362,14 +363,22 @@ export const DataEditor: React.FC = () => {
               保存中...
             </div>
           )}
-          <Button 
-            variant="secondary" 
-            onClick={handleUpdateStats}
-            disabled={updateStatus === 'loading' || records.length === 0}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${updateStatus === 'loading' ? 'animate-spin' : ''}`} />
-            手动更新统计数据
-          </Button>
+          <div className="flex items-center gap-2">
+            {statsNeedUpdate && (
+              <div className="flex items-center gap-1 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full text-xs font-medium">
+                <AlertCircle className="h-3.5 w-3.5" />
+                有数据需要更新
+              </div>
+            )}
+            <Button 
+              variant={statsNeedUpdate ? "primary" : "secondary"} 
+              onClick={handleUpdateStats}
+              disabled={updateStatus === 'loading' || records.length === 0}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${updateStatus === 'loading' ? 'animate-spin' : ''}`} />
+              {statsNeedUpdate ? "更新统计数据" : "手动更新统计数据"}
+            </Button>
+          </div>
           <Button variant="secondary" onClick={() => setIsImageImportModalOpen(true)}>
             <Image className="mr-2 h-4 w-4" />
             从图片导入

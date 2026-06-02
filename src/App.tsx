@@ -3,7 +3,12 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 import { FileSpreadsheet, BarChart3, LayoutDashboard, Loader2 } from 'lucide-react';
 import { ExcelUploader } from '@/components/excel';
 import { DataEditor } from '@/components/editor';
-import { ProfitRatioChart } from '@/components/charts';
+import { 
+  MonthlyProfitRatioChart,
+  SystemMistakeChart,
+  CycleSystemChart,
+  CycleTypeChart
+} from '@/components/charts';
 import { useDataStore, useAnalysisResult } from '@/stores';
 import { useInitializeStore } from '@/hooks/useInitializeStore';
 import { cn } from '@/utils';
@@ -67,8 +72,19 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white shadow rounded-lg p-6">
-        <ProfitRatioChart />
+      <div className="space-y-6">
+        <div className="bg-white shadow rounded-lg p-6">
+          <MonthlyProfitRatioChart />
+        </div>
+        <div className="bg-white shadow rounded-lg p-6">
+          <SystemMistakeChart />
+        </div>
+        <div className="bg-white shadow rounded-lg p-6">
+          <CycleSystemChart />
+        </div>
+        <div className="bg-white shadow rounded-lg p-6">
+          <CycleTypeChart />
+        </div>
       </div>
     </div>
   );
