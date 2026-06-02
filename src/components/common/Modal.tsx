@@ -18,8 +18,6 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   size = 'md',
 }) => {
-  console.log('Modal rendering, isOpen:', isOpen);
-  
   const sizeStyles = {
     sm: 'max-w-md',
     md: 'max-w-lg',
