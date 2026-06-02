@@ -1,11 +1,13 @@
 import { z } from 'zod';
-import type { TradingRecord, TradingType, YesNo } from './trading';
+import type { TradingRecord, TradingType, YesNo, MistakeStatus } from './trading';
 import type { CustomAnalysisData, CustomMonthlyData, AnalysisResult, MonthlyAnalysis } from './analysis';
 import type { CycleStats, CycleStatType } from './cycleStats';
 
 const TradingTypeSchema = z.enum(['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统']) satisfies z.ZodType<TradingType>;
 
 const YesNoSchema = z.enum(['是', '否']) satisfies z.ZodType<YesNo>;
+
+const MistakeStatusSchema = z.enum(['是', '否', '其他']) satisfies z.ZodType<MistakeStatus>;
 
 // 数值或 'N/A' 的 schema
 const NumberOrNASchema = z.union([z.number(), z.literal('N/A')]);
@@ -57,7 +59,7 @@ export const TradingRecordSchema = z.object({
   stockCode: z.string().min(1, '股票代码不能为空'),
   tradingType: TradingTypeSchema,
   isSystem: YesNoSchema,
-  hasMistake: YesNoSchema,
+  hasMistake: MistakeStatusSchema,
   profitPercent: z.number().min(-100, '盈亏不能小于-100%').max(1000, '盈亏不能大于1000%'),
   holdDays: z.number().int().min(0, '持仓天数不能为负数').max(3650, '持仓天数不能超过3650天'),
   chart1: z.string().optional(),

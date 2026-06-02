@@ -28,8 +28,8 @@ export const Input: React.FC<InputProps> = ({
       <input
         id={inputId}
         className={cn(
-          'block w-full rounded-md border-gray-300 shadow-sm',
-          'focus:border-primary-500 focus:ring-primary-500 sm:text-sm',
+          'block w-full rounded-md border-gray-300 shadow-sm px-4 py-3 text-base',
+          'focus:border-primary-500 focus:ring-primary-500',
           'disabled:bg-gray-100 disabled:cursor-not-allowed',
           error && 'border-red-500 focus:border-red-500 focus:ring-red-500',
           className
@@ -70,8 +70,8 @@ export const Select: React.FC<SelectProps> = ({
       <select
         id={selectId}
         className={cn(
-          'block w-full rounded-md border-gray-300 shadow-sm',
-          'focus:border-primary-500 focus:ring-primary-500 sm:text-sm',
+          'block w-full rounded-md border-gray-300 shadow-sm px-4 py-3 text-base',
+          'focus:border-primary-500 focus:ring-primary-500',
           'disabled:bg-gray-100 disabled:cursor-not-allowed',
           error && 'border-red-500 focus:border-red-500 focus:ring-red-500',
           className

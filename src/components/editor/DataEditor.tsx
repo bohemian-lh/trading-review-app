@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2, Table2, BarChart3, Calendar, ChevronUp, ChevronDown, Image, TrendingUp } from 'lucide-react';
 import { Button, Input, Select, Modal, Toggle, ZoomControls } from '@/components/common';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
-import type { TradingRecord, TradingRecordInput, TradingType, MonthlyAnalysis, AnalysisResult, ParsedTradeData } from '@/types';
+import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus, MonthlyAnalysis, AnalysisResult, ParsedTradeData } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 import { validateTradingRecord } from '@/utils/validationUtils';
 import { ImportModal } from './ImportModal';
@@ -21,6 +21,12 @@ const TRADING_TYPE_OPTIONS = [
 const YES_NO_OPTIONS = [
   { value: '是', label: '是' },
   { value: '否', label: '否' },
+];
+
+const HAS_MISTAKE_OPTIONS = [
+  { value: '是', label: '是' },
+  { value: '否', label: '否' },
+  { value: '其他', label: '其他' },
 ];
 
 const emptyRecord: TradingRecordInput = {
@@ -557,7 +563,9 @@ export const DataEditor: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`inline-flex px-2 py-1 text-xs rounded ${
-                            record.hasMistake === '是' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                            record.hasMistake === '是' ? 'bg-red-100 text-red-800' 
+                            : record.hasMistake === '其他' ? 'bg-gray-100 text-gray-600'
+                            : 'bg-green-100 text-green-800'
                           }`}>
                             {record.hasMistake}
                           </span>
@@ -925,11 +933,11 @@ export const DataEditor: React.FC = () => {
       {activeTab === 'table3' && renderTable3()}
       {activeTab === 'table4' && renderTable4()}
 
-      <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingRecord ? '编辑记录' : '添加记录'} size="lg">
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingRecord ? '编辑记录' : '添加记录'} size="2xl">
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-base font-medium text-gray-700 mb-2">
                 开单时间 (yyyymmdd) <span className="text-red-500">*</span>
               </label>
               <Input
@@ -941,7 +949,7 @@ export const DataEditor: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-base font-medium text-gray-700 mb-2">
                 股票名称 <span className="text-red-500">*</span>
               </label>
               <Input
@@ -953,7 +961,7 @@ export const DataEditor: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-base font-medium text-gray-700 mb-2">
                 股票代码 <span className="text-red-500">*</span>
               </label>
               <Input
@@ -965,7 +973,7 @@ export const DataEditor: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-base font-medium text-gray-700 mb-2">
                 交易类型
               </label>
               <Select
@@ -975,27 +983,34 @@ export const DataEditor: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-base font-medium text-gray-700 mb-2">
                 符合系统
               </label>
               <Select
                 value={formData.isSystem}
-                onChange={(e) => setFormData({ ...formData, isSystem: e.target.value as '是' | '否' })}
+                onChange={(e) => {
+                  const newIsSystem = e.target.value as '是' | '否';
+                  setFormData({
+                    ...formData,
+                    isSystem: newIsSystem,
+                    hasMistake: newIsSystem === '否' ? '其他' : formData.hasMistake,
+                  });
+                }}
                 options={YES_NO_OPTIONS}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-base font-medium text-gray-700 mb-2">
                 有失误
               </label>
               <Select
                 value={formData.hasMistake}
-                onChange={(e) => setFormData({ ...formData, hasMistake: e.target.value as '是' | '否' })}
-                options={YES_NO_OPTIONS}
+                onChange={(e) => setFormData({ ...formData, hasMistake: e.target.value as MistakeStatus })}
+                options={HAS_MISTAKE_OPTIONS}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-base font-medium text-gray-700 mb-2">
                 盈亏% <span className="text-red-500">*</span>
               </label>
               <Input
@@ -1017,7 +1032,7 @@ export const DataEditor: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-base font-medium text-gray-700 mb-2">
                 持仓天数 <span className="text-red-500">*</span>
               </label>
               <Input
@@ -1040,7 +1055,7 @@ export const DataEditor: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-base font-medium text-gray-700 mb-2">
                 盘前是否
               </label>
               <Select
@@ -1051,21 +1066,21 @@ export const DataEditor: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+        <div className="flex justify-end gap-4 mt-8 pt-5 border-t">
           {saveError && (
             <div className="flex-1 flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
               <span className="truncate">{saveError}</span>
             </div>
           )}
-          <Button variant="secondary" onClick={handleCloseModal} disabled={isSaving}>
+          <Button variant="secondary" onClick={handleCloseModal} disabled={isSaving} size="lg">
             取消
           </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
+          <Button onClick={handleSave} disabled={isSaving} size="lg">
             {isSaving ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
             ) : (
-              <Save className="mr-2 h-4 w-4" />
+              <Save className="mr-2 h-5 w-5" />
             )}
             {isSaving ? '保存中...' : '保存'}
           </Button>
@@ -1075,7 +1090,7 @@ export const DataEditor: React.FC = () => {
       <Modal isOpen={isMonthlyModalOpen} onClose={handleCloseMonthlyModal} title={editingMonthly ? '编辑月份数据' : '添加月份数据'} size="xl">
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-base font-medium text-gray-700 mb-2">
               月份 (yyyymm) <span className="text-red-500">*</span>
             </label>
             <Input
@@ -1089,7 +1104,7 @@ export const DataEditor: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {MONTHLY_FIELDS.map(({ key, label }) => (
               <div key={key}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                <label className="block text-base font-medium text-gray-700 mb-2">{label}</label>
                 <Input
                   type="text"
                   value={(monthlyFormData[key] as string | number) === 'N/A' ? 'N/A' : String(monthlyFormData[key] || '')}

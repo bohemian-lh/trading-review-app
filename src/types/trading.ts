@@ -5,7 +5,7 @@ export interface TradingRecord {
   stockCode: string;
   tradingType: TradingType;
   isSystem: YesNo;
-  hasMistake: YesNo;
+  hasMistake: MistakeStatus;
   profitPercent: number;
   holdDays: number;
   chart1?: string;
@@ -30,13 +30,15 @@ export type TradingType =
 
 export type YesNo = '是' | '否';
 
+export type MistakeStatus = '是' | '否' | '其他';
+
 export interface TradingRecordInput {
   openDate: string;
   stockName: string;
   stockCode: string;
   tradingType: TradingType;
   isSystem: YesNo;
-  hasMistake: YesNo;
+  hasMistake: MistakeStatus;
   profitPercent: number | null;
   holdDays: number | null;
   chart1?: string;
