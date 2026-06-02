@@ -216,11 +216,16 @@ export const DataEditor: React.FC = () => {
     setSaveError(null);
     const { saveToR2 } = useDataStore.getState();
 
-    // 验证通过后，确保这些字段是有效的数字（不可能为 null）
+    // 运行时确保 profitPercent 和 holdDays 不为 null
+    if (formData.profitPercent === null || formData.holdDays === null) {
+      setValidationErrors([{ field: 'profitPercent', message: '盈亏和持仓天数不能为空' }]);
+      return;
+    }
+
     const saveData = {
       ...formData,
-      profitPercent: formData.profitPercent as number,
-      holdDays: formData.holdDays as number,
+      profitPercent: formData.profitPercent,
+      holdDays: formData.holdDays,
     };
 
     if (editingRecord) {
@@ -998,11 +1003,14 @@ export const DataEditor: React.FC = () => {
                 step="0.1"
                 value={formData.profitPercent !== null ? formData.profitPercent : ''}
                 onChange={(e) => {
-                  const val = e.target.value;
-                  setFormData({ 
-                    ...formData, 
-                    profitPercent: val === '' ? null : parseFloat(val)
-                  });
+                  const raw = e.target.value;
+                  if (raw === '' || raw === '-') {
+                    setFormData({ ...formData, profitPercent: null });
+                    return;
+                  }
+                  const num = parseFloat(raw);
+                  if (isNaN(num)) return; // 忽略非数中间态
+                  setFormData({ ...formData, profitPercent: num });
                 }}
                 placeholder="例如: 16.1 或 -15.3"
                 error={getFieldError('profitPercent')}
@@ -1018,11 +1026,14 @@ export const DataEditor: React.FC = () => {
                 min="0"
                 value={formData.holdDays !== null ? formData.holdDays : ''}
                 onChange={(e) => {
-                  const val = e.target.value;
-                  setFormData({ 
-                    ...formData, 
-                    holdDays: val === '' ? null : parseInt(val, 10)
-                  });
+                  const raw = e.target.value;
+                  if (raw === '' || raw === '-') {
+                    setFormData({ ...formData, holdDays: null });
+                    return;
+                  }
+                  const num = parseInt(raw, 10);
+                  if (isNaN(num)) return;
+                  setFormData({ ...formData, holdDays: num });
                 }}
                 placeholder="例如: 3"
                 error={getFieldError('holdDays')}
