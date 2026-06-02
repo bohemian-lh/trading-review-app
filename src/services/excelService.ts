@@ -641,6 +641,11 @@ function createTestTable2Data(): any[][] {
   tableData.push(['系统亏损平均持仓天数', 5.3]);
   tableData.push(['非系统盈利平均持仓天数', 7.8]);
   tableData.push(['非系统亏损平均持仓天数', 4.9]);
+  tableData.push(['齐飞水底盈亏比', 1.25]);
+  tableData.push(['齐飞前多踩MA盈亏比', 1.83]);
+  tableData.push(['风险释放平台转一致盈亏比', 1.56]);
+  tableData.push(['双阳平台转一致盈亏比', 2.10]);
+  tableData.push(['非系统盈亏比', 0.89]);
   return tableData;
 }
 
