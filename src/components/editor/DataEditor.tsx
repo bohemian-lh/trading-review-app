@@ -60,6 +60,11 @@ const ANALYSIS_FIELDS: Array<{ key: keyof AnalysisResult; label: string }> = [
   { key: 'systemLossAvgHoldDays', label: '符合系统亏损平均持仓' },
   { key: 'nonSystemProfitAvgHoldDays', label: '不符合系统盈利平均持仓' },
   { key: 'nonSystemLossAvgHoldDays', label: '不符合系统亏损平均持仓' },
+  { key: 'typeQifeiShuidi', label: '齐飞水底盈亏比' },
+  { key: 'typeQifeiQianDuoCaiMA', label: '齐飞前多踩MA盈亏比' },
+  { key: 'typeFengxianShifang', label: '风险释放平台转一致盈亏比' },
+  { key: 'typeShuangyang', label: '双阳平台转一致盈亏比' },
+  { key: 'typeFeiXitong', label: '非系统盈亏比' },
 ];
 
 const MONTHLY_FIELDS: Array<{ key: keyof Omit<MonthlyAnalysis, 'month'>; label: string }> = [

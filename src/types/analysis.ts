@@ -7,6 +7,12 @@ export interface AnalysisResult {
   systemLossAvgHoldDays: number | 'N/A';
   nonSystemProfitAvgHoldDays: number | 'N/A';
   nonSystemLossAvgHoldDays: number | 'N/A';
+  // 按交易类型盈亏比
+  typeQifeiShuidi: number;
+  typeQifeiQianDuoCaiMA: number;
+  typeFengxianShifang: number;
+  typeShuangyang: number;
+  typeFeiXitong: number;
 }
 
 export interface MonthlyAnalysis {
@@ -41,4 +47,3 @@ export interface CustomMonthlyData {
   useCustom: boolean;
   data: MonthlyAnalysis[];
 }
-

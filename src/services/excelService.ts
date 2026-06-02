@@ -205,6 +205,11 @@ function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
     systemLossAvgHoldDays: analysisMap.get('系统亏损平均持仓天数') || 'N/A',
     nonSystemProfitAvgHoldDays: analysisMap.get('非系统盈利平均持仓天数') || 'N/A',
     nonSystemLossAvgHoldDays: analysisMap.get('非系统亏损平均持仓天数') || 'N/A',
+    typeQifeiShuidi: 0,
+    typeQifeiQianDuoCaiMA: 0,
+    typeFengxianShifang: 0,
+    typeShuangyang: 0,
+    typeFeiXitong: 0,
   };
 }
 
