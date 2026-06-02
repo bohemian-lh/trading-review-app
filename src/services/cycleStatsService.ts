@@ -243,4 +243,59 @@ export function generateCycleStats(
   };
 }
 
+/**
+ * 重新计算单个周期的盈亏比
+ * @param cycle 要更新的周期
+ * @param records 该周期包含的记录
+ * @returns 更新后的周期
+ */
+export function recalculateSingleCycle(
+  cycle: CycleStats,
+  records: TradingRecord[]
+): CycleStats {
+  // 筛选出属于该周期的记录
+  const cycleRecords = records.filter(r => cycle.recordIds.includes(r.id));
+  
+  // 重新计算盈亏比
+  const { profitRatio, profitSum, lossSum } = calculateProfitRatio(cycleRecords);
+  
+  return {
+    ...cycle,
+    profitSum,
+    lossSum,
+    profitRatio,
+    updatedAt: Date.now()
+  };
+}
+
+/**
+ * 从周期中移除记录
+ * @param cycle 要修改的周期
+ * @param recordId 要移除的记录ID
+ * @returns 更新后的周期，如果周期为空则返回 null
+ */
+export function removeRecordFromCycle(
+  cycle: CycleStats,
+  recordId: string
+): CycleStats | null {
+  const newRecordIds = cycle.recordIds.filter(id => id !== recordId);
+  
+  if (newRecordIds.length === 0) {
+    return null;
+  }
+  
+  // 筛选出剩余记录
+  // 注意：这里我们不重新计算，因为记录已经被移走了
+  // 剩余记录会在下一次手动更新时重新处理
+  
+  return {
+    ...cycle,
+    recordIds: newRecordIds,
+    recordCount: newRecordIds.length,
+    // 如果原来完整现在不完整了，标记为不完整
+    isComplete: newRecordIds.length >= CYCLE_SIZE,
+    updatedAt: Date.now()
+  };
+}
+
 export { STAT_TYPES, CYCLE_SIZE };

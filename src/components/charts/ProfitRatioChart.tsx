@@ -24,6 +24,8 @@ export const ProfitRatioChart: React.FC = () => {
       systemNoMistakeProfitRatio: item.systemNoMistakeProfitRatio,
       systemWithMistakeProfitRatio: item.systemWithMistakeProfitRatio,
       nonSystemProfitRatio: item.nonSystemProfitRatio,
+      avgProfitRatio: item.avgProfitRatio,
+      totalProfit: item.totalProfit,
     }));
   }, [monthlyData]);
 

@@ -73,11 +73,13 @@ async function handleUpload(request, env, corsHeaders) {
       fileData = await request.arrayBuffer();
     }
 
-    const safeFilename = filename.replace(/[^\w.\-_]/g, '_');
+    // 不再过度过滤字符，保持原文件名，只做安全检查
+    // 去掉路径遍历字符，防止安全问题
+    const safeFilename = filename.replace(/[\/\\?%*:|"<>]/g, '_');
     const key = `excel-files/${safeFilename}`;
 
     await env.R2_BUCKET.put(key, fileData);
-    console.log('文件上传成功', key);
+    console.log('文件上传成功', key, '原始文件名:', filename);
     
     return json({ 
       success: true, 

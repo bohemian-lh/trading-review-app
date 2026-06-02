@@ -69,7 +69,10 @@ async function handleDownload(filename, env, corsHeaders) {
 
     const headers = new Headers(corsHeaders);
     headers.set('Content-Type', object.httpMetadata?.contentType || 'application/octet-stream');
-    headers.set('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    // 更好的 Content-Disposition，兼容不同浏览器
+    // 使用 RFC5987 编码格式处理非 ASCII 字符
+    const asciiFilename = filename.replace(/[^\x00-\x7F]/g, '_');
+    headers.set('Content-Disposition', `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
     
     return new Response(object.body, { headers, status: 200 });
   } catch (e) {
