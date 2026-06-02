@@ -16,7 +16,7 @@ const HEADERS_1 = [
   '是否符合系统',
   '有无大的失误',
   '盈亏情况',
-  '持仓时间',
+  '持仓时间（天）',
   '股票走势1',
   '股票走势2',
   '关键分时1',
@@ -31,10 +31,10 @@ const HEADERS_2 = [
 
 const HEADERS_3 = [
   '月份',
-  '系统盈利胜率',
-  '系统无失误盈利胜率',
-  '系统有失误盈利胜率',
-  '非系统盈利胜率',
+  '系统盈亏比',
+  '系统无失误盈亏比',
+  '系统有失误盈亏比',
+  '非系统盈亏比',
   '平均盈亏比',
   '总盈亏',
 ];
@@ -197,10 +197,10 @@ function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
   }
 
   return {
-    systemProfitRatio: analysisMap.get('系统盈利胜率') || 'N/A',
-    systemNoMistakeProfitRatio: analysisMap.get('系统无失误盈利胜率') || 'N/A',
-    systemWithMistakeProfitRatio: analysisMap.get('系统有失误盈利胜率') || 'N/A',
-    nonSystemProfitRatio: analysisMap.get('非系统盈利胜率') || 'N/A',
+    systemProfitRatio: analysisMap.get('系统盈利率') || 'N/A',
+    systemNoMistakeProfitRatio: analysisMap.get('系统无失误盈利率') || 'N/A',
+    systemWithMistakeProfitRatio: analysisMap.get('系统有失误盈利率') || 'N/A',
+    nonSystemProfitRatio: analysisMap.get('非系统盈利率') || 'N/A',
     systemProfitAvgHoldDays: analysisMap.get('系统盈利平均持仓天数') || 'N/A',
     systemLossAvgHoldDays: analysisMap.get('系统亏损平均持仓天数') || 'N/A',
     nonSystemProfitAvgHoldDays: analysisMap.get('非系统盈利平均持仓天数') || 'N/A',
@@ -229,10 +229,10 @@ function parseTable3(worksheet: XLSX.WorkSheet): {
 
       monthlyAnalysis.push({
         month,
-        systemProfitRatio: parseValue(row['系统盈利胜率']),
-        systemNoMistakeProfitRatio: parseValue(row['系统无失误盈利胜率']),
-        systemWithMistakeProfitRatio: parseValue(row['系统有失误盈利胜率']),
-        nonSystemProfitRatio: parseValue(row['非系统盈利胜率']),
+        systemProfitRatio: parseValue(row['系统盈亏比']),
+        systemNoMistakeProfitRatio: parseValue(row['系统无失误盈亏比']),
+        systemWithMistakeProfitRatio: parseValue(row['系统有失误盈亏比']),
+        nonSystemProfitRatio: parseValue(row['非系统盈亏比']),
         avgProfitRatio: parseValue(row['平均盈亏比']),
         totalProfit: parseValue(row['总盈亏']),
       });
@@ -270,7 +270,7 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
   const profitPercent = parseFloat(profitStr) || 0;
   
   // 解析持仓时间
-  const holdDays = parseInt(String(row['持仓时间'] || '').trim(), 10) || 0;
+  const holdDays = parseInt(String(row['持仓时间（天）'] || '').trim(), 10) || 0;
 
   return {
     id: generateId(),
@@ -341,10 +341,10 @@ export function exportTable2ToExcel(analysis: AnalysisResult, filename: string):
 
   const data = [
     HEADERS_2,
-    ['系统盈利胜率', formatValue(analysis.systemProfitRatio, true)],
-    ['系统无失误盈利胜率', formatValue(analysis.systemNoMistakeProfitRatio, true)],
-    ['系统有失误盈利胜率', formatValue(analysis.systemWithMistakeProfitRatio, true)],
-    ['非系统盈利胜率', formatValue(analysis.nonSystemProfitRatio, true)],
+    ['系统盈利率', formatValue(analysis.systemProfitRatio, true)],
+    ['系统无失误盈利率', formatValue(analysis.systemNoMistakeProfitRatio, true)],
+    ['系统有失误盈利率', formatValue(analysis.systemWithMistakeProfitRatio, true)],
+    ['非系统盈利率', formatValue(analysis.nonSystemProfitRatio, true)],
     ['系统盈利平均持仓天数', formatValue(analysis.systemProfitAvgHoldDays, false)],
     ['系统亏损平均持仓天数', formatValue(analysis.systemLossAvgHoldDays, false)],
     ['非系统盈利平均持仓天数', formatValue(analysis.nonSystemProfitAvgHoldDays, false)],
@@ -472,10 +472,10 @@ export function exportAllToExcel(
 
   const table2Data = [
     HEADERS_2,
-    ['系统盈利胜率', formatValue(finalAnalysis.systemProfitRatio, true)],
-    ['系统无失误盈利胜率', formatValue(finalAnalysis.systemNoMistakeProfitRatio, true)],
-    ['系统有失误盈利胜率', formatValue(finalAnalysis.systemWithMistakeProfitRatio, true)],
-    ['非系统盈利胜率', formatValue(finalAnalysis.nonSystemProfitRatio, true)],
+    ['系统盈利率', formatValue(finalAnalysis.systemProfitRatio, true)],
+    ['系统无失误盈利率', formatValue(finalAnalysis.systemNoMistakeProfitRatio, true)],
+    ['系统有失误盈利率', formatValue(finalAnalysis.systemWithMistakeProfitRatio, true)],
+    ['非系统盈利率', formatValue(finalAnalysis.nonSystemProfitRatio, true)],
     ['系统盈利平均持仓天数', formatValue(finalAnalysis.systemProfitAvgHoldDays, false)],
     ['系统亏损平均持仓天数', formatValue(finalAnalysis.systemLossAvgHoldDays, false)],
     ['非系统盈利平均持仓天数', formatValue(finalAnalysis.nonSystemProfitAvgHoldDays, false)],
@@ -633,10 +633,10 @@ function createTestTable1Data(): any[][] {
 
 function createTestTable2Data(): any[][] {
   const tableData: any[][] = [HEADERS_2];
-  tableData.push(['系统盈利胜率', 45.67]);
-  tableData.push(['系统无失误盈利胜率', 52.30]);
-  tableData.push(['系统有失误盈利胜率', 28.90]);
-  tableData.push(['非系统盈利胜率', 38.20]);
+  tableData.push(['系统盈利率', 45.67]);
+  tableData.push(['系统无失误盈利率', 52.30]);
+  tableData.push(['系统有失误盈利率', 28.90]);
+  tableData.push(['非系统盈利率', 38.20]);
   tableData.push(['系统盈利平均持仓天数', 8.5]);
   tableData.push(['系统亏损平均持仓天数', 5.3]);
   tableData.push(['非系统盈利平均持仓天数', 7.8]);
