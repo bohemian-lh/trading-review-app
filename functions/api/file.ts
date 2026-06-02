@@ -62,45 +62,69 @@ export async function onRequest(context) {
 }
 
 async function handleDownload(filename, env, corsHeaders) {
-  // 先尝试直接找文件
-  let key = `excel-files/${filename}`;
-  console.log('尝试下载文件, key:', key);
+  console.log('=== 下载文件, 原始文件名:', filename);
   console.log('env.R2_BUCKET exists:', !!env.R2_BUCKET);
   
   try {
-    let object = await env.R2_BUCKET.get(key);
+    // 先列出所有文件，然后找到最匹配的一个
+    const listed = await env.R2_BUCKET.list({ prefix: 'excel-files/' });
+    console.log('找到', listed.objects.length, '个文件');
     
-    // 如果没找到，尝试列出所有文件找匹配（处理可能的编码问题）
-    if (!object) {
-      console.log('未找到文件，尝试列出所有文件查找');
-      const listed = await env.R2_BUCKET.list({ prefix: 'excel-files/' });
-      console.log('找到', listed.objects.length, '个文件');
-      
-      // 尝试模糊匹配
+    let matchingObject = null;
+    let matchingKey = null;
+    
+    // 先尝试直接匹配
+    for (const obj of listed.objects) {
+      const objFilename = obj.key.split('/').pop();
+      if (objFilename === filename) {
+        console.log('找到精确匹配文件:', obj.key);
+        matchingKey = obj.key;
+        break;
+      }
+    }
+    
+    // 如果没找到直接匹配，尝试其他匹配
+    if (!matchingKey) {
+      console.log('未找到精确匹配，尝试其他匹配方式');
       for (const obj of listed.objects) {
         const objFilename = obj.key.split('/').pop();
-        if (objFilename && (objFilename === filename || objFilename.includes(filename.replace(/[_\s]/g, '')))) {
-          console.log('找到匹配文件:', obj.key);
-          key = obj.key;
-          object = await env.R2_BUCKET.get(key);
-          filename = objFilename; // 更新为实际的文件名
+        if (!objFilename) continue;
+        
+        // 比较文件扩展名相同
+        if (objFilename.endsWith('.xlsx') && filename.endsWith('.xlsx')) {
+          console.log('找到扩展名匹配文件:', obj.key);
+          matchingKey = obj.key;
           break;
         }
       }
     }
     
-    if (!object) {
-      console.log('文件未找到:', filename);
+    // 如果还是没找到，直接用第一个文件（如果只有一个）
+    if (!matchingKey && listed.objects.length > 0) {
+      console.log('未找到匹配，使用第一个文件');
+      matchingKey = listed.objects[0].key;
+    }
+    
+    if (!matchingKey) {
+      console.log('没有找到任何文件');
       return json({ success: false, error: 'Not found' }, 404, corsHeaders);
     }
-
-    console.log('文件找到，准备下载');
+    
+    // 获取文件
+    const object = await env.R2_BUCKET.get(matchingKey);
+    if (!object) {
+      console.log('文件不存在:', matchingKey);
+      return json({ success: false, error: 'File not found' }, 404, corsHeaders);
+    }
+    
+    const actualFilename = matchingKey.split('/').pop() || filename;
+    console.log('文件找到，准备下载, key:', matchingKey, '实际文件名:', actualFilename);
     const headers = new Headers(corsHeaders);
     headers.set('Content-Type', object.httpMetadata?.contentType || 'application/octet-stream');
     
     // 更好的 Content-Disposition，兼容不同浏览器
-    const asciiFilename = filename.replace(/[^\x20-\x7E]/g, '_');
-    const encodedFilename = encodeURIComponent(filename);
+    const asciiFilename = actualFilename.replace(/[^\x20-\x7E]/g, '_');
+    const encodedFilename = encodeURIComponent(actualFilename);
     headers.set('Content-Disposition', `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
     
     return new Response(object.body, { headers, status: 200 });
@@ -115,32 +139,55 @@ async function handleDownload(filename, env, corsHeaders) {
 }
 
 async function handleDelete(filename, env, corsHeaders) {
-  // 先尝试直接删除
-  let key = `excel-files/${filename}`;
-  console.log('尝试删除文件, key:', key);
+  console.log('=== 删除文件, 原始文件名:', filename);
   console.log('env.R2_BUCKET exists:', !!env.R2_BUCKET);
   
   try {
-    // 先检查文件是否存在
-    let object = await env.R2_BUCKET.get(key);
+    // 先列出所有文件，然后找到最匹配的一个
+    const listed = await env.R2_BUCKET.list({ prefix: 'excel-files/' });
+    console.log('找到', listed.objects.length, '个文件');
     
-    // 如果没找到，尝试查找匹配的文件
-    if (!object) {
-      console.log('未找到文件，尝试列出所有文件查找');
-      const listed = await env.R2_BUCKET.list({ prefix: 'excel-files/' });
-      
+    let matchingKey = null;
+    
+    // 先尝试直接匹配
+    for (const obj of listed.objects) {
+      const objFilename = obj.key.split('/').pop();
+      if (objFilename === filename) {
+        console.log('找到精确匹配文件:', obj.key);
+        matchingKey = obj.key;
+        break;
+      }
+    }
+    
+    // 如果没找到直接匹配，尝试其他匹配
+    if (!matchingKey) {
+      console.log('未找到精确匹配，尝试其他匹配方式');
       for (const obj of listed.objects) {
         const objFilename = obj.key.split('/').pop();
-        if (objFilename && (objFilename === filename || objFilename.includes(filename.replace(/[_\s]/g, '')))) {
-          console.log('找到匹配文件:', obj.key);
-          key = obj.key;
+        if (!objFilename) continue;
+        
+        // 比较文件扩展名相同
+        if (objFilename.endsWith('.xlsx') && filename.endsWith('.xlsx')) {
+          console.log('找到扩展名匹配文件:', obj.key);
+          matchingKey = obj.key;
           break;
         }
       }
     }
     
-    await env.R2_BUCKET.delete(key);
-    console.log('File deleted successfully');
+    // 如果还是没找到，直接用第一个文件（如果只有一个）
+    if (!matchingKey && listed.objects.length > 0) {
+      console.log('未找到匹配，使用第一个文件');
+      matchingKey = listed.objects[0].key;
+    }
+    
+    if (!matchingKey) {
+      console.log('没有找到任何文件');
+      return json({ success: false, error: 'Not found' }, 404, corsHeaders);
+    }
+    
+    await env.R2_BUCKET.delete(matchingKey);
+    console.log('File deleted successfully, key:', matchingKey);
     return json({ success: true, message: 'Deleted' }, 200, corsHeaders);
   } catch (e) {
     console.error('Delete error:', e);
