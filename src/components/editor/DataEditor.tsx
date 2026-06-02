@@ -75,9 +75,9 @@ const ANALYSIS_FIELDS: Array<{ key: keyof AnalysisResult; label: string }> = [
 
 const MONTHLY_FIELDS: Array<{ key: keyof Omit<MonthlyAnalysis, 'month'>; label: string }> = [
   { key: 'systemProfitRatio', label: '系统盈亏比' },
-  { key: 'systemNoMistakeProfitRatio', label: '系统无失误' },
-  { key: 'systemWithMistakeProfitRatio', label: '系统有失误' },
-  { key: 'nonSystemProfitRatio', label: '非系统' },
+  { key: 'systemNoMistakeProfitRatio', label: '系统无失误盈亏比' },
+  { key: 'systemWithMistakeProfitRatio', label: '系统有失误盈亏比' },
+  { key: 'nonSystemProfitRatio', label: '非系统盈亏比' },
   { key: 'avgProfitRatio', label: '平均盈亏比' },
   { key: 'totalProfit', label: '总盈亏' },
 ];
@@ -533,10 +533,10 @@ export const DataEditor: React.FC = () => {
                       </div>
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">交易类型</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">系统</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">失误</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏%</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">持仓天</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">是否符合系统</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">有无大的失误</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏情况</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">持仓时间（天）</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
                   </tr>
                 </thead>
