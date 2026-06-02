@@ -106,52 +106,25 @@ class R2StorageService {
     }
   }
 
-  async downloadFile(filename: string): Promise<Blob> {
-    console.log('=== r2StorageService.downloadFile START ===');
-    console.log('Downloading filename (original):', filename);
-    
-    // 确保只进行一次 URL 编码
-    const encodedFilename = encodeURIComponent(filename);
-    const url = `${API_BASE_URL}/api/file?filename=${encodedFilename}`;
-    console.log('Request URL:', url);
+  async downloadFile(key: string): Promise<Blob> {
+    const url = `${API_BASE_URL}/api/file?key=${encodeURIComponent(key)}`;
     
     try {
-      const response = await fetch(url, {
-        headers: this.getHeaders(false),
-      });
-
-      console.log('Download response status:', response.status);
+      const response = await fetch(url, { headers: this.getHeaders(false) });
 
       if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}`;
-        try {
-          const errorText = await response.text();
-          console.error('Download error response:', errorText);
-          errorMessage = errorText;
-        } catch {
-          // 如果无法解析错误文本，使用状态码
-        }
-        throw new Error(`Download failed: ${errorMessage}`);
+        const text = await response.text().catch(() => '');
+        throw new Error(`Download failed: HTTP ${response.status}${text ? ' - ' + text : ''}`);
       }
 
-      const blob = await response.blob();
-      console.log('Download completed, blob size:', blob.size);
-      console.log('=== r2StorageService.downloadFile SUCCESS ===');
-      return blob;
+      return await response.blob();
     } catch (error) {
-      console.error('❌ r2StorageService.downloadFile FAILED:', error);
       throw new Error(`Download failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  async deleteFile(filename: string): Promise<void> {
-    console.log('=== r2StorageService.deleteFile START ===');
-    console.log('Deleting filename (original):', filename);
-    
-    // 确保只进行一次 URL 编码
-    const encodedFilename = encodeURIComponent(filename);
-    const url = `${API_BASE_URL}/api/file?filename=${encodedFilename}`;
-    console.log('Request URL:', url);
+  async deleteFile(key: string): Promise<void> {
+    const url = `${API_BASE_URL}/api/file?key=${encodeURIComponent(key)}`;
     
     try {
       const response = await fetch(url, {
@@ -159,12 +132,8 @@ class R2StorageService {
         headers: this.getHeaders(),
       });
 
-      console.log('Delete response status:', response.status);
-      
       await this.handleResponse(response);
-      console.log('=== r2StorageService.deleteFile SUCCESS ===');
     } catch (error) {
-      console.error('❌ r2StorageService.deleteFile FAILED:', error);
       throw new Error(`Delete failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
