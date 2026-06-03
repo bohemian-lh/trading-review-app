@@ -134,8 +134,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       
       let profit: number | null = null;
       if (negativeAbsSum !== 0) {
-        profit = totalSum / negativeAbsSum;
-        profit = Math.round(profit * 10000) / 10000; // 保留4位小数
+        profit = (totalSum / negativeAbsSum) * 100;
+        profit = Math.round(profit * 100) / 100; // 乘以100后保留2位小数
       }
       
       setCalculatedProfit(profit);

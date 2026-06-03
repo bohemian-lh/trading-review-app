@@ -279,7 +279,7 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     stockCode: String(row['股票代码'] || ''),
     tradingType: validTradingType,
     isSystem: row['是否符合系统'] === '是' ? '是' : '否',
-    hasMistake: row['有无大的失误'] === '是' ? '是' : '否',
+    hasMistake: row['有无大的失误'] === '是' ? '是' : row['有无大的失误'] === '其他' ? '其他' : '否',
     profitPercent,
     holdDays,
     chart1: (row['股票走势1'] as string) || '',
