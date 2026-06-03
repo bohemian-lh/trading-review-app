@@ -993,6 +993,7 @@ export const DataEditor: React.FC = () => {
                   setFormData({
                     ...formData,
                     isSystem: newIsSystem,
+                    tradingType: newIsSystem === '否' ? '非系统' : formData.tradingType,
                     hasMistake: newIsSystem === '否' ? '其他' : formData.hasMistake,
                   });
                 }}
