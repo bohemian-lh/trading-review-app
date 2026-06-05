@@ -8,7 +8,8 @@ import {
   CycleSystemChart,
   CycleTypeChart,
   MonthlyTotalProfitChart,
-  TradingTypeProfitBarChart
+  TradingTypeProfitBarChart,
+  CycleProfitChart
 } from '@/components/charts';
 import { useDataStore, useAnalysisResult } from '@/stores';
 import { useInitializeStore } from '@/hooks/useInitializeStore';
@@ -80,6 +81,9 @@ const Dashboard: React.FC = () => {
         </div>
         <div className="bg-white shadow rounded-lg p-6">
           <MonthlyProfitRatioChart />
+        </div>
+        <div className="bg-white shadow rounded-lg p-6">
+          <CycleProfitChart />
         </div>
         <div className="bg-white shadow rounded-lg p-6">
           <CycleSystemChart />

@@ -684,7 +684,7 @@ export const DataEditor: React.FC = () => {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h2 className="text-xl font-bold">表3 - 月度统计数据</h2>
+          <h2 className="text-xl font-bold">月度盈亏比统计</h2>
           <div className="flex items-center gap-3">
             <ZoomControls
               zoom={zoom}
@@ -806,7 +806,7 @@ export const DataEditor: React.FC = () => {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h2 className="text-xl font-bold">表4-周期统计</h2>
+          <h2 className="text-xl font-bold">周期盈亏比统计</h2>
           <div className="flex items-center gap-3">
             <ZoomControls
               zoom={zoom}
@@ -827,7 +827,7 @@ export const DataEditor: React.FC = () => {
         {allStats.length === 0 ? (
           <div className="bg-gray-50 p-8 text-center rounded-lg border border-gray-200">
             <p className="text-gray-500">暂无周期统计数据</p>
-            <p className="text-sm text-gray-400 mt-2">点击「手动更新统计数据」按钮生成周期统计</p>
+            <p className="text-sm text-gray-400 mt-2">点击「手动更新统计数据」按钮生成周期盈亏比统计</p>
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-gray-200">
@@ -914,7 +914,7 @@ export const DataEditor: React.FC = () => {
             }`}
           >
             <Calendar className="h-4 w-4" />
-            表3 - 月度统计
+            月度盈亏比统计
           </button>
           <button
             onClick={() => setActiveTab('table4')}
@@ -925,7 +925,7 @@ export const DataEditor: React.FC = () => {
             }`}
           >
             <TrendingUp className="h-4 w-4" />
-            表4 - 周期统计
+            周期盈亏比统计
           </button>
         </nav>
       </div>
