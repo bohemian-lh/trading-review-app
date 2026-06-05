@@ -4,7 +4,7 @@ import { generateId } from '@/utils';
 // 每周期的记录数
 const CYCLE_SIZE = 30;
 
-// 8类统计类型
+// 11类统计类型
 const STAT_TYPES: CycleStatType[] = [
   '系统',
   '系统无失误',
@@ -13,7 +13,10 @@ const STAT_TYPES: CycleStatType[] = [
   '齐飞水底',
   '齐飞前多踩MA',
   '风险释放平台转一致',
-  '双阳平台转一致'
+  '双阳平台转一致',
+  '齐飞水底三等量',
+  '齐飞水底总',
+  '转一致'
 ];
 
 /**
@@ -85,6 +88,12 @@ function matchesStatType(record: TradingRecord, statType: CycleStatType): boolea
       return record.tradingType === '风险释放平台转一致';
     case '双阳平台转一致':
       return record.tradingType === '双阳平台转一致';
+    case '齐飞水底三等量':
+      return record.tradingType === '齐飞水底三等量';
+    case '齐飞水底总':
+      return record.tradingType === '齐飞水底' || record.tradingType === '齐飞水底三等量' || record.tradingType === '齐飞前多踩MA';
+    case '转一致':
+      return record.tradingType === '风险释放平台转一致' || record.tradingType === '双阳平台转一致';
     default:
       return false;
   }

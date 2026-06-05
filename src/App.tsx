@@ -5,7 +5,6 @@ import { ExcelUploader } from '@/components/excel';
 import { DataEditor } from '@/components/editor';
 import { 
   MonthlyProfitRatioChart,
-  SystemMistakeChart,
   CycleSystemChart,
   CycleTypeChart,
   MonthlyTotalProfitChart,
@@ -83,16 +82,13 @@ const Dashboard: React.FC = () => {
           <MonthlyProfitRatioChart />
         </div>
         <div className="bg-white shadow rounded-lg p-6">
-          <SystemMistakeChart />
-        </div>
-        <div className="bg-white shadow rounded-lg p-6">
           <CycleSystemChart />
         </div>
         <div className="bg-white shadow rounded-lg p-6">
-          <CycleTypeChart />
+          <TradingTypeProfitBarChart />
         </div>
         <div className="bg-white shadow rounded-lg p-6">
-          <TradingTypeProfitBarChart />
+          <CycleTypeChart />
         </div>
       </div>
     </div>

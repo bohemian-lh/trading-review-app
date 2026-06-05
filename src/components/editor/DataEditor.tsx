@@ -16,6 +16,7 @@ const TRADING_TYPE_OPTIONS = [
   { value: '风险释放平台转一致', label: '风险释放平台转一致' },
   { value: '双阳平台转一致', label: '双阳平台转一致' },
   { value: '非系统', label: '非系统' },
+  { value: '齐飞水底三等量', label: '齐飞水底三等量' },
 ];
 
 const YES_NO_OPTIONS = [
@@ -67,6 +68,7 @@ const ANALYSIS_FIELDS: Array<{ key: keyof AnalysisResult; label: string }> = [
   { key: 'nonSystemProfitAvgHoldDays', label: '不符合系统盈利平均持仓' },
   { key: 'nonSystemLossAvgHoldDays', label: '不符合系统亏损平均持仓' },
   { key: 'typeQifeiShuidi', label: '齐飞水底盈亏比' },
+  { key: 'typeQifeiShuidiSandengliang', label: '齐飞水底三等量盈亏比' },
   { key: 'typeQifeiQianDuoCaiMA', label: '齐飞前多踩MA盈亏比' },
   { key: 'typeFengxianShifang', label: '风险释放平台转一致盈亏比' },
   { key: 'typeShuangyang', label: '双阳平台转一致盈亏比' },

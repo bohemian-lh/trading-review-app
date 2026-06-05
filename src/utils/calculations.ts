@@ -135,7 +135,8 @@ export function calculateAverageHoldDays(
 }
 
 // 按交易类型维度计算盈亏比
-// 盈亏比 = 盈利交易总金额 / |亏损交易总金额|，保留两位小数
+// 盈亏比 = 盈利之和 / |亏损之和|，保留两位小数
+// 正号 = 盈利大于亏损；负号 = 亏损大于盈利
 // 若亏损交易总金额为 0，返回 0
 export function calculateProfitRatioByType(records: TradingRecord[], tradingType: string): number {
   const typeRecords = records.filter(r => r.tradingType === tradingType);
@@ -149,10 +150,35 @@ export function calculateProfitRatioByType(records: TradingRecord[], tradingType
     } else if (r.profitPercent < 0) {
       lossSum += Math.abs(r.profitPercent);
     }
-    // profitPercent === 0 忽略
   }
 
   if (lossSum === 0) return 0;
   
-  return parseFloat((profitSum / lossSum).toFixed(2));
+  const larger = Math.max(profitSum, lossSum);
+  const smaller = Math.min(profitSum, lossSum);
+  const ratio = parseFloat((larger / smaller).toFixed(2));
+  return profitSum > lossSum ? ratio : -ratio;
+}
+
+// 按多个交易类型计算盈亏比（齐飞水底总 / 转一致 等聚合类型）
+export function calculateProfitRatioByMultipleTypes(records: TradingRecord[], tradingTypes: string[]): number {
+  const typeRecords = records.filter(r => tradingTypes.includes(r.tradingType));
+
+  let profitSum = 0;
+  let lossSum = 0;
+
+  for (const r of typeRecords) {
+    if (r.profitPercent > 0) {
+      profitSum += r.profitPercent;
+    } else if (r.profitPercent < 0) {
+      lossSum += Math.abs(r.profitPercent);
+    }
+  }
+
+  if (lossSum === 0) return 0;
+
+  const larger = Math.max(profitSum, lossSum);
+  const smaller = Math.min(profitSum, lossSum);
+  const ratio = parseFloat((larger / smaller).toFixed(2));
+  return profitSum > lossSum ? ratio : -ratio;
 }
