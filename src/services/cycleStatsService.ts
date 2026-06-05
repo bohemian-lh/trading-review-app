@@ -41,6 +41,10 @@ export function calculateProfitRatio(records: TradingRecord[]): { profitRatio: n
     }
   }
 
+  // 保留两位小数
+  profitSum = parseFloat(profitSum.toFixed(2));
+  lossSum = parseFloat(lossSum.toFixed(2));
+
   // 计算盈亏比
   if (profitSum === 0 && lossSum === 0) {
     return { profitRatio: null, profitSum: 0, lossSum: 0 };
