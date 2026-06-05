@@ -49,11 +49,11 @@ export function calculateProfitRatio(records: TradingRecord[]): { profitRatio: n
   // 避免除零
   if (profitSum === 0) {
     // 全是亏损
-    return { profitRatio: -1.00, profitSum: 0, lossSum };
+    return { profitRatio: -lossSum, profitSum: 0, lossSum };
   }
   if (lossSum === 0) {
     // 全是盈利
-    return { profitRatio: 1.00, profitSum, lossSum: 0 };
+    return { profitRatio: profitSum, profitSum, lossSum: 0 };
   }
 
   const larger = Math.max(profitSum, lossSum);
