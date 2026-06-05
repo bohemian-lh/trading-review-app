@@ -610,7 +610,7 @@ export const DataEditor: React.FC = () => {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h2 className="text-xl font-bold">表2 - 动态统计数据</h2>
+          <h2 className="text-xl font-bold">总数据统计</h2>
           <div className="flex items-center gap-3">
             <ZoomControls
               zoom={zoom}
@@ -903,7 +903,7 @@ export const DataEditor: React.FC = () => {
             }`}
           >
             <BarChart3 className="h-4 w-4" />
-            表2 - 动态统计
+            总数据统计
           </button>
           <button
             onClick={() => setActiveTab('table3')}

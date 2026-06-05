@@ -24,9 +24,9 @@ interface LineConfig {
 }
 
 const lineConfigs: LineConfig[] = [
-  { key: 'avgProfitRatio', name: '平均盈亏比', color: '#8b5cf6', getValue: (d) => d.avgProfitRatio },
-  { key: 'systemProfitRatio', name: '符合系统', color: '#0ea5e9', getValue: (d) => d.systemProfitRatio },
-  { key: 'nonSystemProfitRatio', name: '不符合系统', color: '#ef4444', getValue: (d) => d.nonSystemProfitRatio },
+  { key: 'avgProfitRatio', name: '全量盈亏比', color: '#8b5cf6', getValue: (d) => d.avgProfitRatio },
+  { key: 'systemProfitRatio', name: '系统盈亏比', color: '#0ea5e9', getValue: (d) => d.systemProfitRatio },
+  { key: 'nonSystemProfitRatio', name: '非系统盈亏比', color: '#ef4444', getValue: (d) => d.nonSystemProfitRatio },
 ];
 
 const ALL_KEYS = lineConfigs.map(l => l.key);
