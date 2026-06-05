@@ -9,6 +9,7 @@ import {
   Legend,
   ResponsiveContainer,
   Cell,
+  ReferenceLine,
 } from 'recharts';
 import { useAnalysisResult } from '@/stores';
 import { useChartConfig } from '@/hooks/useChartConfig';
@@ -95,7 +96,8 @@ export const TradingTypeProfitBarChart: React.FC = () => {
           <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-25} textAnchor="end" />
-            <YAxis tick={{ fontSize: 12 }} tickCount={7} domain={yDomain} label={{ value: '盈亏比', angle: -90, position: 'insideLeft' }} />
+            <YAxis tick={{ fontSize: 12 }} tickCount={7} domain={yDomain} tickFormatter={(v: number) => v.toFixed(2)} label={{ value: '盈亏比', angle: -90, position: 'insideLeft' }} />
+            <ReferenceLine y={0} stroke="#000" strokeWidth={2} />
             <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '0.5rem', fontSize: 12 }} formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v, '盈亏比']} />
             <Legend />
             <Bar dataKey="value" name="盈亏比" radius={[4, 4, 0, 0]} maxBarSize={50}>
