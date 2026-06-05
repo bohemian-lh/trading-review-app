@@ -60,7 +60,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       <div className="bg-white shadow rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-4">动态数据分析</h2>
+        <h2 className="text-xl font-bold mb-4">总数据统计</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {analysisItems.map((item, index) => (
             <div key={index} className="border rounded-lg p-4">
