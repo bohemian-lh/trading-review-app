@@ -107,7 +107,7 @@ export const CycleTypeChart: React.FC = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">周期统计（按交易类型）</h3>
+        <h3 className="text-lg font-semibold text-gray-900">周期盈亏比统计（按交易类型）</h3>
         <div className="flex items-center gap-2">
           {isZoomed && (
             <>
