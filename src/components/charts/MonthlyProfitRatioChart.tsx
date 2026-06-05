@@ -8,6 +8,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ReferenceLine,
 } from 'recharts';
 import { useMonthlyAnalysis } from '@/stores';
 import { formatMonthDisplay } from '@/utils/dateUtils';
@@ -79,7 +80,8 @@ export const MonthlyProfitRatioChart: React.FC = () => {
       <LineChart data={visibleData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
         <XAxis dataKey="displayMonth" tick={{ fontSize: 12 }} />
-        <YAxis tick={{ fontSize: 12 }} tickCount={7} domain={yDomain} label={{ value: '盈亏比', angle: -90, position: 'insideLeft' }} />
+        <YAxis tick={{ fontSize: 12 }} tickCount={7} domain={yDomain} tickFormatter={(v: number) => v.toFixed(2)} label={{ value: '盈亏比', angle: -90, position: 'insideLeft' }} />
+        <ReferenceLine y={0} stroke="#000" strokeWidth={2} />
         <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '0.5rem', fontSize: 12 }} formatter={(v: any) => typeof v === 'number' ? v.toFixed(2) : 'N/A'} />
         <Legend />
         {visibleLines.map(line => (
