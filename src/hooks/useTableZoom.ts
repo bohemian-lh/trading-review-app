@@ -1,73 +1,67 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
-const MIN_ZOOM = 0.5; // 50%
-const MAX_ZOOM = 2.0; // 200%
-const ZOOM_STEP = 0.1; // 10% per step
-
-export function useTableZoom() {
-  const [zoom, setZoom] = useState(1.0);
+/**
+ * 表格缩放 Hook
+ * 提供 Ctrl+滚轮缩放 + 按钮缩放功能
+ * 支持缩放范围限制和重置
+ */
+export function useTableZoom(minZoom = 0.5, maxZoom = 3) {
+  const [zoom, setZoom] = useState(1);
   const [showZoomHint, setShowZoomHint] = useState(false);
+  const [zoomHint, setZoomHint] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleWheel = useCallback((e: WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      
-      // Calculate new zoom
-      const zoomDelta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-      const newZoom = Math.min(Math.max(zoom + zoomDelta, MIN_ZOOM), MAX_ZOOM);
-      
-      if (newZoom !== zoom) {
-        setZoom(newZoom);
-        
-        // Show hint when reaching limits
-        if (newZoom === MIN_ZOOM || newZoom === MAX_ZOOM) {
-          setShowZoomHint(true);
-          setTimeout(() => setShowZoomHint(false), 2000);
-        }
-      }
-    }
-  }, [zoom]);
+  const hideHintTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  const resetZoom = useCallback(() => {
-    setZoom(1.0);
+  const showHint = useCallback((message: string) => {
+    setZoomHint(message);
+    setShowZoomHint(true);
+    if (hideHintTimer.current) clearTimeout(hideHintTimer.current);
+    hideHintTimer.current = setTimeout(() => setShowZoomHint(false), 2000);
   }, []);
 
   const increaseZoom = useCallback(() => {
-    setZoom(prev => Math.min(prev + ZOOM_STEP, MAX_ZOOM));
-  }, []);
+    setZoom(prev => {
+      const newZoom = Math.min(prev + 0.2, maxZoom);
+      return parseFloat(newZoom.toFixed(1));
+    });
+    showHint(`已放大至 ${Math.round(zoom * 100)}%`);
+  }, [maxZoom, showHint, zoom]);
 
   const decreaseZoom = useCallback(() => {
-    setZoom(prev => Math.max(prev - ZOOM_STEP, MIN_ZOOM));
-  }, []);
+    setZoom(prev => {
+      const newZoom = Math.max(prev - 0.2, minZoom);
+      return parseFloat(newZoom.toFixed(1));
+    });
+    showHint(`已缩小至 ${Math.round(zoom * 100)}%`);
+  }, [minZoom, showHint, zoom]);
 
+  const resetZoom = useCallback(() => {
+    setZoom(1);
+    showHint('已重置缩放');
+  }, [showHint]);
+
+  const isAtMin = zoom <= minZoom;
+  const isAtMax = zoom >= maxZoom;
+
+  const zoomStyle = { transform: `scale(${zoom})`, transformOrigin: 'top left' };
+
+  // Ctrl+滚轮缩放
   useEffect(() => {
     const container = containerRef.current;
-    if (container) {
-      container.addEventListener('wheel', handleWheel, { passive: false });
-      return () => container.removeEventListener('wheel', handleWheel);
-    }
-  }, [handleWheel]);
+    if (!container) return;
 
-  // memo 稳定 zoomStyle 引用 + CSS contain 隔离布局重计算
-  const zoomStyle = useMemo(() => ({
-    transform: `scale(${zoom})`,
-    transformOrigin: 'top left' as const,
-    width: `${100 / zoom}%`,
-    contain: 'layout style' as const,
-  }), [zoom]);
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        if (e.deltaY < 0) increaseZoom();
+        else decreaseZoom();
+      }
+    };
 
-  return {
-    zoom,
-    setZoom,
-    containerRef,
-    showZoomHint,
-    zoomHint: zoom === MIN_ZOOM ? '已达到最小缩放比例' : zoom === MAX_ZOOM ? '已达到最大缩放比例' : '',
-    resetZoom,
-    increaseZoom,
-    decreaseZoom,
-    isAtMin: zoom === MIN_ZOOM,
-    isAtMax: zoom === MAX_ZOOM,
-    zoomStyle,
-  };
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [increaseZoom, decreaseZoom]);
+
+  return { zoom, containerRef, showZoomHint, zoomHint, resetZoom, increaseZoom, decreaseZoom, isAtMin, isAtMax, zoomStyle };
 }

@@ -2,11 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2, Table2, BarChart3, Calendar, ChevronUp, ChevronDown, Image, TrendingUp } from 'lucide-react';
 import { Button, Input, Select, Modal, Toggle, ZoomControls } from '@/components/common';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
+import { useTableZoom } from '@/hooks/useTableZoom';
 import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus, MonthlyAnalysis, AnalysisResult, ParsedTradeData } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 import { validateTradingRecord } from '@/utils/validationUtils';
 import { ImportModal } from './ImportModal';
-import { useTableZoom } from '@/hooks/useTableZoom';
 
 type ValidationError = { field: string; message: string };
 

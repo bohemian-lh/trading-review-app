@@ -40,8 +40,8 @@ export const TradingTypeProfitBarChart: React.FC = () => {
   const chartData = useMemo(() => {
     return [
       { key: 'system', name: '系统', value: analysis.systemProfitRatio === 'N/A' ? 0 : analysis.systemProfitRatio, color: '#0ea5e9' },
-      { key: 'qifeiShuidiZong', name: '齐飞水底总', value: (analysis.typeQifeiShuidi + analysis.typeQifeiShuidiSandengliang + analysis.typeQifeiQianDuoCaiMA) || 0, color: '#06b6d4' },
-      { key: 'zhuanYizhi', name: '转一致', value: (analysis.typeFengxianShifang + analysis.typeShuangyang) || 0, color: '#ec4899' },
+      { key: 'qifeiShuidiZong', name: '齐飞水底总', value: analysis.qifeiShuidiZong, color: '#06b6d4' },
+      { key: 'zhuanYizhi', name: '转一致', value: analysis.zhuanYiZhi, color: '#ec4899' },
       { key: 'systemNoMistake', name: '系统无失误', value: analysis.systemNoMistakeProfitRatio === 'N/A' ? 0 : analysis.systemNoMistakeProfitRatio, color: '#10b981' },
       { key: 'systemWithMistake', name: '系统有失误', value: analysis.systemWithMistakeProfitRatio === 'N/A' ? 0 : analysis.systemWithMistakeProfitRatio, color: '#f59e0b' },
     ].filter(d => selected.includes(d.key));

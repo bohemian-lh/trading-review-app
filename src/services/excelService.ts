@@ -211,6 +211,8 @@ function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
     typeFengxianShifang: 0,
     typeShuangyang: 0,
     typeFeiXitong: 0,
+    qifeiShuidiZong: 0,
+    zhuanYiZhi: 0,
   };
 }
 

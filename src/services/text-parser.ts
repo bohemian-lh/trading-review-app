@@ -231,14 +231,21 @@ export function parseTradeText(text: string): ParsedTextResult {
         const maxDate = Math.max(...dateNums);
         openDate = minDate.toString();
         
-        const minMonth = Math.floor(minDate / 100);
-        const maxMonth = Math.floor(maxDate / 100);
-        
-        if (minMonth === maxMonth) {
-          holdDays = (maxDate % 100) - (minDate % 100) + 1;
-        } else {
-          holdDays = (maxDate % 100) + 31 - (minDate % 100);
-        }
+        // 使用 Date 对象精确计算跨月天数
+        const minStr = minDate.toString();
+        const maxStr = maxDate.toString();
+        const startDate = new Date(
+          parseInt(minStr.slice(0, 4)),
+          parseInt(minStr.slice(4, 6)) - 1,
+          parseInt(minStr.slice(6, 8))
+        );
+        const endDate = new Date(
+          parseInt(maxStr.slice(0, 4)),
+          parseInt(maxStr.slice(4, 6)) - 1,
+          parseInt(maxStr.slice(6, 8))
+        );
+        const diffTime = endDate.getTime() - startDate.getTime();
+        holdDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
       }
     }
   }

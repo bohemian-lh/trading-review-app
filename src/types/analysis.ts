@@ -14,6 +14,9 @@ export interface AnalysisResult {
   typeFengxianShifang: number;
   typeShuangyang: number;
   typeFeiXitong: number;
+  // 聚合盈亏比
+  qifeiShuidiZong: number;
+  zhuanYiZhi: number;
 }
 
 export interface MonthlyAnalysis {

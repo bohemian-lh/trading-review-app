@@ -1,6 +1,5 @@
 import React from 'react';
 import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
-import { Button } from './Button';
 
 interface ZoomControlsProps {
   zoom: number;
@@ -9,8 +8,8 @@ interface ZoomControlsProps {
   onReset: () => void;
   isAtMin: boolean;
   isAtMax: boolean;
-  hint?: string;
   showHint: boolean;
+  hint: string;
 }
 
 export const ZoomControls: React.FC<ZoomControlsProps> = ({
@@ -20,45 +19,37 @@ export const ZoomControls: React.FC<ZoomControlsProps> = ({
   onReset,
   isAtMin,
   isAtMax,
-  hint,
   showHint,
+  hint,
 }) => {
   return (
-    <div className="flex items-center gap-2 bg-white rounded-lg shadow-sm border border-gray-200 px-3 py-2">
-      <div className="flex items-center gap-1">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={onZoomOut}
-          disabled={isAtMin}
-          className="!p-2"
-        >
-          <ZoomOut className="h-4 w-4" />
-        </Button>
-        <div className="w-16 text-center text-sm font-medium text-gray-700">
-          {Math.round(zoom * 100)}%
-        </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={onZoomIn}
-          disabled={isAtMax}
-          className="!p-2"
-        >
-          <ZoomIn className="h-4 w-4" />
-        </Button>
-      </div>
-      <div className="h-5 w-px bg-gray-200 mx-1" />
-      <Button
-        variant="secondary"
-        size="sm"
+    <div className="flex items-center gap-2 bg-white rounded-lg shadow-sm border border-gray-200 px-3 py-2 relative">
+      <button
+        onClick={onZoomOut}
+        disabled={isAtMin}
+        className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        title="缩小"
+      >
+        <ZoomOut className="h-4 w-4" />
+      </button>
+      <span className="text-sm font-medium text-gray-700 w-12 text-center">{Math.round(zoom * 100)}%</span>
+      <button
+        onClick={onZoomIn}
+        disabled={isAtMax}
+        className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        title="放大"
+      >
+        <ZoomIn className="h-4 w-4" />
+      </button>
+      <button
         onClick={onReset}
-        className="!p-2"
+        className="p-2 rounded-md hover:bg-gray-100"
+        title="重置"
       >
         <RotateCcw className="h-4 w-4" />
-      </Button>
-      {showHint && hint && (
-        <div className="ml-2 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
+      </button>
+      {showHint && (
+        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
           {hint}
         </div>
       )}
