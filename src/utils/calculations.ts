@@ -3,8 +3,8 @@ import type { TradingRecord, YesNo } from '@/types';
 // 盈亏比计算规则 (v3):
 // - 总盈利绝对值 > 总亏损绝对值: 盈亏比 = 总盈利绝对值 / 总亏损绝对值 (正)
 // - 总盈利绝对值 < 总亏损绝对值: 盈亏比 = -总亏损绝对值 / 总盈利绝对值 (负)
-// - 全盈利(无亏损): 1.00
-// - 全亏损(无盈利): -1.00
+// - 全盈利(无亏损): 盈利之和 / 1.00
+// - 全亏损(无盈利): |亏损之和| / -1.00
 // - 无有效数据(双零): 'N/A'
 // - 结果保留 2 位小数
 
@@ -31,9 +31,9 @@ export function calculateProfitRatio(
   // 无有效数据
   if (absProfit === 0 && absLoss === 0) return 'N/A';
   // 全盈利
-  if (absProfit > 0 && absLoss === 0) return 1.00;
+  if (absProfit > 0 && absLoss === 0) return parseFloat((absProfit / 1).toFixed(2));
   // 全亏损
-  if (absProfit === 0 && absLoss > 0) return -1.00;
+  if (absProfit === 0 && absLoss > 0) return parseFloat((-absLoss / 1).toFixed(2));
 
   let ratio: number;
   if (absProfit > absLoss) {
@@ -63,8 +63,8 @@ export function calculateAvgProfitRatio(
   const absLoss = Math.abs(sumNegative);
 
   if (absProfit === 0 && absLoss === 0) return 'N/A';
-  if (absProfit > 0 && absLoss === 0) return 1.00;
-  if (absProfit === 0 && absLoss > 0) return -1.00;
+  if (absProfit > 0 && absLoss === 0) return parseFloat((absProfit / 1).toFixed(2));
+  if (absProfit === 0 && absLoss > 0) return parseFloat((-absLoss / 1).toFixed(2));
 
   let ratio: number;
   if (absProfit > absLoss) {
@@ -131,9 +131,9 @@ export function calculateProfitRatioByType(records: TradingRecord[], tradingType
   // 无有效数据
   if (profitSum === 0 && lossSum === 0) return 0;
   // 全盈利
-  if (profitSum > 0 && lossSum === 0) return 1.00;
+  if (profitSum > 0 && lossSum === 0) return parseFloat((profitSum / 1).toFixed(2));
   // 全亏损
-  if (profitSum === 0 && lossSum > 0) return -1.00;
+  if (profitSum === 0 && lossSum > 0) return parseFloat((-lossSum / 1).toFixed(2));
 
   const larger = Math.max(profitSum, lossSum);
   const smaller = Math.min(profitSum, lossSum);
@@ -153,8 +153,8 @@ export function calculateProfitRatioByMultipleTypes(records: TradingRecord[], tr
   }
 
   if (profitSum === 0 && lossSum === 0) return 0;
-  if (profitSum > 0 && lossSum === 0) return 1.00;
-  if (profitSum === 0 && lossSum > 0) return -1.00;
+  if (profitSum > 0 && lossSum === 0) return parseFloat((profitSum / 1).toFixed(2));
+  if (profitSum === 0 && lossSum > 0) return parseFloat((-lossSum / 1).toFixed(2));
 
   const larger = Math.max(profitSum, lossSum);
   const smaller = Math.min(profitSum, lossSum);
