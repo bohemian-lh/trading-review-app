@@ -1,4 +1,3 @@
-export { ProfitRatioChart } from './ProfitRatioChart';
 export { MonthlyProfitRatioChart } from './MonthlyProfitRatioChart';
 export { CycleSystemChart } from './CycleSystemChart';
 export { CycleTypeChart } from './CycleTypeChart';

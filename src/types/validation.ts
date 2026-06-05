@@ -28,6 +28,8 @@ const AnalysisResultSchema = z.object({
   typeFengxianShifang: z.number(),
   typeShuangyang: z.number(),
   typeFeiXitong: z.number(),
+  qifeiShuidiZong: z.number(),
+  zhuanYiZhi: z.number(),
 }) satisfies z.ZodType<AnalysisResult>;
 
 // MonthlyAnalysis schema
