@@ -206,6 +206,7 @@ function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
     nonSystemProfitAvgHoldDays: analysisMap.get('非系统盈利平均持仓天数') || 'N/A',
     nonSystemLossAvgHoldDays: analysisMap.get('非系统亏损平均持仓天数') || 'N/A',
     typeQifeiShuidi: 0,
+    typeQifeiShuidiSandengliang: 0,
     typeQifeiQianDuoCaiMA: 0,
     typeFengxianShifang: 0,
     typeShuangyang: 0,
@@ -349,6 +350,12 @@ export function exportTable2ToExcel(analysis: AnalysisResult, filename: string):
     ['系统亏损平均持仓天数', formatValue(analysis.systemLossAvgHoldDays, false)],
     ['非系统盈利平均持仓天数', formatValue(analysis.nonSystemProfitAvgHoldDays, false)],
     ['非系统亏损平均持仓天数', formatValue(analysis.nonSystemLossAvgHoldDays, false)],
+    ['齐飞水底盈亏比', formatValue(analysis.typeQifeiShuidi, true)],
+    ['齐飞水底三等量盈亏比', formatValue(analysis.typeQifeiShuidiSandengliang, true)],
+    ['齐飞前多踩MA盈亏比', formatValue(analysis.typeQifeiQianDuoCaiMA, true)],
+    ['风险释放平台转一致盈亏比', formatValue(analysis.typeFengxianShifang, true)],
+    ['双阳平台转一致盈亏比', formatValue(analysis.typeShuangyang, true)],
+    ['非系统盈亏比', formatValue(analysis.typeFeiXitong, true)],
   ];
 
   const worksheet = XLSX.utils.aoa_to_sheet(data);
@@ -642,6 +649,7 @@ function createTestTable2Data(): any[][] {
   tableData.push(['非系统盈利平均持仓天数', 7.8]);
   tableData.push(['非系统亏损平均持仓天数', 4.9]);
   tableData.push(['齐飞水底盈亏比', 1.25]);
+  tableData.push(['齐飞水底三等量盈亏比', 0.95]);
   tableData.push(['齐飞前多踩MA盈亏比', 1.83]);
   tableData.push(['风险释放平台转一致盈亏比', 1.56]);
   tableData.push(['双阳平台转一致盈亏比', 2.10]);

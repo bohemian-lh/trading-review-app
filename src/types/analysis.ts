@@ -9,6 +9,7 @@ export interface AnalysisResult {
   nonSystemLossAvgHoldDays: number | 'N/A';
   // 按交易类型盈亏比
   typeQifeiShuidi: number;
+  typeQifeiShuidiSandengliang: number;
   typeQifeiQianDuoCaiMA: number;
   typeFengxianShifang: number;
   typeShuangyang: number;

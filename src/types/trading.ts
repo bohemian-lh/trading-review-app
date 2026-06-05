@@ -23,6 +23,7 @@ export interface TradingRecord {
 
 export type TradingType = 
   | '齐飞水底'
+  | '齐飞水底三等量'
   | '齐飞前多踩MA'
   | '风险释放平台转一致'
   | '双阳平台转一致'
