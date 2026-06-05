@@ -16,17 +16,17 @@ import { useChartConfig } from '@/hooks/useChartConfig';
 import type { MonthlyAnalysis } from '@/types';
 
 const CHART_KEY = 'monthly-total-profit';
-const ALL_LINES = ['totalProfit'];
+const ALL_LINES = ['monthlyProfit', 'cumulativeProfit'];
 
 interface LineConfig {
   key: string;
   name: string;
   color: string;
-  getValue: (item: MonthlyAnalysis) => number | 'N/A';
 }
 
 const lineConfigs: LineConfig[] = [
-  { key: 'totalProfit', name: '总盈亏', color: '#10b981', getValue: (d) => d.totalProfit },
+  { key: 'monthlyProfit', name: '月盈亏', color: '#10b981' },
+  { key: 'cumulativeProfit', name: '总盈亏', color: '#f59e0b' },
 ];
 
 export const MonthlyTotalProfitChart: React.FC = () => {
@@ -36,11 +36,17 @@ export const MonthlyTotalProfitChart: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const chartData = useMemo(() => {
-    return monthlyData.map((item: MonthlyAnalysis) => ({
-      month: item.month,
-      displayMonth: formatMonthDisplay(item.month),
-      totalProfit: item.totalProfit,
-    }));
+    let cumulativeSum = 0;
+    return monthlyData.map((item: MonthlyAnalysis) => {
+      const monthlyProfit = typeof item.totalProfit === 'number' ? item.totalProfit : 0;
+      cumulativeSum += monthlyProfit;
+      return {
+        month: item.month,
+        displayMonth: formatMonthDisplay(item.month),
+        monthlyProfit,
+        cumulativeProfit: parseFloat(cumulativeSum.toFixed(2)),
+      };
+    });
   }, [monthlyData]);
 
   const visibleLines = lineConfigs.filter(l => selected.includes(l.key));
@@ -48,7 +54,8 @@ export const MonthlyTotalProfitChart: React.FC = () => {
   const yDomain = useMemo(() => {
     const values: number[] = [];
     for (const item of chartData) {
-      if (typeof item.totalProfit === 'number') values.push(Math.abs(item.totalProfit));
+      values.push(Math.abs(item.monthlyProfit));
+      values.push(Math.abs(item.cumulativeProfit));
     }
     if (values.length === 0) return [-10, 10];
     const maxAbs = Math.max(...values, 1);
@@ -128,7 +135,8 @@ export const MonthlyTotalProfitChart: React.FC = () => {
       </div>
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h4 className="font-medium text-blue-900 mb-2">计算规则</h4>
-        <p className="text-sm text-blue-800">总盈亏 = 当月所有交易记录的 profitPercent 求和，正数表示盈利，负数表示亏损</p>
+        <p className="text-sm text-blue-800">月盈亏 = 当月所有交易记录的 profitPercent 求和，正数表示盈利，负数表示亏损</p>
+        <p className="text-sm text-blue-800 mt-1">总盈亏 = 从第一个有数据的月开始，逐月累加月盈亏值</p>
       </div>
     </div>
   );
