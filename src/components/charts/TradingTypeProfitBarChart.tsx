@@ -28,6 +28,7 @@ const barConfigs: BarConfig[] = [
   { key: 'zhuanYizhi', name: '转一致', color: '#ec4899' },
   { key: 'systemNoMistake', name: '系统无失误', color: '#10b981' },
   { key: 'systemWithMistake', name: '系统有失误', color: '#f59e0b' },
+  { key: 'nonSystem', name: '非系统', color: '#ef4444' },
   { key: 'typeQifeiShuidi', name: '齐飞水底', color: '#84cc16' },
   { key: 'typeQifeiShuidiSandengliang', name: '齐飞水底三等量', color: '#a78bfa' },
   { key: 'typeQifeiQianDuoCaiMA', name: '齐飞前多踩MA', color: '#22d3ee' },
@@ -36,7 +37,7 @@ const barConfigs: BarConfig[] = [
 ];
 
 const ALL_KEYS = barConfigs.map(b => b.key);
-const DEFAULT_KEYS = barConfigs.slice(0, 5).map(b => b.key);
+const DEFAULT_KEYS = barConfigs.slice(0, 6).map(b => b.key);
 
 export const TradingTypeProfitBarChart: React.FC = () => {
   const analysis = useAnalysisResult();
@@ -51,6 +52,7 @@ export const TradingTypeProfitBarChart: React.FC = () => {
       { key: 'zhuanYizhi', name: '转一致', value: analysis.zhuanYiZhi, color: '#ec4899' },
       { key: 'systemNoMistake', name: '系统无失误', value: toValue(analysis.systemNoMistakeProfitRatio), color: '#10b981' },
       { key: 'systemWithMistake', name: '系统有失误', value: toValue(analysis.systemWithMistakeProfitRatio), color: '#f59e0b' },
+      { key: 'nonSystem', name: '非系统', value: toValue(analysis.nonSystemProfitRatio), color: '#ef4444' },
       { key: 'typeQifeiShuidi', name: '齐飞水底', value: analysis.typeQifeiShuidi, color: '#84cc16' },
       { key: 'typeQifeiShuidiSandengliang', name: '齐飞水底三等量', value: analysis.typeQifeiShuidiSandengliang, color: '#a78bfa' },
       { key: 'typeQifeiQianDuoCaiMA', name: '齐飞前多踩MA', value: analysis.typeQifeiQianDuoCaiMA, color: '#22d3ee' },

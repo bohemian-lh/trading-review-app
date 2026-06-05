@@ -31,6 +31,7 @@ const lineConfigs: LineConfig[] = [
   { key: '双阳平台转一致', name: '双阳平台转一致', color: '#f59e0b' },
   { key: '齐飞水底总', name: '齐飞水底总', color: '#06b6d4' },
   { key: '转一致', name: '转一致', color: '#ec4899' },
+  { key: '非系统', name: '非系统', color: '#ef4444' },
 ];
 
 const ALL_KEYS = lineConfigs.map(l => l.key);
