@@ -161,3 +161,24 @@ export function calculateProfitRatioByMultipleTypes(records: TradingRecord[], tr
   const ratio = parseFloat((larger / smaller).toFixed(2));
   return profitSum > lossSum ? ratio : -ratio;
 }
+
+export function calculateProfitRatioByEntryType(records: TradingRecord[], entryType: string): number {
+  const typeRecords = records.filter(r => r.entryType === entryType);
+
+  let profitSum = 0;
+  let lossSum = 0;
+
+  for (const r of typeRecords) {
+    if (r.profitPercent > 0) profitSum += r.profitPercent;
+    else if (r.profitPercent < 0) lossSum += Math.abs(r.profitPercent);
+  }
+
+  if (profitSum === 0 && lossSum === 0) return 0;
+  if (profitSum > 0 && lossSum === 0) return parseFloat((profitSum / 1).toFixed(2));
+  if (profitSum === 0 && lossSum > 0) return parseFloat((-lossSum / 1).toFixed(2));
+
+  const larger = Math.max(profitSum, lossSum);
+  const smaller = Math.min(profitSum, lossSum);
+  const ratio = parseFloat((larger / smaller).toFixed(2));
+  return profitSum > lossSum ? ratio : -ratio;
+}

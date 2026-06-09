@@ -1,7 +1,7 @@
 import type { TradingRecord, ValidationResult, ValidationError } from '@/types';
 import { parseDate } from './dateUtils';
 
-const TRADING_TYPES = ['齐飞水底', '齐飞水底三等量', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统'];
+const TRADING_TYPES = ['齐飞水底', '齐飞水底三等量', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统', '未知'];
 
 export function validateTradingRecord(
   record: Partial<TradingRecord>,
@@ -59,6 +59,22 @@ export function validateTradingRecord(
     errors.push({
       field: 'tradingType',
       message: `交易类型无效，应为以下之一：${TRADING_TYPES.join('、')}`,
+      row: rowIndex,
+    });
+  }
+
+  // 交易切入类型验证
+  const ENTRY_TYPES = ['p2前', 'p34', 'p4后', '未知'];
+  if (!record.entryType) {
+    errors.push({
+      field: 'entryType',
+      message: '交易切入类型不能为空',
+      row: rowIndex,
+    });
+  } else if (!ENTRY_TYPES.includes(record.entryType)) {
+    errors.push({
+      field: 'entryType',
+      message: `交易切入类型无效，应为以下之一：${ENTRY_TYPES.join('、')}`,
       row: rowIndex,
     });
   }
