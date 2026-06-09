@@ -7,20 +7,10 @@ export interface AnalysisResult {
   systemLossAvgHoldDays: number | 'N/A';
   nonSystemProfitAvgHoldDays: number | 'N/A';
   nonSystemLossAvgHoldDays: number | 'N/A';
-  // 按交易类型盈亏比
-  typeQifeiShuidi: number;
-  typeQifeiShuidiSandengliang: number;
-  typeQifeiQianDuoCaiMA: number;
-  typeFengxianShifang: number;
-  typeShuangyang: number;
-  typeFeiXitong: number;
-  // 聚合盈亏比
-  qifeiShuidiZong: number;
-  zhuanYiZhi: number;
-  // 按交易切入类型盈亏比
-  entryP2qianProfitRatio: number;
-  entryP34ProfitRatio: number;
-  entryP4houProfitRatio: number;
+  // 动态字段（从 fieldConfig 驱动）
+  tradingTypeRatios: Record<string, number>;
+  entryTypeRatios: Record<string, number>;
+  aggregateRatios: Record<string, number>;
 }
 
 export interface MonthlyAnalysis {

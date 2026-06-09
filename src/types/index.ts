@@ -3,6 +3,7 @@ export * from './analysis';
 export * from './storage';
 export * from './ocr';
 export * from './cycleStats';
+export * from './fieldConfig';
 
 export interface ValidationResult {
   isValid: boolean;

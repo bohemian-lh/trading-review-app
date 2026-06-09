@@ -1,4 +1,5 @@
 import type { TradingRecord, YesNo } from '@/types';
+import type { AggregateRule } from '@/types';
 
 // 盈亏比计算规则 (v3):
 // - 总盈利绝对值 > 总亏损绝对值: 盈亏比 = 总盈利绝对值 / 总亏损绝对值 (正)
@@ -28,11 +29,8 @@ export function calculateProfitRatio(
   const absProfit = Math.abs(sumPositive);
   const absLoss = Math.abs(sumNegative);
 
-  // 无有效数据
   if (absProfit === 0 && absLoss === 0) return 'N/A';
-  // 全盈利
   if (absProfit > 0 && absLoss === 0) return parseFloat((absProfit / 1).toFixed(2));
-  // 全亏损
   if (absProfit === 0 && absLoss > 0) return parseFloat((-absLoss / 1).toFixed(2));
 
   let ratio: number;
@@ -128,11 +126,8 @@ export function calculateProfitRatioByType(records: TradingRecord[], tradingType
     else if (r.profitPercent < 0) lossSum += Math.abs(r.profitPercent);
   }
 
-  // 无有效数据
   if (profitSum === 0 && lossSum === 0) return 0;
-  // 全盈利
   if (profitSum > 0 && lossSum === 0) return parseFloat((profitSum / 1).toFixed(2));
-  // 全亏损
   if (profitSum === 0 && lossSum > 0) return parseFloat((-lossSum / 1).toFixed(2));
 
   const larger = Math.max(profitSum, lossSum);
@@ -181,4 +176,41 @@ export function calculateProfitRatioByEntryType(records: TradingRecord[], entryT
   const smaller = Math.min(profitSum, lossSum);
   const ratio = parseFloat((larger / smaller).toFixed(2));
   return profitSum > lossSum ? ratio : -ratio;
+}
+
+// ============ 动态批量计算函数（Phase 2：从 fieldConfig 驱动）===========
+
+export function calculateTradingTypeRatios(
+  records: TradingRecord[],
+  tradingTypes: string[]
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const type of tradingTypes) {
+    if (type === '未知') continue;
+    result[type] = calculateProfitRatioByType(records, type);
+  }
+  return result;
+}
+
+export function calculateEntryTypeRatios(
+  records: TradingRecord[],
+  entryTypes: string[]
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const type of entryTypes) {
+    if (type === '未知') continue;
+    result[type] = calculateProfitRatioByEntryType(records, type);
+  }
+  return result;
+}
+
+export function calculateAggregateRatios(
+  records: TradingRecord[],
+  rules: AggregateRule[]
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const rule of rules) {
+    result[rule.name] = calculateProfitRatioByMultipleTypes(records, rule.includedTypes);
+  }
+  return result;
 }

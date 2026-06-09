@@ -1,16 +1,5 @@
-// 11类统计类型
-export type CycleStatType = 
-  | '系统' 
-  | '系统无失误' 
-  | '系统有失误' 
-  | '非系统'
-  | '齐飞水底'
-  | '齐飞前多踩MA'
-  | '风险释放平台转一致'
-  | '双阳平台转一致'
-  | '齐飞水底三等量'
-  | '齐飞水底总'
-  | '转一致';
+// 统计类型 — 从 fieldConfig 动态派生，不再固定 union
+export type CycleStatType = string;
 
 // 周期统计数据
 export interface CycleStats {
