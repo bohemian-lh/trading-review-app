@@ -210,7 +210,26 @@ export const useDataStore = create<DataState>((set, get) => {
     },
 
     saveFieldConfig: async (config) => {
-      set({ fieldConfig: config, statsNeedUpdate: true });
+      const state = get();
+      // 计算被删除的 statType keys
+      const deletedTradingTypes = state.fieldConfig.tradingTypes.filter(t => !config.tradingTypes.includes(t));
+      const deletedEntryTypes = state.fieldConfig.entryTypes.filter(t => !config.entryTypes.includes(t));
+      const deletedAggRules = state.fieldConfig.aggregateRules
+        .filter(r => !config.aggregateRules.find(cr => cr.name === r.name))
+        .map(r => r.name);
+      const deletedKeys = [...deletedTradingTypes, ...deletedEntryTypes, ...deletedAggRules];
+      
+      const cleanedCycleStats = { ...state.cycleStats };
+      let cleaned = false;
+      for (const key of deletedKeys) {
+        if (key in cleanedCycleStats) { delete cleanedCycleStats[key]; cleaned = true; }
+      }
+      
+      set({ 
+        fieldConfig: config, 
+        cycleStats: cleaned ? cleanedCycleStats : state.cycleStats,
+        statsNeedUpdate: true 
+      });
       await r2StorageService.saveConfig(config);
     },
 
