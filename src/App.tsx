@@ -1,8 +1,9 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { FileSpreadsheet, BarChart3, LayoutDashboard, Loader2 } from 'lucide-react';
+import { FileSpreadsheet, BarChart3, LayoutDashboard, Settings, Loader2 } from 'lucide-react';
 import { ExcelUploader } from '@/components/excel';
 import { DataEditor } from '@/components/editor';
+import { FieldConfigPage } from '@/components/config/FieldConfigPage';
 import { 
   MonthlyProfitRatioChart,
   CycleSystemChart,
@@ -106,6 +107,7 @@ const Navigation: React.FC = () => {
     { path: '/', label: '首页', icon: LayoutDashboard },
     { path: '/import', label: '导入/导出', icon: FileSpreadsheet },
     { path: '/editor', label: '数据编辑', icon: BarChart3 },
+    { path: '/config', label: '字段配置', icon: Settings },
   ];
 
   return (
@@ -172,6 +174,7 @@ const App: React.FC = () => {
             <Route path="/" element={<Dashboard />} />
             <Route path="/import" element={<ExcelUploader />} />
             <Route path="/editor" element={<DataEditor />} />
+            <Route path="/config" element={<FieldConfigPage />} />
           </Routes>
         </main>
       </div>
