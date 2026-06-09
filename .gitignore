@@ -32,6 +32,9 @@ coverage/
 .wrangler/
 workers/_assets/
 
+# Wrangler 配置（包含敏感信息，使用 wrangler.toml.example 作为模板）
+wrangler.toml
+
 # Temporary files
 *.tmp
 *.temp

@@ -1,5 +1,5 @@
 # Cloudflare Pages Configuration
-微信公众号：Web技术学堂
+
 
 ## 项目部署步骤
 

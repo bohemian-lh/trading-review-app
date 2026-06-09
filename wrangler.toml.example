@@ -1,0 +1,25 @@
+# Wrangler 配置模板
+# 复制此文件为 wrangler.toml 并填入实际值
+# cp wrangler.toml.example wrangler.toml
+#
+# ⚠️ wrangler.toml 已加入 .gitignore，不要提交到 Git 仓库
+
+name = "trading-review-app"
+compatibility_date = "2024-01-01"
+
+# Pages 配置
+pages_build_output_dir = "dist"
+
+# R2 存储绑定
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "trading-review-data"
+
+# Workers AI 绑定
+[ai]
+binding = "AI"
+
+# 环境变量 — API 鉴权 Token
+# 也可以直接在 Cloudflare Pages Dashboard → Settings → Environment variables 中设置
+[vars]
+API_TOKEN = "your-secure-api-token-here"
