@@ -1,11 +1,11 @@
-import type { TradingRecord, ValidationResult, ValidationError } from '@/types';
+import type { TradingRecord, ValidationResult, ValidationError, FieldConfig } from '@/types';
+import { DEFAULT_FIELD_CONFIG } from '@/types';
 import { parseDate } from './dateUtils';
-
-const TRADING_TYPES = ['齐飞水底', '齐飞水底三等量', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统', '未知'];
 
 export function validateTradingRecord(
   record: Partial<TradingRecord>,
-  rowIndex?: number
+  rowIndex?: number,
+  fieldConfig: FieldConfig = DEFAULT_FIELD_CONFIG
 ): ValidationResult {
   const errors: ValidationError[] = [];
 
@@ -48,33 +48,32 @@ export function validateTradingRecord(
     });
   }
 
-  // 交易类型验证
+  // 交易类型验证 — 从 fieldConfig 动态获取
   if (!record.tradingType) {
     errors.push({
       field: 'tradingType',
       message: '交易类型不能为空',
       row: rowIndex,
     });
-  } else if (!TRADING_TYPES.includes(record.tradingType)) {
+  } else if (!fieldConfig.tradingTypes.includes(record.tradingType)) {
     errors.push({
       field: 'tradingType',
-      message: `交易类型无效，应为以下之一：${TRADING_TYPES.join('、')}`,
+      message: `交易类型无效，应为以下之一：${fieldConfig.tradingTypes.join('、')}`,
       row: rowIndex,
     });
   }
 
-  // 交易切入类型验证
-  const ENTRY_TYPES = ['p2前', 'p34', 'p4后', '未知'];
+  // 交易切入类型验证 — 从 fieldConfig 动态获取
   if (!record.entryType) {
     errors.push({
       field: 'entryType',
       message: '交易切入类型不能为空',
       row: rowIndex,
     });
-  } else if (!ENTRY_TYPES.includes(record.entryType)) {
+  } else if (!fieldConfig.entryTypes.includes(record.entryType)) {
     errors.push({
       field: 'entryType',
-      message: `交易切入类型无效，应为以下之一：${ENTRY_TYPES.join('、')}`,
+      message: `交易切入类型无效，应为以下之一：${fieldConfig.entryTypes.join('、')}`,
       row: rowIndex,
     });
   }
@@ -176,11 +175,11 @@ export function validateTradingRecord(
   };
 }
 
-export function validateTradingRecords(records: Partial<TradingRecord>[]): ValidationResult {
+export function validateTradingRecords(records: Partial<TradingRecord>[], fieldConfig?: FieldConfig): ValidationResult {
   const allErrors: ValidationError[] = [];
 
   for (let i = 0; i < records.length; i++) {
-    const result = validateTradingRecord(records[i], i + 2);
+    const result = validateTradingRecord(records[i], i + 2, fieldConfig);
     allErrors.push(...result.errors);
   }
 
