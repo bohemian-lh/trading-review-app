@@ -116,6 +116,34 @@ class R2StorageService {
     }
   }
 
+  async getConfig(): Promise<{
+    success: boolean; config?: FieldConfig | null; message?: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/config`, { method: 'GET', headers: this.getHeaders() });
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Get config failed:', error);
+      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async saveConfig(config: FieldConfig): Promise<{
+    success: boolean; message: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/config`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ config }),
+      });
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Save config failed:', error);
+      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
   async saveRecords(
     records: TradingRecord[],
     version?: number,
@@ -123,18 +151,17 @@ class R2StorageService {
     customMonthly?: CustomMonthlyData,
     cycleStats?: Record<CycleStatType, CycleStats[]>,
     cycleStatsGeneratedAt?: number | null,
-    fieldConfig?: FieldConfig,
   ): Promise<{
     success: boolean; message: string; version?: number; conflict?: boolean;
     records?: TradingRecord[]; customAnalysis?: CustomAnalysisData;
     customMonthly?: CustomMonthlyData; cycleStats?: Record<CycleStatType, CycleStats[]>;
-    cycleStatsGeneratedAt?: number | null; fieldConfig?: FieldConfig; error?: string;
+    cycleStatsGeneratedAt?: number | null; error?: string;
   }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/records`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ records, version, customAnalysis, customMonthly, cycleStats, cycleStatsGeneratedAt, fieldConfig }),
+        body: JSON.stringify({ records, version, customAnalysis, customMonthly, cycleStats, cycleStatsGeneratedAt }),
       });
       const data = await this.handleResponse<RecordsResponse>(response);
       return data;

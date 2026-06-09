@@ -41,6 +41,7 @@ interface DataState {
   deleteCustomMonthly: (month: string) => void;
   toggleUseCustomMonthly: () => void;
   updateCycleStats: () => void;
+  saveFieldConfig: (config: FieldConfig) => Promise<void>;
   loadFromR2: () => Promise<void>;
   saveToR2: () => Promise<void>;
 }
@@ -208,13 +209,22 @@ export const useDataStore = create<DataState>((set, get) => {
       set({ records: updatedRecords, cycleStats: result.stats, cycleStatsGeneratedAt: result.generatedAt, statsNeedUpdate: false });
     },
 
+    saveFieldConfig: async (config) => {
+      set({ fieldConfig: config, statsNeedUpdate: true });
+      await r2StorageService.saveConfig(config);
+    },
+
     loadFromR2: async () => {
       set({ isLoading: true, error: null });
       try {
         const result = await r2StorageService.getRecords() as any;
+        // 并行加载配置
+        const configResult = await r2StorageService.getConfig();
+        const fieldConfig = (configResult.success && configResult.config?.tradingTypes) 
+          ? configResult.config 
+          : defaultConfig;
         if (result.success) {
           const normalizedRecords = (result.records || []).map((r: any) => ({ ...r, hasCycleStats: r.hasCycleStats ?? false, hasMonthlyStats: r.hasMonthlyStats ?? false }));
-          const fieldConfig = result.fieldConfig && result.fieldConfig.tradingTypes ? result.fieldConfig : defaultConfig;
           set({
             records: normalizedRecords,
             fieldConfig,
@@ -225,7 +235,7 @@ export const useDataStore = create<DataState>((set, get) => {
             version: result.version || null,
             isInitialized: true,
           });
-        } else { set({ isInitialized: true }); }
+        } else { set({ isInitialized: true, fieldConfig }); }
       } catch (error) {
         set({ error: error instanceof Error ? error.message : 'Load failed', isInitialized: true });
       } finally { set({ isLoading: false }); }
@@ -240,8 +250,7 @@ export const useDataStore = create<DataState>((set, get) => {
         const result = await r2StorageService.saveRecords(
           state.records, state.version ?? undefined,
           state.customAnalysis, state.customMonthly,
-          state.cycleStats, state.cycleStatsGeneratedAt,
-          state.fieldConfig
+          state.cycleStats, state.cycleStatsGeneratedAt
         ) as any;
         if (result.success) {
           set({ version: result.version || null, error: null });
@@ -250,7 +259,6 @@ export const useDataStore = create<DataState>((set, get) => {
           set({
             error: '数据冲突，已加载最新数据，请重试操作',
             records: normalizedRecords,
-            fieldConfig: result.fieldConfig || defaultConfig,
             customAnalysis: result.customAnalysis || { useCustom: false, data: { ...emptyAnalysis } },
             customMonthly: result.customMonthly || { useCustom: false, data: [] },
             cycleStats: result.cycleStats || emptyCycleStats,
