@@ -17,6 +17,10 @@ export interface AnalysisResult {
   // 聚合盈亏比
   qifeiShuidiZong: number;
   zhuanYiZhi: number;
+  // 按交易切入类型盈亏比
+  entryP2qianProfitRatio: number;
+  entryP34ProfitRatio: number;
+  entryP4houProfitRatio: number;
 }
 
 export interface MonthlyAnalysis {

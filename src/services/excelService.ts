@@ -13,6 +13,7 @@ const HEADERS_1 = [
   '股票名称',
   '股票代码',
   '交易类型',
+  '交易切入类型',
   '是否符合系统',
   '有无大的失误',
   '盈亏情况',
@@ -213,6 +214,9 @@ function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
     typeFeiXitong: 0,
     qifeiShuidiZong: 0,
     zhuanYiZhi: 0,
+    entryP2qianProfitRatio: 0,
+    entryP34ProfitRatio: 0,
+    entryP4houProfitRatio: 0,
   };
 }
 
@@ -263,10 +267,15 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
   }
 
   const tradingType = row['交易类型'] as string;
-  const validTradingTypes = ['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统'] as const;
+  const validTradingTypes = ['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统', '齐飞水底三等量', '未知'] as const;
   const validTradingType = validTradingTypes.includes(tradingType as any) 
     ? tradingType as TradingType 
-    : '齐飞水底';
+    : '未知';
+
+  // 解析交易切入类型，不在枚举中的映射为「未知」
+  const entryTypeRaw = String(row['交易切入类型'] || '').trim();
+  const validEntryTypes = ['p2前', 'p34', 'p4后', '未知'];
+  const entryType = validEntryTypes.includes(entryTypeRaw) ? entryTypeRaw : '未知';
 
   // 解析盈亏情况，可能带有 %
   const profitStr = String(row['盈亏情况'] || '').trim().replace('%', '');
@@ -281,6 +290,7 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     stockName: String(row['股票名称'] || ''),
     stockCode: String(row['股票代码'] || ''),
     tradingType: validTradingType,
+    entryType: entryType as any,
     isSystem: row['是否符合系统'] === '是' ? '是' : '否',
     hasMistake: row['有无大的失误'] === '是' ? '是' : row['有无大的失误'] === '其他' ? '其他' : '否',
     profitPercent,
@@ -305,6 +315,7 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string):
       record.stockName,
       record.stockCode,
       record.tradingType,
+      record.entryType,
       record.isSystem,
       record.hasMistake,
       record.profitPercent,
@@ -467,6 +478,7 @@ export function exportAllToExcel(
       record.stockName,
       record.stockCode,
       record.tradingType,
+      record.entryType,
       record.isSystem,
       record.hasMistake,
       record.profitPercent,
@@ -489,6 +501,9 @@ export function exportAllToExcel(
     ['系统亏损平均持仓天数', formatValue(finalAnalysis.systemLossAvgHoldDays, false)],
     ['非系统盈利平均持仓天数', formatValue(finalAnalysis.nonSystemProfitAvgHoldDays, false)],
     ['非系统亏损平均持仓天数', formatValue(finalAnalysis.nonSystemLossAvgHoldDays, false)],
+    ['p2前盈亏比', formatValue(finalAnalysis.entryP2qianProfitRatio, true)],
+    ['p34盈亏比', formatValue(finalAnalysis.entryP34ProfitRatio, true)],
+    ['p4后盈亏比', formatValue(finalAnalysis.entryP4houProfitRatio, true)],
   ];
 
   const table3Data = [
@@ -507,8 +522,8 @@ export function exportAllToExcel(
   const worksheet1 = XLSX.utils.aoa_to_sheet(table1Data);
   worksheet1['!cols'] = [
     { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
-    { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 15 },
-    { wch: 15 }, { wch: 15 }, { wch: 10 },
+    { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
+    { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
   ];
 
   const worksheet2 = XLSX.utils.aoa_to_sheet(table2Data);
@@ -613,6 +628,8 @@ const TRADING_TYPES = [
   '非系统'
 ];
 
+const ENTRY_TYPES = ['p2前', 'p34', 'p4后', '未知'];
+
 function generateRandomProfit(): number {
   return Math.round((Math.random() * 80 - 30) * 100) / 100;
 }
@@ -634,7 +651,8 @@ function createTestTable1Data(): any[][] {
       const hasMistake = isSystem === '是' && Math.random() > 0.7 ? '是' : '否';
       const profitPercent = generateRandomProfit();
       const holdDays = generateRandomHoldDays();
-      tableData.push([openDate, stock.name, stock.code, tradingType, isSystem, hasMistake, profitPercent, holdDays, '', '', '', '', '']);
+      const entryType = ENTRY_TYPES[Math.floor(Math.random() * ENTRY_TYPES.length)];
+      tableData.push([openDate, stock.name, stock.code, tradingType, entryType, isSystem, hasMistake, profitPercent, holdDays, '', '', '', '', '']);
     }
   }
   return tableData;
@@ -681,8 +699,8 @@ export function generateTestExcel(): void {
   const worksheet1 = XLSX.utils.aoa_to_sheet(createTestTable1Data());
   worksheet1['!cols'] = [
     { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
-    { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 15 },
-    { wch: 15 }, { wch: 15 }, { wch: 10 },
+    { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
+    { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
   ];
   XLSX.utils.book_append_sheet(workbook, worksheet1, SHEET_NAME_1);
 
@@ -706,8 +724,8 @@ export function createEmptyWorkbook(): void {
   const worksheet1 = XLSX.utils.aoa_to_sheet([HEADERS_1]);
   worksheet1['!cols'] = [
     { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
-    { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 15 },
-    { wch: 15 }, { wch: 15 }, { wch: 10 },
+    { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
+    { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
   ];
   XLSX.utils.book_append_sheet(workbook, worksheet1, SHEET_NAME_1);
 

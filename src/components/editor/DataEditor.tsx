@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle
 import { Button, Input, Select, Modal, Toggle, ZoomControls } from '@/components/common';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
 import { useTableZoom } from '@/hooks/useTableZoom';
-import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus, MonthlyAnalysis, AnalysisResult, ParsedTradeData } from '@/types';
+import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus, MonthlyAnalysis, AnalysisResult, ParsedTradeData, EntryType } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 import { validateTradingRecord } from '@/utils/validationUtils';
 import { ImportModal } from './ImportModal';
@@ -17,6 +17,14 @@ const TRADING_TYPE_OPTIONS = [
   { value: '双阳平台转一致', label: '双阳平台转一致' },
   { value: '非系统', label: '非系统' },
   { value: '齐飞水底三等量', label: '齐飞水底三等量' },
+  { value: '未知', label: '未知' },
+];
+
+const ENTRY_TYPE_OPTIONS = [
+  { value: 'p2前', label: 'p2前' },
+  { value: 'p34', label: 'p34' },
+  { value: 'p4后', label: 'p4后' },
+  { value: '未知', label: '未知' },
 ];
 
 const YES_NO_OPTIONS = [
@@ -35,6 +43,7 @@ const emptyRecord: TradingRecordInput = {
   stockName: '',
   stockCode: '',
   tradingType: '齐飞水底',
+  entryType: '未知',
   isSystem: '是',
   hasMistake: '否',
   profitPercent: null,
@@ -45,6 +54,7 @@ const emptyRecord: TradingRecordInput = {
 interface Filters {
   month: string;
   tradingType: string;
+  entryType: string;
   isSystem: string;
 }
 
@@ -73,6 +83,9 @@ const ANALYSIS_FIELDS: Array<{ key: keyof AnalysisResult; label: string }> = [
   { key: 'typeFengxianShifang', label: '风险释放平台转一致盈亏比' },
   { key: 'typeShuangyang', label: '双阳平台转一致盈亏比' },
   { key: 'typeFeiXitong', label: '非系统盈亏比' },
+  { key: 'entryP2qianProfitRatio', label: 'p2前盈亏比' },
+  { key: 'entryP34ProfitRatio', label: 'p34盈亏比' },
+  { key: 'entryP4houProfitRatio', label: 'p4后盈亏比' },
 ];
 
 const MONTHLY_FIELDS: Array<{ key: keyof Omit<MonthlyAnalysis, 'month'>; label: string }> = [
@@ -105,6 +118,7 @@ export const DataEditor: React.FC = () => {
   const [filters, setFilters] = useState<Filters>({
     month: '',
     tradingType: '',
+    entryType: '',
     isSystem: '',
   });
   const [sortConfig, setSortConfig] = useState<SortConfig>({
@@ -143,6 +157,9 @@ export const DataEditor: React.FC = () => {
         return false;
       }
       if (filters.tradingType && record.tradingType !== filters.tradingType) {
+        return false;
+      }
+      if (filters.entryType && record.entryType !== filters.entryType) {
         return false;
       }
       if (filters.isSystem && record.isSystem !== filters.isSystem) {
@@ -192,6 +209,7 @@ export const DataEditor: React.FC = () => {
         stockName: record.stockName,
         stockCode: record.stockCode,
         tradingType: record.tradingType,
+        entryType: record.entryType,
         isSystem: record.isSystem,
         hasMistake: record.hasMistake,
         profitPercent: record.profitPercent,
@@ -261,6 +279,7 @@ export const DataEditor: React.FC = () => {
     setFilters({
       month: '',
       tradingType: '',
+      entryType: '',
       isSystem: '',
     });
   };
@@ -451,7 +470,7 @@ export const DataEditor: React.FC = () => {
           <div className="flex items-center gap-4 mb-4">
             <Filter className="h-5 w-5 text-gray-600" />
             <h3 className="font-medium text-gray-800">数据筛选</h3>
-            {(filters.month || filters.tradingType || filters.isSystem) && (
+            {(filters.month || filters.tradingType || filters.entryType || filters.isSystem) && (
               <button
                 onClick={resetFilters}
                 className="ml-auto text-sm text-gray-600 hover:text-gray-800"
@@ -461,7 +480,7 @@ export const DataEditor: React.FC = () => {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 月份筛选
@@ -481,6 +500,20 @@ export const DataEditor: React.FC = () => {
                 value={filters.tradingType}
                 onChange={(e) => setFilters({ ...filters, tradingType: e.target.value })}
                 options={allTradingTypeOptions}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                交易切入类型
+              </label>
+              <Select
+                value={filters.entryType || ''}
+                onChange={(e) => setFilters({ ...filters, entryType: e.target.value })}
+                options={[
+                  { value: '', label: '全部' },
+                  ...ENTRY_TYPE_OPTIONS,
+                ]}
               />
             </div>
 
@@ -535,6 +568,7 @@ export const DataEditor: React.FC = () => {
                       </div>
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">交易类型</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">交易切入类型</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">是否符合系统</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">有无大的失误</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏情况</th>
@@ -545,7 +579,7 @@ export const DataEditor: React.FC = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
                         {records.length === 0 ? '暂无数据，请导入Excel或添加记录' : '无符合筛选条件的记录'}
                       </td>
                     </tr>
@@ -556,6 +590,7 @@ export const DataEditor: React.FC = () => {
                         <td className="px-4 py-3 text-sm text-gray-900">{record.stockName}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{record.stockCode}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{record.tradingType}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.entryType}</td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`inline-flex px-2 py-1 text-xs rounded ${
                             record.isSystem === '是' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
@@ -982,6 +1017,16 @@ export const DataEditor: React.FC = () => {
                 value={formData.tradingType}
                 onChange={(e) => setFormData({ ...formData, tradingType: e.target.value as TradingType })}
                 options={TRADING_TYPE_OPTIONS}
+              />
+            </div>
+            <div>
+              <label className="block text-base font-medium text-gray-700 mb-2">
+                交易切入类型
+              </label>
+              <Select
+                value={formData.entryType}
+                onChange={(e) => setFormData({ ...formData, entryType: e.target.value as EntryType })}
+                options={ENTRY_TYPE_OPTIONS}
               />
             </div>
             <div>

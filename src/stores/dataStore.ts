@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useMemo } from 'react';
 import type { TradingRecord, AnalysisResult, MonthlyAnalysis, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType } from '@/types';
-import { calculateProfitRatio, calculateAvgProfitRatio, calculateTotalProfit, calculateAverageHoldDays, calculateProfitRatioByType, calculateProfitRatioByMultipleTypes } from '@/utils/calculations';
+import { calculateProfitRatio, calculateAvgProfitRatio, calculateTotalProfit, calculateAverageHoldDays, calculateProfitRatioByType, calculateProfitRatioByMultipleTypes, calculateProfitRatioByEntryType } from '@/utils/calculations';
 import { extractMonth } from '@/utils/dateUtils';
 import { generateId } from '@/utils';
 import { r2StorageService } from '@/services/r2Service';
@@ -86,6 +86,9 @@ export const useDataStore = create<DataState>((set, get) => {
     typeFeiXitong: 0,
     qifeiShuidiZong: 0,
     zhuanYiZhi: 0,
+    entryP2qianProfitRatio: 0,
+    entryP34ProfitRatio: 0,
+    entryP4houProfitRatio: 0,
   };
 
   // 初始化空的周期统计
@@ -485,6 +488,9 @@ export function useAnalysisResult(): AnalysisResult {
       typeFeiXitong: calculateProfitRatioByType(records, '非系统'),
       qifeiShuidiZong: calculateProfitRatioByMultipleTypes(records, ['齐飞水底', '齐飞水底三等量', '齐飞前多踩MA']),
       zhuanYiZhi: calculateProfitRatioByMultipleTypes(records, ['风险释放平台转一致', '双阳平台转一致']),
+      entryP2qianProfitRatio: calculateProfitRatioByEntryType(records, 'p2前'),
+      entryP34ProfitRatio: calculateProfitRatioByEntryType(records, 'p34'),
+      entryP4houProfitRatio: calculateProfitRatioByEntryType(records, 'p4后'),
     };
   }, [records, customAnalysis]);
 }

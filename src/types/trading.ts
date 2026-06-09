@@ -4,6 +4,7 @@ export interface TradingRecord {
   stockName: string;
   stockCode: string;
   tradingType: TradingType;
+  entryType: EntryType;
   isSystem: YesNo;
   hasMistake: MistakeStatus;
   profitPercent: number;
@@ -27,7 +28,10 @@ export type TradingType =
   | '齐飞前多踩MA'
   | '风险释放平台转一致'
   | '双阳平台转一致'
-  | '非系统';
+  | '非系统'
+  | '未知';
+
+export type EntryType = 'p2前' | 'p34' | 'p4后' | '未知';
 
 export type YesNo = '是' | '否';
 
@@ -38,6 +42,7 @@ export interface TradingRecordInput {
   stockName: string;
   stockCode: string;
   tradingType: TradingType;
+  entryType: EntryType;
   isSystem: YesNo;
   hasMistake: MistakeStatus;
   profitPercent: number | null;
