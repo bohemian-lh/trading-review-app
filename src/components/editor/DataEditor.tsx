@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle
 import { Button, Input, Select, Modal, Toggle, ZoomControls } from '@/components/common';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
 import { useTableZoom } from '@/hooks/useTableZoom';
-import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus, MonthlyAnalysis, AnalysisResult, ParsedTradeData, EntryType } from '@/types';
+import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus, MonthlyAnalysis, AnalysisResult, ParsedTradeData, EntryType, FieldConfig } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 import { validateTradingRecord } from '@/utils/validationUtils';
 import { ImportModal } from './ImportModal';
@@ -63,8 +63,8 @@ interface SortConfig {
   direction: 'asc' | 'desc';
 }
 
-function validateForm(data: TradingRecordInput): { field: string; message: string }[] {
-  const result = validateTradingRecord(data as Partial<TradingRecord>);
+function validateForm(data: TradingRecordInput, fieldConfig: FieldConfig): { field: string; message: string }[] {
+  const result = validateTradingRecord(data as Partial<TradingRecord>, undefined, fieldConfig);
   return result.errors.map(err => ({ field: err.field, message: err.message }));
 }
 
@@ -95,7 +95,7 @@ export const DataEditor: React.FC = () => {
     customMonthly, addCustomMonthly, updateCustomMonthly, deleteCustomMonthly, toggleUseCustomMonthly,
     setCustomAnalysis, setCustomMonthly,
     cycleStats, updateCycleStats,
-    statsNeedUpdate
+    statsNeedUpdate, fieldConfig
   } = useDataStore();
   
   const computedAnalysis = useAnalysisResult();
@@ -224,7 +224,7 @@ export const DataEditor: React.FC = () => {
   };
 
   const handleSave = async () => {
-    const errors = validateForm(formData);
+    const errors = validateForm(formData, fieldConfig);
     if (errors.length > 0) {
       setValidationErrors(errors);
       return;
