@@ -1,63 +1,57 @@
 import React, { useMemo } from 'react';
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  ReferenceLine,
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import { useDataStore } from '@/stores';
 import { useChartConfig } from '@/hooks/useChartConfig';
 import { useChartZoomPan } from '@/hooks/useChartZoomPan';
-import type { CycleStatType } from '@/types';
 
 const CHART_KEY = 'cycle-profit';
 
-interface TypeConfig {
-  key: string;
-  name: string;
-  color: string;
-}
-
-const typeConfigs: TypeConfig[] = [
-  { key: '系统', name: '系统', color: '#0ea5e9' },
-  { key: '非系统', name: '非系统', color: '#ef4444' },
-  { key: '齐飞水底总', name: '齐飞水底总', color: '#06b6d4' },
-  { key: '转一致', name: '转一致', color: '#ec4899' },
-  { key: '齐飞水底', name: '齐飞水底', color: '#10b981' },
-  { key: '齐飞水底三等量', name: '齐飞水底三等量', color: '#6366f1' },
-  { key: '齐飞前多踩MA', name: '齐飞前多踩MA', color: '#22d3ee' },
-  { key: '风险释放平台转一致', name: '风险释放平台转一致', color: '#fb923c' },
-  { key: '双阳平台转一致', name: '双阳平台转一致', color: '#f472b6' },
+const COLORS = ['#0ea5e9', '#ef4444', '#06b6d4', '#ec4899',
+  '#10b981', '#6366f1', '#22d3ee', '#fb923c', '#f472b6',
+  '#84cc16', '#a78bfa', '#8b5cf6', '#14b8a6', '#e11d48',
+  '#d946ef', '#f97316', '#64748b', '#0891b2', '#ca8a04', '#be123c',
 ];
 
-// 18 keys: {type}_profit and {type}_cumulative
-const ALL_KEYS = typeConfigs.flatMap(t => [`${t.key}_profit`, `${t.key}_cumulative`]);
-
 export const CycleProfitChart: React.FC = () => {
-  const cycleStats = useDataStore(state => state.cycleStats);
+  const cycleStats = useDataStore(s => s.cycleStats);
+  const fieldConfig = useDataStore(s => s.fieldConfig);
+
+  // 从 fieldConfig 动态生成 typeConfigs
+  const typeConfigs = useMemo(() => {
+    const configs: { key: string; name: string; color: string }[] = [];
+    let ci = 0;
+    // 聚合规则
+    for (const rule of fieldConfig.aggregateRules) {
+      configs.push({ key: rule.name, name: rule.name, color: COLORS[ci++ % COLORS.length] });
+    }
+    // 交易类型（排除未知）
+    for (const t of fieldConfig.tradingTypes) {
+      if (t === '未知') continue;
+      configs.push({ key: t, name: t, color: COLORS[ci++ % COLORS.length] });
+    }
+    // 交易切入类型（排除未知）
+    for (const e of fieldConfig.entryTypes) {
+      if (e === '未知') continue;
+      configs.push({ key: e, name: e, color: COLORS[ci++ % COLORS.length] });
+    }
+    return configs;
+  }, [fieldConfig]);
+
+  const ALL_KEYS = useMemo(() => typeConfigs.flatMap(t => [`${t.key}_profit`, `${t.key}_cumulative`]), [typeConfigs]);
   const [selected, setSelected] = useChartConfig(CHART_KEY, ALL_KEYS, ALL_KEYS);
 
   const chartData = useMemo(() => {
-    const maxLen = Math.max(
-      ...typeConfigs.map(t => {
-        const stats = cycleStats[t.key as CycleStatType];
-        return (stats || []).length;
-      }),
-      0
-    );
+    const maxLen = Math.max(...typeConfigs.map(t => (cycleStats[t.key] || []).length), 0);
     if (maxLen === 0) return [];
 
-    // Build raw data: per period, per type, compute profit = profitSum - lossSum
     const raw: Record<string, any>[] = [];
     for (let i = 0; i < maxLen; i++) {
       const point: any = { period: `第${i + 1}周期` };
       for (const t of typeConfigs) {
-        const stats = cycleStats[t.key as CycleStatType] || [];
+        const stats = cycleStats[t.key] || [];
         const s = stats[i];
         if (s && s.profitSum !== undefined && s.lossSum !== undefined) {
           point[`${t.key}_profit`] = parseFloat((s.profitSum - s.lossSum).toFixed(2));
@@ -68,28 +62,34 @@ export const CycleProfitChart: React.FC = () => {
       raw.push(point);
     }
 
-    // Compute cumulative for each type
     const cumulatives: Record<string, number> = {};
     for (const t of typeConfigs) cumulatives[t.key] = 0;
-
     for (const point of raw) {
       for (const t of typeConfigs) {
         const v = point[`${t.key}_profit`];
-        if (typeof v === 'number') {
-          cumulatives[t.key] += v;
-        }
+        if (typeof v === 'number') cumulatives[t.key] += v;
         point[`${t.key}_cumulative`] = parseFloat(cumulatives[t.key].toFixed(2));
       }
     }
-
     return raw;
-  }, [cycleStats]);
+  }, [cycleStats, typeConfigs]);
 
   const { containerRef, startIdx, endIdx, zoomRatio, isZoomed, resetZoom } = useChartZoomPan(chartData.length);
   const visibleData = chartData.slice(startIdx, endIdx);
 
-  // Visible lines based on selected checkboxes
-  const visibleLines = typeConfigs.flatMap(t => {
+  // 从配置构建可见线条（系统/非系统也加入，因为它们也在 cycleStats 中）
+  const allTypes = useMemo(() => {
+    // 合并固定类型 + 动态类型
+    const types = [
+      { key: '系统', name: '系统', color: '#0ea5e9' },
+      { key: '非系统', name: '非系统', color: '#ef4444' },
+      ...typeConfigs,
+    ];
+    // 去重
+    return types.filter((t, i, arr) => arr.findIndex(x => x.key === t.key) === i);
+  }, [typeConfigs]);
+
+  const visibleLines = allTypes.flatMap(t => {
     const lines: { key: string; name: string; color: string; strokeDasharray?: string }[] = [];
     if (selected.includes(`${t.key}_profit`)) {
       lines.push({ key: `${t.key}_profit`, name: `${t.name}-盈亏`, color: t.color });
@@ -100,7 +100,6 @@ export const CycleProfitChart: React.FC = () => {
     return lines;
   });
 
-  // Y domain from visible data
   const yDomain = useMemo(() => {
     const values: number[] = [];
     for (const item of visibleData) {
@@ -156,7 +155,7 @@ export const CycleProfitChart: React.FC = () => {
       <div className="space-y-2">
         <div className="flex flex-wrap gap-3">
           <span className="text-xs font-medium text-gray-500 w-full">总盈亏（虚线）:</span>
-          {typeConfigs.map(t => (
+          {allTypes.map(t => (
             <label key={`cum_${t.key}`} className="flex items-center gap-1.5 text-xs">
               <input type="checkbox" checked={selected.includes(`${t.key}_cumulative`)} onChange={() => {
                 const key = `${t.key}_cumulative`;
@@ -168,7 +167,7 @@ export const CycleProfitChart: React.FC = () => {
         </div>
         <div className="flex flex-wrap gap-3">
           <span className="text-xs font-medium text-gray-500 w-full">盈亏（实线）:</span>
-          {typeConfigs.map(t => (
+          {allTypes.map(t => (
             <label key={`profit_${t.key}`} className="flex items-center gap-1.5 text-xs">
               <input type="checkbox" checked={selected.includes(`${t.key}_profit`)} onChange={() => {
                 const key = `${t.key}_profit`;
@@ -179,9 +178,7 @@ export const CycleProfitChart: React.FC = () => {
           ))}
         </div>
       </div>
-      <div ref={containerRef} className="select-none">
-        {chartContent}
-      </div>
+      <div ref={containerRef} className="select-none">{chartContent}</div>
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h4 className="font-medium text-blue-900 mb-2">计算规则</h4>
         <p className="text-sm text-blue-800">盈亏 = 该周期内匹配类型的盈利总和 − 亏损绝对值总和</p>

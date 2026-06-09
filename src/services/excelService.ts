@@ -1,7 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType } from '@/types';
 import { generateId } from '@/utils';
-import { STAT_TYPES } from './cycleStatsService';
 
 export const SHEET_NAME_1 = '表1-交易复盘数据';
 export const SHEET_NAME_2 = '表2-动态数据分析';
@@ -206,17 +205,9 @@ function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
     systemLossAvgHoldDays: analysisMap.get('系统亏损平均持仓天数') || 'N/A',
     nonSystemProfitAvgHoldDays: analysisMap.get('非系统盈利平均持仓天数') || 'N/A',
     nonSystemLossAvgHoldDays: analysisMap.get('非系统亏损平均持仓天数') || 'N/A',
-    typeQifeiShuidi: 0,
-    typeQifeiShuidiSandengliang: 0,
-    typeQifeiQianDuoCaiMA: 0,
-    typeFengxianShifang: 0,
-    typeShuangyang: 0,
-    typeFeiXitong: 0,
-    qifeiShuidiZong: 0,
-    zhuanYiZhi: 0,
-    entryP2qianProfitRatio: 0,
-    entryP34ProfitRatio: 0,
-    entryP4houProfitRatio: 0,
+    tradingTypeRatios: {},
+    entryTypeRatios: {},
+    aggregateRatios: {},
   };
 }
 
@@ -363,12 +354,6 @@ export function exportTable2ToExcel(analysis: AnalysisResult, filename: string):
     ['系统亏损平均持仓天数', formatValue(analysis.systemLossAvgHoldDays, false)],
     ['非系统盈利平均持仓天数', formatValue(analysis.nonSystemProfitAvgHoldDays, false)],
     ['非系统亏损平均持仓天数', formatValue(analysis.nonSystemLossAvgHoldDays, false)],
-    ['齐飞水底盈亏比', formatValue(analysis.typeQifeiShuidi, true)],
-    ['齐飞水底三等量盈亏比', formatValue(analysis.typeQifeiShuidiSandengliang, true)],
-    ['齐飞前多踩MA盈亏比', formatValue(analysis.typeQifeiQianDuoCaiMA, true)],
-    ['风险释放平台转一致盈亏比', formatValue(analysis.typeFengxianShifang, true)],
-    ['双阳平台转一致盈亏比', formatValue(analysis.typeShuangyang, true)],
-    ['非系统盈亏比', formatValue(analysis.typeFeiXitong, true)],
   ];
 
   const worksheet = XLSX.utils.aoa_to_sheet(data);
@@ -423,7 +408,7 @@ export function exportTable4ToExcel(
 
   // 将所有统计类型的周期数据展平
   const allStats: CycleStats[] = [];
-  for (const statType of STAT_TYPES) {
+  for (const statType of Object.keys(cycleStats)) {
     if (cycleStats[statType]) {
       allStats.push(...cycleStats[statType]);
     }
@@ -501,9 +486,6 @@ export function exportAllToExcel(
     ['系统亏损平均持仓天数', formatValue(finalAnalysis.systemLossAvgHoldDays, false)],
     ['非系统盈利平均持仓天数', formatValue(finalAnalysis.nonSystemProfitAvgHoldDays, false)],
     ['非系统亏损平均持仓天数', formatValue(finalAnalysis.nonSystemLossAvgHoldDays, false)],
-    ['p2前盈亏比', formatValue(finalAnalysis.entryP2qianProfitRatio, true)],
-    ['p34盈亏比', formatValue(finalAnalysis.entryP34ProfitRatio, true)],
-    ['p4后盈亏比', formatValue(finalAnalysis.entryP4houProfitRatio, true)],
   ];
 
   const table3Data = [
@@ -543,7 +525,7 @@ export function exportAllToExcel(
   if (cycleStats) {
     // 将所有统计类型的周期数据展平
     const allStats: CycleStats[] = [];
-    for (const statType of STAT_TYPES) {
+    for (const statType of Object.keys(cycleStats)) {
       if (cycleStats[statType]) {
         allStats.push(...cycleStats[statType]);
       }

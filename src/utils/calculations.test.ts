@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { calculateProfitRatioByEntryType, calculateProfitRatioByType, calculateProfitRatioByMultipleTypes } from './calculations';
-import type { TradingRecord, EntryType } from '@/types';
+import { calculateProfitRatioByEntryType, calculateProfitRatioByType, calculateProfitRatioByMultipleTypes, calculateTradingTypeRatios, calculateEntryTypeRatios, calculateAggregateRatios } from './calculations';
+import type { TradingRecord, EntryType, AggregateRule } from '@/types';
 
 function makeRecord(overrides: Partial<TradingRecord> = {}): TradingRecord {
   return {
@@ -94,5 +94,59 @@ describe('tradingType 未知不参与聚合', () => {
     // 未知不在聚合数组中，不纳入计算
     const result = calculateProfitRatioByMultipleTypes(records, ['齐飞水底']);
     expect(result).toBe(5);
+  });
+});
+
+// ============ Phase 2 动态批量计算函数测试 ============
+
+describe('calculateTradingTypeRatios', () => {
+  it('批量计算多个交易类型', () => {
+    const records = [
+      makeRecord({ tradingType: '齐飞水底', profitPercent: 5 }),
+      makeRecord({ tradingType: '齐飞水底', profitPercent: -2 }),
+      makeRecord({ tradingType: '齐飞前多踩MA', profitPercent: 10 }),
+      makeRecord({ tradingType: '齐飞前多踩MA', profitPercent: -5 }),
+    ];
+    const result = calculateTradingTypeRatios(records, ['齐飞水底', '齐飞前多踩MA', '未知']);
+    expect(result['齐飞水底']).toBeCloseTo(2.5, 2);
+    expect(result['齐飞前多踩MA']).toBe(2);
+    expect(result['未知']).toBeUndefined();
+  });
+
+  it('排除未知类型', () => {
+    const result = calculateTradingTypeRatios([], ['未知']);
+    expect(Object.keys(result)).toHaveLength(0);
+  });
+});
+
+describe('calculateEntryTypeRatios', () => {
+  it('批量计算多个切入类型', () => {
+    const records = [
+      makeRecord({ entryType: 'p2前' as EntryType, profitPercent: 6 }),
+      makeRecord({ entryType: 'p2前' as EntryType, profitPercent: -3 }),
+      makeRecord({ entryType: 'p34' as EntryType, profitPercent: 4 }),
+    ];
+    const result = calculateEntryTypeRatios(records, ['p2前', 'p34', 'p4后', '未知']);
+    expect(result['p2前']).toBe(2);
+    expect(result['p34']).toBe(4);
+    expect(result['p4后']).toBe(0);
+    expect(result['未知']).toBeUndefined();
+  });
+});
+
+describe('calculateAggregateRatios', () => {
+  it('批量计算聚合规则', () => {
+    const records = [
+      makeRecord({ tradingType: '齐飞水底', profitPercent: 5 }),
+      makeRecord({ tradingType: '齐飞水底', profitPercent: -2 }),
+      makeRecord({ tradingType: '齐飞前多踩MA', profitPercent: 3 }),
+    ];
+    const rules: AggregateRule[] = [
+      { name: '齐飞水底总', includedTypes: ['齐飞水底', '齐飞前多踩MA'] },
+      { name: '转一致', includedTypes: ['风险释放平台转一致', '双阳平台转一致'] },
+    ];
+    const result = calculateAggregateRatios(records, rules);
+    expect(result['齐飞水底总']).toBe(4);
+    expect(result['转一致']).toBe(0);
   });
 });

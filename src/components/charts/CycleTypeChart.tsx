@@ -1,70 +1,68 @@
 import React, { useMemo } from 'react';
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  ReferenceLine,
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import { useDataStore } from '@/stores';
 import { useChartConfig } from '@/hooks/useChartConfig';
 import { useChartZoomPan } from '@/hooks/useChartZoomPan';
-import type { CycleStatType } from '@/types';
 
 const CHART_KEY = 'cycle-trading-type';
 
-interface LineConfig {
-  key: string;
-  name: string;
-  color: string;
-}
-
-const lineConfigs: LineConfig[] = [
-  { key: '齐飞水底', name: '齐飞水底', color: '#10b981' },
-  { key: '齐飞水底三等量', name: '齐飞水底三等量', color: '#6366f1' },
-  { key: '齐飞前多踩MA', name: '齐飞前多踩MA', color: '#0ea5e9' },
-  { key: '风险释放平台转一致', name: '风险释放平台转一致', color: '#8b5cf6' },
-  { key: '双阳平台转一致', name: '双阳平台转一致', color: '#f59e0b' },
-  { key: '齐飞水底总', name: '齐飞水底总', color: '#06b6d4' },
-  { key: '转一致', name: '转一致', color: '#ec4899' },
-  { key: '非系统', name: '非系统', color: '#ef4444' },
+const COLORS = ['#0ea5e9', '#ef4444', '#06b6d4', '#ec4899',
+  '#10b981', '#6366f1', '#22d3ee', '#fb923c', '#f472b6',
+  '#84cc16', '#a78bfa', '#8b5cf6', '#14b8a6', '#e11d48',
+  '#d946ef', '#f97316', '#64748b', '#0891b2', '#ca8a04', '#be123c',
 ];
 
-const ALL_KEYS = lineConfigs.map(l => l.key);
-
 export const CycleTypeChart: React.FC = () => {
-  const cycleStats = useDataStore(state => state.cycleStats);
-  const [selected, setSelected] = useChartConfig(CHART_KEY, ALL_KEYS, ALL_KEYS);
+  const cycleStats = useDataStore(s => s.cycleStats);
+  const fieldConfig = useDataStore(s => s.fieldConfig);
+
+  // 从 fieldConfig 动态生成 lineConfigs
+  const lineConfigs = useMemo(() => {
+    const configs: { key: string; name: string; color: string }[] = [];
+    let ci = 0;
+    // 聚合规则
+    for (const rule of fieldConfig.aggregateRules) {
+      configs.push({ key: rule.name, name: rule.name, color: COLORS[ci++ % COLORS.length] });
+    }
+    // 交易类型（排除未知）
+    for (const t of fieldConfig.tradingTypes) {
+      if (t === '未知') continue;
+      configs.push({ key: t, name: t, color: COLORS[ci++ % COLORS.length] });
+    }
+    // 交易切入类型（排除未知）
+    for (const e of fieldConfig.entryTypes) {
+      if (e === '未知') continue;
+      configs.push({ key: e, name: e, color: COLORS[ci++ % COLORS.length] });
+    }
+    return configs;
+  }, [fieldConfig]);
+
+  const ALL_KEYS = useMemo(() => lineConfigs.map(l => l.key), [lineConfigs]);
+  const DEFAULT_KEYS = useMemo(() => lineConfigs.slice(0, Math.min(6, lineConfigs.length)).map(l => l.key), [lineConfigs]);
+  const [selected, setSelected] = useChartConfig(CHART_KEY, ALL_KEYS, DEFAULT_KEYS);
 
   const chartData = useMemo(() => {
-    const maxLen = Math.max(
-      ...lineConfigs.map(l => {
-        const stats = cycleStats[l.key as CycleStatType];
-        return (stats || []).length;
-      }),
-      0
-    );
+    const maxLen = Math.max(...lineConfigs.map(l => (cycleStats[l.key] || []).length), 0);
     if (maxLen === 0) return [];
-
-    const points: any[] = [];
+    const data: Record<string, any>[] = [];
     for (let i = 0; i < maxLen; i++) {
       const point: any = { period: `第${i + 1}周期` };
       for (const l of lineConfigs) {
-        const stats = cycleStats[l.key as CycleStatType] || [];
-        point[l.key] = stats[i]?.profitRatio ?? null;
+        const stats = cycleStats[l.key] || [];
+        const s = stats[i];
+        point[l.key] = s?.profitRatio !== undefined ? s.profitRatio : null;
       }
-      points.push(point);
+      data.push(point);
     }
-    return points;
-  }, [cycleStats]);
+    return data;
+  }, [cycleStats, lineConfigs]);
 
+  const visibleLines = lineConfigs.filter(l => selected.includes(l.key));
   const { containerRef, startIdx, endIdx, zoomRatio, isZoomed, resetZoom } = useChartZoomPan(chartData.length);
   const visibleData = chartData.slice(startIdx, endIdx);
-  const visibleLines = lineConfigs.filter(l => selected.includes(l.key));
 
   const yDomain = useMemo(() => {
     const values: number[] = [];
@@ -83,26 +81,10 @@ export const CycleTypeChart: React.FC = () => {
   if (chartData.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
-        <p className="text-gray-500">暂无数据可展示</p>
+        <p className="text-gray-500">暂无周期数据，请先生成周期统计</p>
       </div>
     );
   }
-
-  const chartContent = (
-    <ResponsiveContainer width="100%" height={400}>
-      <LineChart data={visibleData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis dataKey="period" tick={{ fontSize: 12 }} />
-        <YAxis tick={{ fontSize: 12 }} tickCount={7} domain={yDomain} tickFormatter={(v: number) => v.toFixed(2)} label={{ value: '盈亏比', angle: -90, position: 'insideLeft' }} />
-        <ReferenceLine y={0} stroke="#000" strokeWidth={2} />
-        <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '0.5rem', fontSize: 12 }} formatter={(v: any) => v != null ? (typeof v === 'number' ? v.toFixed(2) : v) : 'N/A'} />
-        <Legend />
-        {visibleLines.map(line => (
-          <Line key={line.key} type="linear" dataKey={line.key} name={line.name} stroke={line.color} strokeWidth={2} dot={{ r: 2 }} connectNulls />
-        ))}
-      </LineChart>
-    </ResponsiveContainer>
-  );
 
   return (
     <div className="space-y-4">
@@ -118,16 +100,28 @@ export const CycleTypeChart: React.FC = () => {
           <span className="text-xs text-gray-400">Ctrl+滚轮缩放 · 拖拽平移</span>
         </div>
       </div>
-      <div className="flex flex-wrap gap-4">
+      <div className="flex flex-wrap gap-3">
         {lineConfigs.map(l => (
-          <label key={l.key} className="flex items-center gap-2 text-sm">
+          <label key={l.key} className="flex items-center gap-1.5 text-xs">
             <input type="checkbox" checked={selected.includes(l.key)} onChange={() => setSelected(selected.includes(l.key) ? selected.filter(k => k !== l.key) : [...selected, l.key])} className="rounded" />
             <span style={{ color: l.color }}>{l.name}</span>
           </label>
         ))}
       </div>
       <div ref={containerRef} className="select-none">
-        {chartContent}
+        <ResponsiveContainer width="100%" height={400}>
+          <LineChart data={visibleData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis dataKey="period" tick={{ fontSize: 12 }} />
+            <YAxis tick={{ fontSize: 12 }} tickCount={7} domain={yDomain} tickFormatter={(v: number) => v.toFixed(2)} label={{ value: '盈亏比', angle: -90, position: 'insideLeft' }} />
+            <ReferenceLine y={0} stroke="#000" strokeWidth={2} />
+            <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '0.5rem', fontSize: 12 }} formatter={(v: any) => v != null ? (typeof v === 'number' ? v.toFixed(2) : v) : 'N/A'} />
+            <Legend />
+            {visibleLines.map(l => (
+              <Line key={l.key} type="linear" dataKey={l.key} name={l.name} stroke={l.color} strokeWidth={2} dot={{ r: 2 }} connectNulls />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
