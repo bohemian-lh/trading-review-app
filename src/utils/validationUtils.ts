@@ -169,14 +169,14 @@ export function validateTradingRecord(
     });
   }
 
-  // 后续盈亏空间验证（留空/N/A 均有效）
-  if (record.subsequentProfitSpace !== undefined && record.subsequentProfitSpace !== null 
-      && record.subsequentProfitSpace !== 'N/A') {
+  // 后续盈亏空间验证（留空/null 均有效）
+  if (record.subsequentProfitSpace !== undefined && record.subsequentProfitSpace !== null) {
+    // subsequentProfitSpace 一定是 number（非 null），但防止 Excel 导入后出现非数字字符串
     const val = Number(record.subsequentProfitSpace);
     if (isNaN(val)) {
       errors.push({
         field: 'subsequentProfitSpace',
-        message: '后续盈亏空间必须为有效数字或N/A',
+        message: '后续盈亏空间必须为有效数字或留空',
         row: rowIndex,
       });
     }

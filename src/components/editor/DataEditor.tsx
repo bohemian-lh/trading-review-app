@@ -48,7 +48,7 @@ const emptyRecord: TradingRecordInput = {
   hasMistake: '否',
   profitPercent: null,
   holdDays: null,
-  subsequentProfitSpace: 'N/A',
+  subsequentProfitSpace: null,
   preMarket: '否',
 };
 
@@ -245,7 +245,7 @@ export const DataEditor: React.FC = () => {
       ...formData,
       profitPercent: formData.profitPercent,
       holdDays: formData.holdDays,
-      subsequentProfitSpace: formData.subsequentProfitSpace ?? 'N/A',
+      subsequentProfitSpace: formData.subsequentProfitSpace ?? null,
     };
 
     if (editingRecord) {
@@ -609,7 +609,7 @@ export const DataEditor: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">{record.holdDays}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {record.subsequentProfitSpace === 'N/A' ? 'N/A' : `${record.subsequentProfitSpace}%`}
+                          {record.subsequentProfitSpace === null ? 'N/A' : `${record.subsequentProfitSpace}%`}
                         </td>
                         <td className="px-4 py-3 text-sm space-x-2">
                           <button
@@ -1106,17 +1106,17 @@ export const DataEditor: React.FC = () => {
               </label>
               <div className="flex gap-2">
                 <select
-                  value={formData.subsequentProfitSpace === 'N/A' ? 'N/A' : 'number'}
+                  value={formData.subsequentProfitSpace === null ? 'N/A' : 'number'}
                   onChange={(e) => {
                     const val = e.target.value;
-                    setFormData({ ...formData, subsequentProfitSpace: val === 'N/A' ? 'N/A' : 0 });
+                    setFormData({ ...formData, subsequentProfitSpace: val === 'N/A' ? null : 0 });
                   }}
                   className="w-24 rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm"
                 >
                   <option value="N/A">N/A</option>
                   <option value="number">数值</option>
                 </select>
-                {formData.subsequentProfitSpace !== 'N/A' && formData.subsequentProfitSpace !== undefined && (
+                {formData.subsequentProfitSpace !== null && formData.subsequentProfitSpace !== undefined && (
                   <Input
                     type="number"
                     step="0.1"
@@ -1124,7 +1124,7 @@ export const DataEditor: React.FC = () => {
                     onChange={(e) => {
                       const raw = e.target.value;
                       if (raw === '' || raw === '-') {
-                        setFormData({ ...formData, subsequentProfitSpace: 'N/A' });
+                        setFormData({ ...formData, subsequentProfitSpace: null });
                         return;
                       }
                       const num = parseFloat(raw);

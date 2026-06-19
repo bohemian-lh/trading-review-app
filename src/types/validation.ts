@@ -69,6 +69,7 @@ export const TradingRecordSchema = z.object({
   hasCycleStats: z.boolean().default(false),
   hasMonthlyStats: z.boolean().default(false),
   cycleId: z.string().optional(),
+  subsequentProfitSpace: z.union([z.number(), z.null()]),
 }) satisfies z.ZodType<TradingRecord>;
 
 export const TradingRecordArraySchema = z.array(TradingRecordSchema);

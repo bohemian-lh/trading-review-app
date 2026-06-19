@@ -38,7 +38,6 @@ export const SubsequentProfitPage: React.FC = () => {
   // 散点图数据：用 jitter 避免重叠
   const scatterData = useMemo(() => {
     const typeSet = selectedScatter;
-    const jitterMap = new Map<string, number>();
     return analysis.allPoints
       .filter(p => typeSet.has(p.tradingType))
       .map(p => {
@@ -65,7 +64,7 @@ export const SubsequentProfitPage: React.FC = () => {
 
   // 散点图 Y 轴 ticks
   const yTicks = useMemo(
-    () => tradingTypes.map((t, i) => tradingTypes.length - 1 - i),
+    () => tradingTypes.map((_, i) => tradingTypes.length - 1 - i),
     [tradingTypes]
   );
   const yTickFormatter = (v: number) => tradingTypes[tradingTypes.length - 1 - Math.round(v)] || '';
@@ -138,7 +137,7 @@ export const SubsequentProfitPage: React.FC = () => {
                     if (name === 'value') return [`${v}%`, '后续盈亏空间'];
                     return [v, name];
                   }}
-                  labelFormatter={(label) => ''}
+                  labelFormatter={(_label) => ''}
                 />
                 <Legend />
                 {tradingTypes.filter(t => selectedScatter.has(t)).map((t, i) => {

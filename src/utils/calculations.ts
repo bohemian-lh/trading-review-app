@@ -228,7 +228,7 @@ export function calculateSubsequentProfitAnalysis(
 
   for (const type of types) {
     const validRecords = records.filter(
-      r => r.tradingType === type && r.subsequentProfitSpace !== 'N/A'
+      r => r.tradingType === type && r.subsequentProfitSpace !== null
     );
 
     // 散点图数据
