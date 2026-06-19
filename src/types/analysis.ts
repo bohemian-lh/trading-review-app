@@ -23,6 +23,31 @@ export interface MonthlyAnalysis {
   totalProfit: number | 'N/A';
 }
 
+// ============ 后续盈亏空间分析（独立统计） ============
+
+export interface HistogramBucket {
+  label: string;
+  count: number;
+}
+
+export interface SubsequentProfitStats {
+  tradingType: string;
+  count: number;
+  avg: number;
+  max: number;
+  min: number;
+  histogram: HistogramBucket[];
+}
+
+export interface SubsequentProfitAnalysis {
+  stats: SubsequentProfitStats[];
+  allPoints: {
+    tradingType: string;
+    value: number;
+    stockName: string;
+  }[];
+}
+
 export interface ChartDataPoint {
   month: string;
   displayMonth: string;

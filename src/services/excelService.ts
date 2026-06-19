@@ -17,6 +17,7 @@ const HEADERS_1 = [
   '有无大的失误',
   '盈亏情况',
   '持仓时间（天）',
+  '后续盈亏空间',
   '股票走势1',
   '股票走势2',
   '关键分时1',
@@ -275,6 +276,11 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
   // 解析持仓时间
   const holdDays = parseInt(String(row['持仓时间（天）'] || '').trim(), 10) || 0;
 
+  // 解析后续盈亏空间
+  const subSpaceStr = String(row['后续盈亏空间'] || '').trim().replace('%', '');
+  const subsequentProfitSpace: number | 'N/A' = 
+    subSpaceStr === '' || subSpaceStr === 'N/A' ? 'N/A' : (parseFloat(subSpaceStr) || 0);
+
   return {
     id: generateId(),
     openDate: String(row['开单时间'] || ''),
@@ -293,6 +299,7 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     preMarket: row['盘前是否'] === '是' ? '是' : '否',
     hasCycleStats: false,
     hasMonthlyStats: false,
+    subsequentProfitSpace,
   };
 }
 
@@ -311,6 +318,7 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string):
       record.hasMistake,
       record.profitPercent,
       record.holdDays,
+      record.subsequentProfitSpace === 'N/A' ? 'N/A' : record.subsequentProfitSpace,
       record.chart1 || '',
       record.chart2 || '',
       record.keyChart1 || '',

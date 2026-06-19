@@ -20,6 +20,8 @@ export interface TradingRecord {
   hasMonthlyStats: boolean;
   // 关联的周期ID（可选）
   cycleId?: string;
+  // 后续盈亏空间
+  subsequentProfitSpace: number | 'N/A';
 }
 
 export type TradingType = 
@@ -56,4 +58,5 @@ export interface TradingRecordInput {
   hasCycleStats?: boolean;
   hasMonthlyStats?: boolean;
   cycleId?: string;
+  subsequentProfitSpace?: number | 'N/A';
 }
