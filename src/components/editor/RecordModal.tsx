@@ -169,6 +169,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
               <Input
                 type="number"
                 step="0.1"
+                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 value={formData.profitPercent !== null ? formData.profitPercent : ''}
                 onChange={(e) => {
                   const raw = e.target.value;
@@ -229,6 +230,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                   <Input
                     type="number"
                     step="0.1"
+                    className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     value={formData.subsequentProfitSpace ?? ''}
                     onChange={(e) => {
                       const raw = e.target.value;
