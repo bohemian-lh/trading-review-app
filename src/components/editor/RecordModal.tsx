@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, Clipboard, AlertCircle, Loader2 } from 'lucide-react';
+import { Save, Clipboard, AlertCircle, Loader2, X } from 'lucide-react';
 import { Button, Input, Select, Modal } from '@/components/common';
 import { ImagePreviewModal } from '@/components/editor/ImagePreviewModal';
 import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus, EntryType } from '@/types';
@@ -275,7 +275,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                     {formData.imagePrefix && <> · 前缀: {formData.imagePrefix}</>}
                   </span>
                   <button onClick={onClearImages} className="text-xs text-red-500 hover:text-red-700">
-                    清除
+                    全部清除
                   </button>
                 </>
               )}
@@ -288,6 +288,29 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 </button>
               )}
             </div>
+            {formData.images && formData.images.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {formData.images.map((img, idx) => (
+                  <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 rounded text-xs text-gray-700">
+                    {img}
+                    <button
+                      onClick={() => {
+                        const newImages = formData.images!.filter((_, i) => i !== idx);
+                        onFormChange({
+                          ...formData,
+                          images: newImages,
+                          imagePrefix: newImages.length === 0 ? '' : formData.imagePrefix,
+                        });
+                      }}
+                      className="text-gray-400 hover:text-red-500"
+                      title="移除这张图片"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             {!imgHasHandle && (
               <p className="text-xs text-orange-600 mt-1">请先在页面顶部选择图片存储目录</p>
             )}
