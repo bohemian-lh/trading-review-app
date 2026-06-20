@@ -142,7 +142,7 @@ export function useImageDirectory() {
 
   // 删除指定前缀的所有图片（prefix 格式 YYMMDD，从中提取年份）
   const deleteImages = useCallback(async (prefix: string): Promise<void> => {
-    if (!state.handle) return;
+    if (!state.handle) { console.warn('[useImageDirectory] deleteImages skipped: 未选择图片存储目录'); return; }
     try {
       const year = '20' + prefix.slice(0, 2);
       const yearDir = await ensureYearDir(year);

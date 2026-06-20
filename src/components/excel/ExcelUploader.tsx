@@ -3,6 +3,7 @@ import { Upload, Download, FileSpreadsheet, Plus, Check, X, Wifi, WifiOff, Refre
 import { Button, Modal } from '@/components/common';
 import { parseExcelFile, exportAllToExcel, generateTestExcel, type ImportTableType, type ImportMode, type ImportOptions } from '@/services/excelService';
 import { useRecordsStore, useDatasetStore, useUIStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
+import { useImageDirectory } from '@/hooks/useImageDirectory';
 import { r2StorageService } from '@/services/r2Service';
 import type { TradingRecord, StorageFile, UploadProgress } from '@/types';
 
@@ -50,6 +51,7 @@ export const ExcelUploader: React.FC = () => {
   const currentFileName = useUIStore(s => s.currentFileName);
   const analysis = useAnalysisResult();
   const monthlyAnalysis = useMonthlyAnalysis();
+  const imgDir = useImageDirectory();
 
   const loadFiles = useCallback(async () => {
     setIsLoadingFiles(true);
@@ -202,6 +204,11 @@ export const ExcelUploader: React.FC = () => {
 
       if (importMode === 'overwrite') {
         console.log('Step 2: Using overwrite mode, new records:', previewData.records.length);
+        // 覆盖模式：先删除所有旧记录的本地图片
+        const oldRecords = useRecordsStore.getState().records;
+        for (const r of oldRecords) {
+          if (r.imagePrefix) imgDir.deleteImages(r.imagePrefix).catch(() => {});
+        }
         newRecords = previewData.records;
       } else {
         console.log('Step 2: Using append mode, existing:', records.length, 'new:', previewData.records.length);

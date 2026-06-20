@@ -1,6 +1,7 @@
 import React from 'react';
 import { Folder, Plus, Trash2 } from 'lucide-react';
 import { useRecordsStore, useDatasetStore } from '@/stores';
+import { useImageDirectory } from '@/hooks/useImageDirectory';
 import { switchDataset } from '@/hooks/useStoreSync';
 import { exportTable1ToExcel } from '@/services/excelService';
 
@@ -10,6 +11,7 @@ export const DatasetSelector: React.FC = () => {
   const createDataset = useDatasetStore(s => s.createDataset);
   const deleteDataset = useDatasetStore(s => s.deleteDataset);
   const records = useRecordsStore(s => s.records);
+  const imgDir = useImageDirectory();
   const [showDelete, setShowDelete] = React.useState<string | null>(null);
 
   const handleCreate = async () => {
@@ -22,6 +24,10 @@ export const DatasetSelector: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
+    // 删除数据集中所有记录的本地图片
+    for (const r of records) {
+      if (r.imagePrefix) imgDir.deleteImages(r.imagePrefix).catch(() => {});
+    }
     await deleteDataset(id);
     setShowDelete(null);
   };
