@@ -3,7 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
-import { useDataStore } from '@/stores';
+import { useRecordsStore } from '@/stores';
 import { useChartConfig } from '@/hooks/useChartConfig';
 import { useChartZoomPan } from '@/hooks/useChartZoomPan';
 
@@ -16,8 +16,8 @@ const COLORS = ['#0ea5e9', '#ef4444', '#06b6d4', '#ec4899',
 ];
 
 export const CycleTypeChart: React.FC = () => {
-  const cycleStats = useDataStore(s => s.cycleStats);
-  const fieldConfig = useDataStore(s => s.fieldConfig);
+  const cycleStats = useRecordsStore(s => s.cycleStats);
+  const fieldConfig = useRecordsStore(s => s.fieldConfig);
 
   // 从 fieldConfig 动态生成 lineConfigs
   const lineConfigs = useMemo(() => {

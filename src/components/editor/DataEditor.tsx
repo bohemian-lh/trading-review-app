@@ -3,9 +3,10 @@ import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle
 import { Button, Input, Select, Modal, Toggle, ZoomControls } from '@/components/common';
 import { Pagination } from '@/components/common/Pagination';
 import { ImagePreviewModal } from '@/components/editor/ImagePreviewModal';
-import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
+import { useRecordsStore, useUIStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
 import { useTableZoom } from '@/hooks/useTableZoom';
 import { useImageDirectory } from '@/hooks/useImageDirectory';
+import { saveNow, updateCycleStats } from '@/hooks/useStoreSync';
 import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus, MonthlyAnalysis, AnalysisResult, ParsedTradeData, EntryType, FieldConfig } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 import { validateTradingRecord } from '@/utils/validationUtils';
@@ -95,14 +96,24 @@ const MONTHLY_FIELDS: Array<{ key: keyof Omit<MonthlyAnalysis, 'month'>; label: 
 ];
 
 export const DataEditor: React.FC = () => {
-  const { 
-    records, addRecord, updateRecord, deleteRecord, isSaving, saveToR2,
-    customAnalysis, updateCustomAnalysisField, toggleUseCustomAnalysis,
-    customMonthly, addCustomMonthly, updateCustomMonthly, deleteCustomMonthly, toggleUseCustomMonthly,
-    setCustomAnalysis, setCustomMonthly,
-    cycleStats, updateCycleStats,
-    statsNeedUpdate, fieldConfig
-  } = useDataStore();
+  const records = useRecordsStore(s => s.records);
+  const addRecord = useRecordsStore(s => s.addRecord);
+  const updateRecord = useRecordsStore(s => s.updateRecord);
+  const deleteRecord = useRecordsStore(s => s.deleteRecord);
+  const customAnalysis = useRecordsStore(s => s.customAnalysis);
+  const setCustomAnalysis = useRecordsStore(s => s.setCustomAnalysis);
+  const updateCustomAnalysisField = useRecordsStore(s => s.updateCustomAnalysisField);
+  const toggleUseCustomAnalysis = useRecordsStore(s => s.toggleUseCustomAnalysis);
+  const customMonthly = useRecordsStore(s => s.customMonthly);
+  const setCustomMonthly = useRecordsStore(s => s.setCustomMonthly);
+  const addCustomMonthly = useRecordsStore(s => s.addCustomMonthly);
+  const updateCustomMonthly = useRecordsStore(s => s.updateCustomMonthly);
+  const deleteCustomMonthly = useRecordsStore(s => s.deleteCustomMonthly);
+  const toggleUseCustomMonthly = useRecordsStore(s => s.toggleUseCustomMonthly);
+  const cycleStats = useRecordsStore(s => s.cycleStats);
+  const fieldConfig = useRecordsStore(s => s.fieldConfig);
+  const statsNeedUpdate = useRecordsStore(s => s.statsNeedUpdate);
+  const isSaving = useUIStore(s => s.isSaving);
   
   const computedAnalysis = useAnalysisResult();
   const computedMonthly = useMonthlyAnalysis();
@@ -265,7 +276,7 @@ export const DataEditor: React.FC = () => {
     try {
       let prefix = formData.imagePrefix || '';
       if (!editingRecord || !prefix) {
-        const state = useDataStore.getState();
+        const state = useRecordsStore.getState();
         const sameDateRecords = state.records
           .filter(r => r.openDate === formData.openDate && r.imagePrefix)
           .sort((a, b) => (a.imagePrefix || '').localeCompare(b.imagePrefix || ''));
@@ -292,7 +303,6 @@ export const DataEditor: React.FC = () => {
     }
 
     setSaveError(null);
-    const { saveToR2 } = useDataStore.getState();
 
     // 运行时确保 profitPercent 和 holdDays 不为 null
     if (formData.profitPercent === null || formData.holdDays === null) {
@@ -316,7 +326,7 @@ export const DataEditor: React.FC = () => {
     }
 
     try {
-      await saveToR2();
+      await saveNow();
       handleCloseModal();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : '保存失败');
@@ -361,8 +371,7 @@ export const DataEditor: React.FC = () => {
     try {
       // 更新周期统计
       updateCycleStats();
-      // 保存到 R2
-      await saveToR2();
+      await saveNow();
       setUpdateStatus('success');
       setUpdateMessage('统计数据已更新');
     } catch (error) {

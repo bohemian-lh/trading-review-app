@@ -14,12 +14,13 @@ import {
   TradingTypeProfitBarChart,
   CycleProfitChart
 } from '@/components/charts';
-import { useDataStore, useAnalysisResult } from '@/stores';
+import { useRecordsStore, useDatasetStore, useUIStore, useAnalysisResult } from '@/stores';
 import { useInitializeStore } from '@/hooks/useInitializeStore';
+import { switchDataset } from '@/hooks/useStoreSync';
 import { cn } from '@/utils';
 
 const Dashboard: React.FC = () => {
-  const records = useDataStore((state) => state.records);
+  const records = useRecordsStore((state) => state.records);
   const analysis = useAnalysisResult();
 
   const analysisItems = [
@@ -143,12 +144,11 @@ const Navigation: React.FC = () => {
 };
 
 const DatasetSelector: React.FC = () => {
-  const datasets = useDataStore(s => s.datasets);
-  const currentDatasetId = useDataStore(s => s.currentDatasetId);
-  const switchDataset = useDataStore(s => s.switchDataset);
-  const createDataset = useDataStore(s => s.createDataset);
-  const deleteDataset = useDataStore(s => s.deleteDataset);
-  const records = useDataStore(s => s.records);
+  const datasets = useDatasetStore(s => s.datasets);
+  const currentDatasetId = useDatasetStore(s => s.currentDatasetId);
+  const createDataset = useDatasetStore(s => s.createDataset);
+  const deleteDataset = useDatasetStore(s => s.deleteDataset);
+  const records = useRecordsStore(s => s.records);
   const [showDelete, setShowDelete] = React.useState<string | null>(null);
 
   const handleCreate = async () => {
@@ -223,8 +223,8 @@ const DatasetSelector: React.FC = () => {
 
 const App: React.FC = () => {
   useInitializeStore();
-  const isInitialized = useDataStore((state) => state.isInitialized);
-  const error = useDataStore((state) => state.error);
+  const isInitialized = useUIStore((state) => state.isInitialized);
+  const error = useUIStore((state) => state.error);
 
   if (!isInitialized) {
     return (

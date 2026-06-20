@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
-import { useDataStore } from '@/stores';
+import { useRecordsStore } from '@/stores';
 import { useChartConfig } from '@/hooks/useChartConfig';
 import { useChartZoomPan } from '@/hooks/useChartZoomPan';
 import type { CycleStatType } from '@/types';
@@ -34,7 +34,7 @@ const ALL_KEYS = lineConfigs.map(l => l.key);
 const DEFAULT_KEYS = ['系统', '非系统'];
 
 export const CycleSystemChart: React.FC = () => {
-  const cycleStats = useDataStore(state => state.cycleStats);
+  const cycleStats = useRecordsStore(state => state.cycleStats);
   const [selected, setSelected] = useChartConfig(CHART_KEY, ALL_KEYS, DEFAULT_KEYS);
 
   const chartData = useMemo(() => {

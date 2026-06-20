@@ -2,7 +2,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { Upload, Download, FileSpreadsheet, Plus, Check, X, Wifi, WifiOff, RefreshCw, Trash2, FileText, Database } from 'lucide-react';
 import { Button, Modal } from '@/components/common';
 import { parseExcelFile, exportAllToExcel, generateTestExcel, type ImportTableType, type ImportMode, type ImportOptions } from '@/services/excelService';
-import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
+import { useRecordsStore, useDatasetStore, useUIStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
 import { r2StorageService } from '@/services/r2Service';
 import type { TradingRecord, StorageFile, UploadProgress } from '@/types';
 
@@ -40,16 +40,14 @@ export const ExcelUploader: React.FC = () => {
     console.log('isModalOpen changed:', isModalOpen);
   }, [isModalOpen]);
 
-  const {
-    records,
-    setLoading,
-    setError,
-    currentFileName,
-    customAnalysis,
-    customMonthly,
-    cycleStats,
-    currentDatasetId,
-  } = useDataStore();
+  const records = useRecordsStore(s => s.records);
+  const customAnalysis = useRecordsStore(s => s.customAnalysis);
+  const customMonthly = useRecordsStore(s => s.customMonthly);
+  const cycleStats = useRecordsStore(s => s.cycleStats);
+  const currentDatasetId = useDatasetStore(s => s.currentDatasetId);
+  const setLoading = useUIStore(s => s.setLoading);
+  const setError = useUIStore(s => s.setError);
+  const currentFileName = useUIStore(s => s.currentFileName);
   const analysis = useAnalysisResult();
   const monthlyAnalysis = useMonthlyAnalysis();
 
@@ -213,9 +211,9 @@ export const ExcelUploader: React.FC = () => {
       console.log('Step 3: Saving to R2, total records:', newRecords.length);
       const saveResult = await r2StorageService.saveRecords(
         currentDatasetId || 'default', newRecords,
-        useDataStore.getState().version ?? undefined,
+        useRecordsStore.getState().version ?? undefined,
         customAnalysis, customMonthly,
-        cycleStats, useDataStore.getState().cycleStatsGeneratedAt
+        cycleStats, useRecordsStore.getState().cycleStatsGeneratedAt
       );
       console.log('Step 3: Save result:', { success: saveResult.success, message: saveResult.message });
 
@@ -224,11 +222,10 @@ export const ExcelUploader: React.FC = () => {
       }
 
       console.log('Step 4: Updating local store...');
-      useDataStore.setState({
+      useRecordsStore.setState({
         records: newRecords,
-        currentFileName: fileToImport?.name || null,
-        error: null
       });
+      useUIStore.setState({ currentFileName: fileToImport?.name || null, error: null });
 
       console.log('Step 5: Import completed successfully!');
       setIsModalOpen(false);

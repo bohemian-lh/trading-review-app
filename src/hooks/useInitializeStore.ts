@@ -1,13 +1,13 @@
 import { useEffect } from 'react';
-import { useDataStore } from '@/stores';
+import { useUIStore } from '@/stores';
+import { initializeFromR2 } from '@/hooks/useStoreSync';
 
 export function useInitializeStore(): void {
-  const loadFromR2 = useDataStore((state) => state.loadFromR2);
-  const isInitialized = useDataStore((state) => state.isInitialized);
+  const isInitialized = useUIStore((state) => state.isInitialized);
 
   useEffect(() => {
     if (!isInitialized) {
-      loadFromR2();
+      initializeFromR2();
     }
-  }, [loadFromR2, isInitialized]);
+  }, [isInitialized]);
 }
