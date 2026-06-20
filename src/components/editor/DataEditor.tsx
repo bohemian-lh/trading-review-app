@@ -1,8 +1,11 @@
-import React, { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2, Table2, BarChart3, Calendar, ChevronUp, ChevronDown, Image, TrendingUp } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Plus, Pencil, Trash2, Save, Filter, RefreshCw, CheckCircle, AlertCircle, Loader2, Table2, BarChart3, Calendar, ChevronUp, ChevronDown, Image, TrendingUp, Clipboard, Eye, FolderOpen } from 'lucide-react';
 import { Button, Input, Select, Modal, Toggle, ZoomControls } from '@/components/common';
+import { Pagination } from '@/components/common/Pagination';
+import { ImagePreviewModal } from '@/components/editor/ImagePreviewModal';
 import { useDataStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
 import { useTableZoom } from '@/hooks/useTableZoom';
+import { useImageDirectory } from '@/hooks/useImageDirectory';
 import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus, MonthlyAnalysis, AnalysisResult, ParsedTradeData, EntryType, FieldConfig } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 import { validateTradingRecord } from '@/utils/validationUtils';
@@ -48,6 +51,8 @@ const emptyRecord: TradingRecordInput = {
   hasMistake: '否',
   profitPercent: null,
   holdDays: null,
+  images: [],
+  imagePrefix: '',
   subsequentProfitSpace: null,
   preMarket: '否',
 };
@@ -125,6 +130,17 @@ export const DataEditor: React.FC = () => {
   const [monthlyFormData, setMonthlyFormData] = useState<Partial<MonthlyAnalysis>>({});
   const [isImageImportModalOpen, setIsImageImportModalOpen] = useState(false);
 
+  // 分页
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+
+  // 图片预览
+  const [imagePreviewImages, setImagePreviewImages] = useState<string[]>([]);
+  const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
+
+  // 图片目录 Hook
+  const imgDir = useImageDirectory();
+
   // 处理排序点击
   const handleSort = (key: 'openDate' | 'stockCode') => {
     setSortConfig((prev) => {
@@ -179,6 +195,15 @@ export const DataEditor: React.FC = () => {
     return result;
   }, [records, filters, sortConfig]);
 
+  // 分页
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
+  const paginatedRecords = useMemo(
+    () => filteredRecords.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredRecords, page]
+  );
+  // filter 变化时重置到第一页
+  useEffect(() => { setPage(1); }, [filteredRecords.length]);
+
   // 获取所有可用的月份选项
   const monthOptions = useMemo(() => {
     const months = new Set<string>();
@@ -206,6 +231,8 @@ export const DataEditor: React.FC = () => {
         hasMistake: record.hasMistake,
         profitPercent: record.profitPercent,
         holdDays: record.holdDays,
+        images: record.images || [],
+        imagePrefix: record.imagePrefix || '',
         subsequentProfitSpace: record.subsequentProfitSpace,
         preMarket: record.preMarket,
       });
@@ -223,6 +250,38 @@ export const DataEditor: React.FC = () => {
     setEditingRecord(null);
     setFormData(emptyRecord);
     setValidationErrors([]);
+  };
+
+  // 剪切板粘贴图片
+  const handleClipboardPaste = async () => {
+    if (!imgDir.handle) {
+      alert('请先在页面顶部选择图片存储目录');
+      return;
+    }
+    if (!formData.openDate) {
+      alert('请先填写开单时间');
+      return;
+    }
+    try {
+      let prefix = formData.imagePrefix || '';
+      if (!editingRecord || !prefix) {
+        const state = useDataStore.getState();
+        const sameDateRecords = state.records
+          .filter(r => r.openDate === formData.openDate && r.imagePrefix)
+          .sort((a, b) => (a.imagePrefix || '').localeCompare(b.imagePrefix || ''));
+        const seq = sameDateRecords.length;
+        prefix = imgDir.generatePrefix(formData.openDate, seq);
+      }
+      const filenames = await imgDir.saveImagesFromClipboard(prefix);
+      setFormData(prev => ({ ...prev, images: [...(prev.images || []), ...filenames], imagePrefix: prefix }));
+    } catch (e: any) {
+      alert('粘贴失败: ' + e.message);
+    }
+  };
+
+  // 清除已粘贴的图片
+  const handleClearImages = () => {
+    setFormData(prev => ({ ...prev, images: [], imagePrefix: '' }));
   };
 
   const handleSave = async () => {
@@ -245,6 +304,8 @@ export const DataEditor: React.FC = () => {
       ...formData,
       profitPercent: formData.profitPercent,
       holdDays: formData.holdDays,
+      images: formData.images || [],
+      imagePrefix: formData.imagePrefix || '',
       subsequentProfitSpace: formData.subsequentProfitSpace ?? null,
     };
 
@@ -264,8 +325,13 @@ export const DataEditor: React.FC = () => {
   };
 
   const handleDelete = (id: string) => {
+    const record = records.find(r => r.id === id);
     if (confirm('确定要删除这条记录吗？')) {
       deleteRecord(id);
+      // 异步删除本地图片（不阻塞UI）
+      if (record?.imagePrefix) {
+        imgDir.deleteImages(record.imagePrefix).catch(() => {});
+      }
     }
   };
 
@@ -420,6 +486,17 @@ export const DataEditor: React.FC = () => {
                 保存中...
               </div>
             )}
+            {/* 图片存储目录 */}
+            <button
+              onClick={() => imgDir.selectDirectory()}
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border ${
+                imgDir.handle ? 'border-green-300 text-green-700 bg-green-50' : 'border-orange-300 text-orange-700 bg-orange-50'
+              }`}
+              title={imgDir.handle ? `图片目录: ${imgDir.path}` : '选择图片存储目录'}
+            >
+              <FolderOpen className="h-4 w-4" />
+              {imgDir.handle ? imgDir.path : '选择图片目录'}
+            </button>
             <div className="flex items-center gap-2">
               {statsNeedUpdate && (
                 <div className="flex items-center gap-1 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full text-xs font-medium">
@@ -524,7 +601,7 @@ export const DataEditor: React.FC = () => {
           </div>
 
           <div className="mt-4 text-sm text-gray-600">
-            共 {filteredRecords.length} 条记录 (总计 {records.length} 条)
+            共 {filteredRecords.length} 条记录 (总计 {records.length} 条) · 第 {page}/{totalPages} 页
           </div>
         </div>
 
@@ -568,18 +645,19 @@ export const DataEditor: React.FC = () => {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏情况</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">持仓时间（天）</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">后续盈亏空间</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">图片</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
                         {records.length === 0 ? '暂无数据，请导入Excel或添加记录' : '无符合筛选条件的记录'}
                       </td>
                     </tr>
                   ) : (
-                    filteredRecords.map((record) => (
+                    paginatedRecords.map((record) => (
                       <tr key={record.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm text-gray-900">{record.openDate}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{record.stockName}</td>
@@ -611,7 +689,21 @@ export const DataEditor: React.FC = () => {
                         <td className="px-4 py-3 text-sm text-gray-900">
                           {record.subsequentProfitSpace === null ? 'N/A' : `${record.subsequentProfitSpace}%`}
                         </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {record.images && record.images.length > 0
+                            ? `${record.images.length} 张`
+                            : '-'}
+                        </td>
                         <td className="px-4 py-3 text-sm space-x-2">
+                          {record.images && record.images.length > 0 && (
+                            <button
+                              onClick={() => { setImagePreviewImages(record.images); setIsImagePreviewOpen(true); }}
+                              className="text-blue-600 hover:text-blue-900"
+                              title="查看图片"
+                            >
+                              <Eye className="h-4 w-4 inline" />
+                            </button>
+                          )}
                           <button
                             onClick={() => handleOpenModal(record)}
                             className="text-blue-600 hover:text-blue-900"
@@ -632,6 +724,7 @@ export const DataEditor: React.FC = () => {
               </table>
             </div>
           </div>
+          <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} pageSize={PAGE_SIZE} total={filteredRecords.length} />
         </div>
       </div>
     );
@@ -1148,6 +1241,41 @@ export const DataEditor: React.FC = () => {
               />
             </div>
           </div>
+
+          {/* 图片粘贴区域 */}
+          <div className="border-t pt-4">
+            <label className="block text-base font-medium text-gray-700 mb-2">
+              交易截图 <span className="text-xs text-gray-400">(从剪切板粘贴)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={handleClipboardPaste} disabled={!imgDir.handle}>
+                <Clipboard className="mr-1.5 h-4 w-4" />
+                从剪切板粘贴
+              </Button>
+              {formData.images && formData.images.length > 0 && (
+                <>
+                  <span className="text-sm text-gray-500">
+                    已粘贴 {formData.images.length} 张
+                    {formData.imagePrefix && <> · 前缀: {formData.imagePrefix}</>}
+                  </span>
+                  <button onClick={handleClearImages} className="text-xs text-red-500 hover:text-red-700">
+                    清除
+                  </button>
+                </>
+              )}
+              {formData.images && formData.images.length > 0 && (
+                <button
+                  onClick={() => { setImagePreviewImages(formData.images!); setIsImagePreviewOpen(true); }}
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  预览
+                </button>
+              )}
+            </div>
+            {!imgDir.handle && (
+              <p className="text-xs text-orange-600 mt-1">请先在页面顶部选择图片存储目录</p>
+            )}
+          </div>
         </div>
         <div className="flex justify-end gap-4 mt-8 pt-5 border-t">
           {saveError && (
@@ -1217,6 +1345,13 @@ export const DataEditor: React.FC = () => {
         isOpen={isImageImportModalOpen}
         onClose={() => setIsImageImportModalOpen(false)}
         onImport={handleImageImport}
+      />
+
+      {/* 图片预览模态框 */}
+      <ImagePreviewModal
+        images={imagePreviewImages}
+        isOpen={isImagePreviewOpen}
+        onClose={() => { setIsImagePreviewOpen(false); setImagePreviewImages([]); }}
       />
     </div>
   );
