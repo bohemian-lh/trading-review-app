@@ -65,9 +65,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
 }) => {
   const [imagePreviewImages, setImagePreviewImages] = useState<string[]>([]);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
-  const [subsequentNumberMode, setSubsequentNumberMode] = useState(
-    formData.subsequentProfitSpace !== null && formData.subsequentProfitSpace !== undefined
-  );
+  const [subsequentNumberMode, setSubsequentNumberMode] = useState(true);
 
   const getFieldError = (field: string): string | undefined => {
     return validationErrors.find((e) => e.field === field)?.message;
@@ -216,10 +214,8 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 <select
                   value={subsequentNumberMode ? 'number' : 'N/A'}
                   onChange={(e) => {
-                    const val = e.target.value;
-                    const isNum = val === 'number';
+                    const isNum = e.target.value === 'number';
                     setSubsequentNumberMode(isNum);
-                    onFormChange({ ...formData, subsequentProfitSpace: isNum ? 0 : null });
                   }}
                   className="w-24 rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm"
                 >
@@ -231,11 +227,11 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                     type="number"
                     step="0.1"
                     className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    value={formData.subsequentProfitSpace ?? ''}
+                    value={formData.subsequentProfitSpace !== null ? formData.subsequentProfitSpace : ''}
                     onChange={(e) => {
                       const raw = e.target.value;
                       if (raw === '' || raw === '-') {
-                        onFormChange({ ...formData, subsequentProfitSpace: 0 });
+                        onFormChange({ ...formData, subsequentProfitSpace: null });
                         return;
                       }
                       const num = parseFloat(raw);

@@ -29,7 +29,7 @@ const emptyRecord: TradingRecordInput = {
   holdDays: null,
   images: [],
   imagePrefix: '',
-  subsequentProfitSpace: 0,
+  subsequentProfitSpace: null,
   preMarket: '否',
 };
 
