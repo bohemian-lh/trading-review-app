@@ -51,7 +51,7 @@ export const ImagePreviewModal: React.FC<Props> = ({ images, isOpen, onClose }) 
   const fullPath = currentFile ? getImageFullPath(currentFile) : '';
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[10001]" onClick={onClose}>
       <div className="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b">
