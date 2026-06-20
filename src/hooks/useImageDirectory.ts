@@ -93,12 +93,8 @@ export function useImageDirectory() {
   }, []);
 
   // 确保年度子目录存在
-  const ensureYearDir = useCallback(async (prefix?: string): Promise<FileSystemDirectoryHandle> => {
+  const ensureYearDir = useCallback(async (year: string): Promise<FileSystemDirectoryHandle> => {
     if (!state.handle) throw new Error('未选择图片存储目录');
-    // 从文件名前缀中提取年份（格式: YYMMDD），不存在则用当前年份
-    const year = prefix && /^\d{6}/.test(prefix)
-      ? ('20' + prefix.slice(0, 2))
-      : new Date().getFullYear().toString();
     const permission = await queryPerm(state.handle);
     if (permission !== 'granted') {
       const req = await requestPerm(state.handle);
@@ -111,11 +107,14 @@ export function useImageDirectory() {
     }
   }, [state.handle]);
 
+  // 从开单时间提取年份，例如 "20250401" → "2025"
+  const extractYear = (openDate: string): string => openDate.slice(0, 4);
+
   // 从剪切板粘贴图片到本地目录
-  const saveImagesFromClipboard = useCallback(async (prefix: string, startSeq: number = 0): Promise<string[]> => {
+  const saveImagesFromClipboard = useCallback(async (prefix: string, startSeq: number = 0, openDate: string): Promise<string[]> => {
     if (!state.handle) throw new Error('未选择图片存储目录');
     const items = await navigator.clipboard.read();
-    const yearDir = await ensureYearDir(prefix);
+    const yearDir = await ensureYearDir(extractYear(openDate));
     const saved: string[] = [];
 
     for (let i = 0; i < items.length; i++) {
@@ -141,11 +140,12 @@ export function useImageDirectory() {
     return saved;
   }, [state.handle, ensureYearDir]);
 
-  // 删除指定前缀的所有图片
+  // 删除指定前缀的所有图片（prefix 格式 YYMMDD，从中提取年份）
   const deleteImages = useCallback(async (prefix: string): Promise<void> => {
     if (!state.handle) return;
     try {
-      const yearDir = await ensureYearDir(prefix);
+      const year = '20' + prefix.slice(0, 2);
+      const yearDir = await ensureYearDir(year);
       for await (const [name] of (yearDir as any).entries?.() ?? []) {
         if (typeof name === 'string' && name.startsWith(prefix)) {
           await yearDir.removeEntry(name);

@@ -178,7 +178,7 @@ export const DataEditor: React.FC = () => {
           .sort((a, b) => (a.imagePrefix || '').localeCompare(b.imagePrefix || ''));
         prefix = imgDir.generatePrefix(formData.openDate, sameDateRecords.length);
       }
-      const filenames = await imgDir.saveImagesFromClipboard(prefix, (formData.images || []).length);
+      const filenames = await imgDir.saveImagesFromClipboard(prefix, (formData.images || []).length, formData.openDate);
       setFormData(prev => ({ ...prev, images: [...(prev.images || []), ...filenames], imagePrefix: prefix }));
     } catch (e: any) { alert('粘贴失败: ' + e.message); }
   };
