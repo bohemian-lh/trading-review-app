@@ -48,6 +48,7 @@ export const ExcelUploader: React.FC = () => {
     customAnalysis,
     customMonthly,
     cycleStats,
+    currentDatasetId,
   } = useDataStore();
   const analysis = useAnalysisResult();
   const monthlyAnalysis = useMonthlyAnalysis();
@@ -74,7 +75,7 @@ export const ExcelUploader: React.FC = () => {
 
     try {
       console.log('Testing R2 connection...');
-      const result = await r2StorageService.getRecords();
+      const result = await r2StorageService.getRecords(currentDatasetId || 'default');
       console.log('Connection test result:', result);
 
       if (result.success) {
@@ -210,7 +211,12 @@ export const ExcelUploader: React.FC = () => {
       }
 
       console.log('Step 3: Saving to R2, total records:', newRecords.length);
-      const saveResult = await r2StorageService.saveRecords(newRecords);
+      const saveResult = await r2StorageService.saveRecords(
+        currentDatasetId || 'default', newRecords,
+        useDataStore.getState().version ?? undefined,
+        customAnalysis, customMonthly,
+        cycleStats, useDataStore.getState().cycleStatsGeneratedAt
+      );
       console.log('Step 3: Save result:', { success: saveResult.success, message: saveResult.message });
 
       if (!saveResult.success) {

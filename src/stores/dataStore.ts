@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useMemo } from 'react';
-import type { TradingRecord, AnalysisResult, MonthlyAnalysis, CustomAnalysisData, CustomMonthlyData, CycleStats, FieldConfig } from '@/types';
+import type { TradingRecord, AnalysisResult, MonthlyAnalysis, CustomAnalysisData, CustomMonthlyData, CycleStats, FieldConfig, Dataset } from '@/types';
 import { DEFAULT_FIELD_CONFIG } from '@/types';
 import { calculateProfitRatio, calculateAvgProfitRatio, calculateTotalProfit, calculateAverageHoldDays, calculateTradingTypeRatios, calculateEntryTypeRatios, calculateAggregateRatios } from '@/utils/calculations';
 import { extractMonth } from '@/utils/dateUtils';
@@ -22,6 +22,8 @@ interface DataState {
   cycleStats: Record<string, CycleStats[]>;
   cycleStatsGeneratedAt: number | null;
   statsNeedUpdate: boolean;
+  datasets: Dataset[];
+  currentDatasetId: string | null;
 
   setRecords: (records: TradingRecord[]) => void;
   addRecord: (record: Omit<TradingRecord, 'id' | 'hasCycleStats' | 'hasMonthlyStats'>) => void;
@@ -42,6 +44,9 @@ interface DataState {
   toggleUseCustomMonthly: () => void;
   updateCycleStats: () => void;
   saveFieldConfig: (config: FieldConfig) => Promise<void>;
+  switchDataset: (datasetId: string) => Promise<void>;
+  createDataset: (name: string) => Promise<Dataset | null>;
+  deleteDataset: (id: string) => Promise<void>;
   loadFromR2: () => Promise<void>;
   saveToR2: () => Promise<void>;
 }
@@ -75,6 +80,7 @@ export const useDataStore = create<DataState>((set, get) => {
     customAnalysis: { useCustom: false, data: { ...emptyAnalysis } },
     customMonthly: { useCustom: false, data: [] },
     cycleStats: emptyCycleStats, cycleStatsGeneratedAt: null, statsNeedUpdate: false,
+    datasets: [], currentDatasetId: null,
 
     setRecords: (records) => {
       const normalized = records.map(r => ({ ...r, hasCycleStats: r.hasCycleStats ?? false, hasMonthlyStats: r.hasMonthlyStats ?? false }));
@@ -211,7 +217,6 @@ export const useDataStore = create<DataState>((set, get) => {
 
     saveFieldConfig: async (config) => {
       const state = get();
-      // 计算被删除的 statType keys
       const deletedTradingTypes = state.fieldConfig.tradingTypes.filter(t => !config.tradingTypes.includes(t));
       const deletedEntryTypes = state.fieldConfig.entryTypes.filter(t => !config.entryTypes.includes(t));
       const deletedAggRules = state.fieldConfig.aggregateRules
@@ -230,15 +235,20 @@ export const useDataStore = create<DataState>((set, get) => {
         cycleStats: cleaned ? cleanedCycleStats : state.cycleStats,
         statsNeedUpdate: true 
       });
-      await r2StorageService.saveConfig(config);
+      const datasetId = state.currentDatasetId;
+      if (datasetId) {
+        await r2StorageService.saveConfig(datasetId, config);
+      }
     },
 
-    loadFromR2: async () => {
-      set({ isLoading: true, error: null });
+    // ============ 数据集操作 ============
+
+    switchDataset: async (datasetId) => {
+      cancelPendingSave();
+      set({ isLoading: true, error: null, currentDatasetId: datasetId });
       try {
-        const result = await r2StorageService.getRecords() as any;
-        // 并行加载配置
-        const configResult = await r2StorageService.getConfig();
+        const result = await r2StorageService.getRecords(datasetId) as any;
+        const configResult = await r2StorageService.getConfig(datasetId);
         const fieldConfig = (configResult.success && configResult.config?.tradingTypes) 
           ? configResult.config 
           : defaultConfig;
@@ -252,9 +262,86 @@ export const useDataStore = create<DataState>((set, get) => {
             cycleStats: result.cycleStats || emptyCycleStats,
             cycleStatsGeneratedAt: result.cycleStatsGeneratedAt || null,
             version: result.version || null,
-            isInitialized: true,
+            statsNeedUpdate: false,
           });
-        } else { set({ isInitialized: true, fieldConfig }); }
+        } else {
+          set({
+            records: [], version: null, fieldConfig: defaultConfig,
+            customAnalysis: { useCustom: false, data: { ...emptyAnalysis } },
+            customMonthly: { useCustom: false, data: [] },
+            cycleStats: emptyCycleStats, cycleStatsGeneratedAt: null, statsNeedUpdate: false,
+          });
+        }
+      } catch (error) {
+        set({ error: error instanceof Error ? error.message : 'Switch dataset failed' });
+      } finally {
+        set({ isLoading: false });
+      }
+    },
+
+    createDataset: async (name) => {
+      const result = await r2StorageService.createDataset(name);
+      if (result.success && result.dataset) {
+        set((s) => ({ datasets: [...s.datasets, result.dataset!] }));
+        return result.dataset;
+      }
+      set({ error: result.message || 'Create dataset failed' });
+      return null;
+    },
+
+    deleteDataset: async (id) => {
+      const state = get();
+      await r2StorageService.deleteDataset(id);
+      set((s) => ({ datasets: s.datasets.filter(d => d.id !== id) }));
+      if (state.currentDatasetId === id) {
+        const remaining = get().datasets;
+        if (remaining.length > 0) {
+          await get().switchDataset(remaining[0].id);
+        } else {
+          set({
+            records: [], version: null, currentDatasetId: null,
+            fieldConfig: defaultConfig,
+          });
+        }
+      }
+    },
+
+    loadFromR2: async () => {
+      set({ isLoading: true, error: null });
+      try {
+        // 先加载数据集列表
+        const datasetsResult = await r2StorageService.getDatasets();
+        const datasets = datasetsResult.success ? (datasetsResult.datasets || []) : [];
+        
+        if (datasets.length === 0) {
+          // 没有数据集 → 仅标记初始化完成，等待用户创建
+          set({ datasets, isInitialized: true, currentDatasetId: null });
+        } else {
+          // 选第一个数据集加载
+          const firstId = datasets[0].id;
+          const result = await r2StorageService.getRecords(firstId) as any;
+          const configResult = await r2StorageService.getConfig(firstId);
+          const fieldConfig = (configResult.success && configResult.config?.tradingTypes) 
+            ? configResult.config 
+            : defaultConfig;
+          if (result.success) {
+            const normalizedRecords = (result.records || []).map((r: any) => ({ ...r, hasCycleStats: r.hasCycleStats ?? false, hasMonthlyStats: r.hasMonthlyStats ?? false }));
+            set({
+              datasets,
+              currentDatasetId: firstId,
+              records: normalizedRecords,
+              fieldConfig,
+              customAnalysis: result.customAnalysis || { useCustom: false, data: { ...emptyAnalysis } },
+              customMonthly: result.customMonthly || { useCustom: false, data: [] },
+              cycleStats: result.cycleStats || emptyCycleStats,
+              cycleStatsGeneratedAt: result.cycleStatsGeneratedAt || null,
+              version: result.version || null,
+              isInitialized: true,
+            });
+          } else {
+            set({ datasets, currentDatasetId: firstId, isInitialized: true, fieldConfig: defaultConfig });
+          }
+        }
       } catch (error) {
         set({ error: error instanceof Error ? error.message : 'Load failed', isInitialized: true });
       } finally { set({ isLoading: false }); }
@@ -263,10 +350,12 @@ export const useDataStore = create<DataState>((set, get) => {
     saveToR2: async () => {
       const state = get();
       cancelPendingSave();
+      if (!state.currentDatasetId) return;
       if (state.records.length === 0 && !state.customAnalysis.useCustom) return;
       set({ isSaving: true });
       try {
         const result = await r2StorageService.saveRecords(
+          state.currentDatasetId,
           state.records, state.version ?? undefined,
           state.customAnalysis, state.customMonthly,
           state.cycleStats, state.cycleStatsGeneratedAt

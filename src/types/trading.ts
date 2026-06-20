@@ -60,3 +60,11 @@ export interface TradingRecordInput {
   cycleId?: string;
   subsequentProfitSpace?: number | null;
 }
+
+// ============ 数据集 ============
+
+export interface Dataset {
+  id: string;
+  name: string;
+  createdAt: string;
+}

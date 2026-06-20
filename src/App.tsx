@@ -1,10 +1,11 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { FileSpreadsheet, BarChart3, LayoutDashboard, Settings, Loader2, TrendingUp } from 'lucide-react';
+import { FileSpreadsheet, BarChart3, LayoutDashboard, Settings, Loader2, TrendingUp, Folder, Plus, Trash2 } from 'lucide-react';
 import { ExcelUploader } from '@/components/excel';
 import { DataEditor } from '@/components/editor';
 import { FieldConfigPage } from '@/components/config/FieldConfigPage';
 import { SubsequentProfitPage } from '@/components/charts/SubsequentProfitPage';
+import { exportTable1ToExcel } from '@/services/excelService';
 import { 
   MonthlyProfitRatioChart,
   CycleSystemChart,
@@ -141,6 +142,85 @@ const Navigation: React.FC = () => {
   );
 };
 
+const DatasetSelector: React.FC = () => {
+  const datasets = useDataStore(s => s.datasets);
+  const currentDatasetId = useDataStore(s => s.currentDatasetId);
+  const switchDataset = useDataStore(s => s.switchDataset);
+  const createDataset = useDataStore(s => s.createDataset);
+  const deleteDataset = useDataStore(s => s.deleteDataset);
+  const records = useDataStore(s => s.records);
+  const [showDelete, setShowDelete] = React.useState<string | null>(null);
+
+  const handleCreate = async () => {
+    const name = prompt('请输入数据集名称：');
+    if (!name?.trim()) return;
+    const dataset = await createDataset(name.trim());
+    if (dataset) {
+      await switchDataset(dataset.id);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    await deleteDataset(id);
+    setShowDelete(null);
+  };
+
+  const handleDownloadBeforeDelete = (id: string) => {
+    const name = datasets.find(d => d.id === id)?.name || id;
+    exportTable1ToExcel(records, `dataset-${name}`);
+    setShowDelete(id);
+  };
+
+  if (datasets.length === 0 && !currentDatasetId) {
+    return (
+      <button onClick={handleCreate} className="flex items-center gap-1.5 px-3 py-1.5 text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 text-sm">
+        <Plus className="h-3.5 w-3.5" />
+        创建数据集
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Folder className="h-4 w-4 text-gray-400" />
+      <select
+        value={currentDatasetId || ''}
+        onChange={e => { if (e.target.value) switchDataset(e.target.value); }}
+        className="text-sm border rounded-lg px-2 py-1.5 bg-white"
+      >
+        {datasets.map(d => (
+          <option key={d.id} value={d.id}>{d.name}</option>
+        ))}
+      </select>
+      <button onClick={handleCreate} className="p-1.5 hover:bg-gray-100 rounded text-gray-500" title="新建数据集">
+        <Plus className="h-4 w-4" />
+      </button>
+      {currentDatasetId && (
+        <button
+          onClick={() => handleDownloadBeforeDelete(currentDatasetId)}
+          className="p-1.5 hover:bg-red-50 rounded text-gray-500 hover:text-red-600"
+          title="删除当前数据集（自动下载）"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
+      {showDelete && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">确认删除</h3>
+            <p className="text-sm text-gray-600 mb-1">数据已自动下载到本地。</p>
+            <p className="text-sm text-gray-600 mb-4">删除数据集「{datasets.find(d => d.id === showDelete)?.name}」及其所有记录？此操作不可恢复。</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowDelete(null)} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">取消</button>
+              <button onClick={() => handleDelete(showDelete)} className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">确认删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   useInitializeStore();
   const isInitialized = useDataStore((state) => state.isInitialized);
@@ -165,6 +245,7 @@ const App: React.FC = () => {
           <div className="max-w-7xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
               <h1 className="text-2xl font-bold text-gray-900">交易复盘管理系统</h1>
+              <DatasetSelector />
             </div>
           </div>
         </header>
