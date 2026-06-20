@@ -93,9 +93,12 @@ export function useImageDirectory() {
   }, []);
 
   // 确保年度子目录存在
-  const ensureYearDir = useCallback(async (): Promise<FileSystemDirectoryHandle> => {
+  const ensureYearDir = useCallback(async (prefix?: string): Promise<FileSystemDirectoryHandle> => {
     if (!state.handle) throw new Error('未选择图片存储目录');
-    const year = new Date().getFullYear().toString();
+    // 从文件名前缀中提取年份（格式: YYMMDD），不存在则用当前年份
+    const year = prefix && /^\d{6}/.test(prefix)
+      ? ('20' + prefix.slice(0, 2))
+      : new Date().getFullYear().toString();
     const permission = await queryPerm(state.handle);
     if (permission !== 'granted') {
       const req = await requestPerm(state.handle);
@@ -109,10 +112,10 @@ export function useImageDirectory() {
   }, [state.handle]);
 
   // 从剪切板粘贴图片到本地目录
-  const saveImagesFromClipboard = useCallback(async (prefix: string): Promise<string[]> => {
+  const saveImagesFromClipboard = useCallback(async (prefix: string, startSeq: number = 0): Promise<string[]> => {
     if (!state.handle) throw new Error('未选择图片存储目录');
     const items = await navigator.clipboard.read();
-    const yearDir = await ensureYearDir();
+    const yearDir = await ensureYearDir(prefix);
     const saved: string[] = [];
 
     for (let i = 0; i < items.length; i++) {
@@ -125,7 +128,7 @@ export function useImageDirectory() {
         : 'jpg';
 
       const blob = await items[i].getType(imageTypes[0]);
-      const seq = String(i + 1).padStart(2, '0');
+      const seq = String(startSeq + i + 1).padStart(2, '0');
       const filename = `${prefix}_${seq}.${ext}`;
 
       const fileHandle = await yearDir.getFileHandle(filename, { create: true });
@@ -142,7 +145,7 @@ export function useImageDirectory() {
   const deleteImages = useCallback(async (prefix: string): Promise<void> => {
     if (!state.handle) return;
     try {
-      const yearDir = await ensureYearDir();
+      const yearDir = await ensureYearDir(prefix);
       for await (const [name] of (yearDir as any).entries?.() ?? []) {
         if (typeof name === 'string' && name.startsWith(prefix)) {
           await yearDir.removeEntry(name);
@@ -151,15 +154,25 @@ export function useImageDirectory() {
     } catch { /* 目录或文件可能不存在 */ }
   }, [state.handle, ensureYearDir]);
 
+  // 从文件名中提取年份（文件名格式: YYMMDD_seq.ext）
+  const getYearFromFilename = useCallback((filename: string): string => {
+    const match = filename.match(/^(\d{2})\d{4}/);
+    if (match) {
+      const yy = parseInt(match[1], 10);
+      return (2000 + yy).toString();
+    }
+    return new Date().getFullYear().toString();
+  }, []);
+
   // 获取图片 Blob URL（用于预览）
   const getImageBlobUrl = useCallback(async (filename: string): Promise<string> => {
     if (!state.handle) throw new Error('未选择图片存储目录');
-    const year = new Date().getFullYear().toString();
+    const year = getYearFromFilename(filename);
     const yearDir = await state.handle.getDirectoryHandle(year, { create: false });
     const fileHandle = await yearDir.getFileHandle(filename);
     const file = await fileHandle.getFile();
     return URL.createObjectURL(file);
-  }, [state.handle]);
+  }, [state.handle, getYearFromFilename]);
 
   // 生成前缀：YYMMDD + 2位全局序号
   const generatePrefix = useCallback((openDate: string, seq: number): string => {
@@ -169,9 +182,9 @@ export function useImageDirectory() {
 
   // 图片的完整本地路径
   const getImageFullPath = useCallback((filename: string): string => {
-    const year = new Date().getFullYear().toString();
+    const year = getYearFromFilename(filename);
     return `${state.path}/${year}/${filename}`;
-  }, [state.path]);
+  }, [state.path, getYearFromFilename]);
 
   return {
     ...state,

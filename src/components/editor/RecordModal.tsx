@@ -65,6 +65,9 @@ export const RecordModal: React.FC<RecordModalProps> = ({
 }) => {
   const [imagePreviewImages, setImagePreviewImages] = useState<string[]>([]);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
+  const [subsequentNumberMode, setSubsequentNumberMode] = useState(
+    formData.subsequentProfitSpace !== null && formData.subsequentProfitSpace !== undefined
+  );
 
   const getFieldError = (field: string): string | undefined => {
     return validationErrors.find((e) => e.field === field)?.message;
@@ -210,25 +213,27 @@ export const RecordModal: React.FC<RecordModalProps> = ({
               </label>
               <div className="flex gap-2">
                 <select
-                  value={formData.subsequentProfitSpace === null ? 'N/A' : 'number'}
+                  value={subsequentNumberMode ? 'number' : 'N/A'}
                   onChange={(e) => {
                     const val = e.target.value;
-                    onFormChange({ ...formData, subsequentProfitSpace: val === 'N/A' ? null : 0 });
+                    const isNum = val === 'number';
+                    setSubsequentNumberMode(isNum);
+                    onFormChange({ ...formData, subsequentProfitSpace: isNum ? 0 : null });
                   }}
                   className="w-24 rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm"
                 >
                   <option value="N/A">N/A</option>
                   <option value="number">数值</option>
                 </select>
-                {formData.subsequentProfitSpace !== null && formData.subsequentProfitSpace !== undefined && (
+                {subsequentNumberMode && (
                   <Input
                     type="number"
                     step="0.1"
-                    value={formData.subsequentProfitSpace}
+                    value={formData.subsequentProfitSpace ?? ''}
                     onChange={(e) => {
                       const raw = e.target.value;
                       if (raw === '' || raw === '-') {
-                        onFormChange({ ...formData, subsequentProfitSpace: null });
+                        onFormChange({ ...formData, subsequentProfitSpace: 0 });
                         return;
                       }
                       const num = parseFloat(raw);
