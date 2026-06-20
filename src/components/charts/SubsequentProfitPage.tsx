@@ -5,7 +5,7 @@ import {
   BarChart, Bar, Cell,
 } from 'recharts';
 import { TrendingUp } from 'lucide-react';
-import { useDataStore } from '@/stores';
+import { useRecordsStore } from '@/stores';
 import { calculateSubsequentProfitAnalysis } from '@/utils/calculations';
 
 const COLORS = ['#0ea5e9', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
@@ -13,8 +13,8 @@ const COLORS = ['#0ea5e9', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
   '#14b8a6', '#d946ef', '#e11d48', '#22d3ee', '#a78bfa', '#fb923c'];
 
 export const SubsequentProfitPage: React.FC = () => {
-  const records = useDataStore(s => s.records);
-  const fieldConfig = useDataStore(s => s.fieldConfig);
+  const records = useRecordsStore(s => s.records);
+  const fieldConfig = useRecordsStore(s => s.fieldConfig);
 
   const analysis = useMemo(
     () => calculateSubsequentProfitAnalysis(records, fieldConfig.tradingTypes, fieldConfig),

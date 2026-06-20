@@ -18,10 +18,7 @@ const HEADERS_1 = [
   '盈亏情况',
   '持仓时间（天）',
   '后续盈亏空间',
-  '股票走势1',
-  '股票走势2',
-  '关键分时1',
-  '关键分时2',
+  '图片',
   '盘前是否',
 ];
 
@@ -253,6 +250,12 @@ function parseValue(value: unknown): number | 'N/A' {
   return isNaN(num) ? 'N/A' : num;
 }
 
+function parseImagesColumn(raw: unknown): string[] {
+  const str = String(raw || '').trim();
+  if (!str) return [];
+  return str.split(',').map(s => s.trim()).filter(Boolean);
+}
+
 function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
   if (!row['开单时间'] && !row['股票名称']) {
     return null;
@@ -292,10 +295,8 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     hasMistake: row['有无大的失误'] === '是' ? '是' : row['有无大的失误'] === '其他' ? '其他' : '否',
     profitPercent,
     holdDays,
-    chart1: (row['股票走势1'] as string) || '',
-    chart2: (row['股票走势2'] as string) || '',
-    keyChart1: (row['关键分时1'] as string) || '',
-    keyChart2: (row['关键分时2'] as string) || '',
+    images: parseImagesColumn(row['图片']),
+    imagePrefix: '',
     preMarket: row['盘前是否'] === '是' ? '是' : '否',
     hasCycleStats: false,
     hasMonthlyStats: false,
@@ -319,10 +320,7 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string):
       record.profitPercent,
       record.holdDays,
       record.subsequentProfitSpace === null ? 'N/A' : record.subsequentProfitSpace,
-      record.chart1 || '',
-      record.chart2 || '',
-      record.keyChart1 || '',
-      record.keyChart2 || '',
+      record.images ? record.images.join(',') : '',
       record.preMarket,
     ]),
   ];
@@ -476,10 +474,8 @@ export function exportAllToExcel(
       record.hasMistake,
       record.profitPercent,
       record.holdDays,
-      record.chart1 || '',
-      record.chart2 || '',
-      record.keyChart1 || '',
-      record.keyChart2 || '',
+      record.subsequentProfitSpace === null ? 'N/A' : record.subsequentProfitSpace,
+      record.images ? record.images.join(',') : '',
       record.preMarket,
     ]),
   ];

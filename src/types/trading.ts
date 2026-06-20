@@ -9,10 +9,8 @@ export interface TradingRecord {
   hasMistake: MistakeStatus;
   profitPercent: number;
   holdDays: number;
-  chart1?: string;
-  chart2?: string;
-  keyChart1?: string;
-  keyChart2?: string;
+  images: string[];
+  imagePrefix: string;
   preMarket: YesNo;
   // 周期统计标记
   hasCycleStats: boolean;
@@ -49,14 +47,20 @@ export interface TradingRecordInput {
   hasMistake: MistakeStatus;
   profitPercent: number | null;
   holdDays: number | null;
-  chart1?: string;
-  chart2?: string;
-  keyChart1?: string;
-  keyChart2?: string;
+  images?: string[];
+  imagePrefix?: string;
   preMarket: YesNo;
   // 新增字段，默认值在创建时设置
   hasCycleStats?: boolean;
   hasMonthlyStats?: boolean;
   cycleId?: string;
   subsequentProfitSpace?: number | null;
+}
+
+// ============ 数据集 ============
+
+export interface Dataset {
+  id: string;
+  name: string;
+  createdAt: string;
 }

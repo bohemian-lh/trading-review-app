@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Settings, Plus, Trash2, Save, X } from 'lucide-react';
-import { useDataStore } from '@/stores';
+import { useRecordsStore } from '@/stores';
+import { saveFieldConfigToR2 } from '@/hooks/useStoreSync';
 import type { FieldConfig, AggregateRule, HistogramConfig } from '@/types';
 import { DEFAULT_HISTOGRAM_CUTS } from '@/types';
 
@@ -12,9 +13,9 @@ type PendingConfig = {
 };
 
 export const FieldConfigPage: React.FC = () => {
-  const fieldConfig = useDataStore(s => s.fieldConfig);
-  const records = useDataStore(s => s.records);
-  const saveFieldConfig = useDataStore(s => s.saveFieldConfig);
+  const fieldConfig = useRecordsStore(s => s.fieldConfig);
+  const records = useRecordsStore(s => s.records);
+  const setFieldConfig = useRecordsStore(s => s.setFieldConfig);
 
   const [pending, setPending] = useState<PendingConfig>({
     tradingTypes: [...fieldConfig.tradingTypes],
@@ -159,7 +160,7 @@ export const FieldConfigPage: React.FC = () => {
       const deletedTradingTypes = fieldConfig.tradingTypes.filter(t => !pending.tradingTypes.includes(t));
       const deletedEntryTypes = fieldConfig.entryTypes.filter(t => !pending.entryTypes.includes(t));
       if (deletedTradingTypes.length > 0 || deletedEntryTypes.length > 0) {
-        useDataStore.getState().setRecords(
+        useRecordsStore.getState().setRecords(
           records.map(r => {
             let changed = false;
             let tradingType = r.tradingType;
@@ -178,7 +179,8 @@ export const FieldConfigPage: React.FC = () => {
         aggregateRules: pending.aggregateRules.map(r => ({ name: r.name, includedTypes: [...r.includedTypes] })),
         histogramConfigs: { ...pending.histogramConfigs },
       };
-      await saveFieldConfig(newConfig);
+      setFieldConfig(newConfig);
+      await saveFieldConfigToR2(newConfig);
       setMessage({ type: 'success', text: '配置已保存' });
     } catch {
       setMessage({ type: 'error', text: '保存失败，请重试' });

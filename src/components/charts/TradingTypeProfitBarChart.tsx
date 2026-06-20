@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts';
-import { useAnalysisResult, useDataStore } from '@/stores';
+import { useAnalysisResult, useRecordsStore } from '@/stores';
 import { useChartConfig } from '@/hooks/useChartConfig';
 
 const CHART_KEY = 'trading-type-total-profit-ratio';
@@ -15,7 +15,7 @@ const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'
 
 export const TradingTypeProfitBarChart: React.FC = () => {
   const analysis = useAnalysisResult();
-  const fieldConfig = useDataStore(s => s.fieldConfig);
+  const fieldConfig = useRecordsStore(s => s.fieldConfig);
 
   // 从 fieldConfig 动态生成 barConfigs
   const barConfigs = useMemo(() => {

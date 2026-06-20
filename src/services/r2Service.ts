@@ -1,4 +1,4 @@
-import type { StorageFile, UploadProgress, TradingRecord, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType, FieldConfig } from '@/types';
+import type { StorageFile, UploadProgress, TradingRecord, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType, FieldConfig, Dataset } from '@/types';
 import type { RecordsResponse } from '@/types/validation';
 
 const API_BASE_URL = '';
@@ -28,18 +28,15 @@ class R2StorageService {
   private async handleResponse<T>(response: Response): Promise<T> {
     const text = await response.text();
     let data: T;
-    
     try {
       data = text ? JSON.parse(text) : {} as T;
     } catch {
       throw new Error(`Invalid JSON response: ${text}`);
     }
-
     if (!response.ok && response.status !== 409) {
       const errorMessage = (data as any)?.error || (data as any)?.message || `HTTP ${response.status}`;
       throw new Error(errorMessage);
     }
-
     return data;
   }
 
@@ -98,16 +95,59 @@ class R2StorageService {
     }
   }
 
-  async getRecords(): Promise<{
-    success: boolean;
-    message: string;
-    records?: TradingRecord[];
-    version?: number;
-    conflict?: boolean;
-    fieldConfig?: FieldConfig;
+  // ============ 数据集管理 ============
+
+  async getDatasets(): Promise<{
+    success: boolean; datasets?: Dataset[]; message?: string;
   }> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/records`, { method: 'GET', headers: this.getHeaders() });
+      const response = await fetch(`${API_BASE_URL}/api/datasets`, { method: 'GET', headers: this.getHeaders() });
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Get datasets failed:', error);
+      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async createDataset(name: string): Promise<{
+    success: boolean; dataset?: Dataset; message?: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/datasets`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ name }),
+      });
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Create dataset failed:', error);
+      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async deleteDataset(id: string): Promise<{
+    success: boolean; message: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/datasets?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      });
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Delete dataset failed:', error);
+      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  // ============ 记录读写（带 datasetId） ============
+
+  async getRecords(datasetId: string): Promise<{
+    success: boolean; message: string;
+    records?: TradingRecord[]; version?: number; conflict?: boolean;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/records?dataset=${encodeURIComponent(datasetId)}`, { method: 'GET', headers: this.getHeaders() });
       const data = await this.handleResponse<RecordsResponse>(response);
       return data;
     } catch (error) {
@@ -116,35 +156,8 @@ class R2StorageService {
     }
   }
 
-  async getConfig(): Promise<{
-    success: boolean; config?: FieldConfig | null; message?: string;
-  }> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/config`, { method: 'GET', headers: this.getHeaders() });
-      return await this.handleResponse(response);
-    } catch (error) {
-      console.error('Get config failed:', error);
-      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  }
-
-  async saveConfig(config: FieldConfig): Promise<{
-    success: boolean; message: string;
-  }> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/config`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ config }),
-      });
-      return await this.handleResponse(response);
-    } catch (error) {
-      console.error('Save config failed:', error);
-      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  }
-
   async saveRecords(
+    datasetId: string,
     records: TradingRecord[],
     version?: number,
     customAnalysis?: CustomAnalysisData,
@@ -158,7 +171,7 @@ class R2StorageService {
     cycleStatsGeneratedAt?: number | null; error?: string;
   }> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/records`, {
+      const response = await fetch(`${API_BASE_URL}/api/records?dataset=${encodeURIComponent(datasetId)}`, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({ records, version, customAnalysis, customMonthly, cycleStats, cycleStatsGeneratedAt }),
@@ -167,6 +180,34 @@ class R2StorageService {
       return data;
     } catch (error) {
       console.error('Save records failed:', error);
+      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async getConfig(datasetId: string): Promise<{
+    success: boolean; config?: FieldConfig | null; message?: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/config?dataset=${encodeURIComponent(datasetId)}`, { method: 'GET', headers: this.getHeaders() });
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Get config failed:', error);
+      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async saveConfig(datasetId: string, config: FieldConfig): Promise<{
+    success: boolean; message: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/config?dataset=${encodeURIComponent(datasetId)}`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ config }),
+      });
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Save config failed:', error);
       return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
