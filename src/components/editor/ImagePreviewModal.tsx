@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight, Image } from 'lucide-react';
 import { useImageDirectory } from '@/hooks/useImageDirectory';
 
@@ -50,7 +51,7 @@ export const ImagePreviewModal: React.FC<Props> = ({ images, isOpen, onClose }) 
   const currentFile = images[currentIdx];
   const fullPath = currentFile ? getImageFullPath(currentFile) : '';
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[10001]" onClick={onClose}>
       <div className="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
@@ -92,6 +93,7 @@ export const ImagePreviewModal: React.FC<Props> = ({ images, isOpen, onClose }) 
           {fullPath}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
