@@ -20,6 +20,7 @@ const HEADERS_1 = [
   '后续盈亏空间',
   '图片',
   '盘前是否',
+  '备注',
 ];
 
 const HEADERS_2 = [
@@ -295,6 +296,7 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     hasCycleStats: false,
     hasMonthlyStats: false,
     subsequentProfitSpace,
+    remark: String(row['备注'] || '').slice(0, 1000),
   };
 }
 
@@ -316,6 +318,7 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string):
       record.subsequentProfitSpace === null ? 'N/A' : record.subsequentProfitSpace,
       record.images ? record.images.join(',') : '',
       record.preMarket,
+      record.remark,
     ]),
   ];
 

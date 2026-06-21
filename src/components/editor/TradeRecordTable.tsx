@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Plus, Filter, RefreshCw, CheckCircle, AlertCircle, Image, ChevronUp, ChevronDown, Pencil, Trash2, Eye, FolderOpen, Loader2 } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Plus, Filter, RefreshCw, CheckCircle, AlertCircle, Image, ChevronUp, ChevronDown, Pencil, Trash2, Eye, FolderOpen, Loader2, FileText } from 'lucide-react';
 import { Button, Select, ZoomControls } from '@/components/common';
 import { Pagination } from '@/components/common/Pagination';
 import { useTableZoom } from '@/hooks/useTableZoom';
@@ -97,6 +97,10 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
   const allTradingTypeOptions = [{ value: '', label: '全部类型' }, ...tradingTypeOptions];
   const allEntryTypeOptions = [{ value: '', label: '全部' }, ...entryTypeOptions];
   const allYesNoOptions = [{ value: '', label: '全部' }, ...YES_NO_OPTIONS];
+
+  const updateRecord = useRecordsStore(s => s.updateRecord);
+  const [expandedRemarkId, setExpandedRemarkId] = useState<string | null>(null);
+  const [remarkEditValues, setRemarkEditValues] = useState<Record<string, string>>({});
 
   return (
     <div className="space-y-4">
@@ -267,13 +271,14 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={13} className="px-4 py-8 text-center text-gray-500">
                       {records.length === 0 ? '暂无数据，请导入Excel或添加记录' : '无符合筛选条件的记录'}
                     </td>
                   </tr>
                 ) : (
                   paginatedRecords.map((record) => (
-                    <tr key={record.id} className="hover:bg-gray-50">
+                    <React.Fragment key={record.id}>
+                    <tr className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm text-gray-900">{record.openDate}</td>
                       <td className="px-4 py-3 text-sm text-gray-900">{record.stockName}</td>
                       <td className="px-4 py-3 text-sm text-gray-900">{record.stockCode}</td>
@@ -320,6 +325,13 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                           </button>
                         )}
                         <button
+                          onClick={() => setExpandedRemarkId(expandedRemarkId === record.id ? null : record.id)}
+                          className={`${record.remark ? 'text-indigo-600' : 'text-gray-400'} hover:text-indigo-900`}
+                          title="备注"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </button>
+                        <button
                           onClick={() => onEditRecord(record)}
                           className="text-blue-600 hover:text-blue-900"
                         >
@@ -333,6 +345,42 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                         </button>
                       </td>
                     </tr>
+                    {expandedRemarkId === record.id && (
+                      <tr key={`${record.id}-remark`} className="bg-gray-50">
+                        <td colSpan={13} className="px-4 py-3">
+                          <div className="text-xs text-gray-500 mb-1">备注</div>
+                          <textarea
+                            value={remarkEditValues[record.id] ?? record.remark}
+                            onChange={(e) => {
+                              const val = e.target.value.slice(0, 1000);
+                              setRemarkEditValues(prev => ({ ...prev, [record.id]: val }));
+                            }}
+                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm resize-y min-h-[60px] focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                            placeholder="暂无备注，输入后自动保存..."
+                            rows={2}
+                            maxLength={1000}
+                          />
+                          <div className="flex justify-between items-center mt-1">
+                            <span className="text-xs text-gray-400">
+                              {((remarkEditValues[record.id] ?? record.remark) || '').length}/1000
+                            </span>
+                            {(remarkEditValues[record.id] !== undefined && remarkEditValues[record.id] !== record.remark) && (
+                              <button
+                                onClick={() => {
+                                  updateRecord(record.id, { ...record, remark: remarkEditValues[record.id] ?? '' });
+                                  setExpandedRemarkId(null);
+                                  setRemarkEditValues(prev => { const n = { ...prev }; delete n[record.id]; return n; });
+                                }}
+                                className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                              >
+                                保存备注
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                   ))
                 )}
               </tbody>

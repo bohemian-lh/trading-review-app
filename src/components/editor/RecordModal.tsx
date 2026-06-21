@@ -260,6 +260,21 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 )}
               </div>
             </div>
+
+            {/* 备注 */}
+            <div className="md:col-span-2">
+              <label className="block text-base font-medium text-gray-700 mb-2">
+                备注 <span className="text-xs text-gray-400">(选填, 最多1000字)</span>
+              </label>
+              <textarea
+                value={formData.remark ?? ''}
+                onChange={(e) => onFormChange({ ...formData, remark: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm resize-y min-h-[80px]"
+                placeholder="可填写任意备注信息..."
+                maxLength={1000}
+                rows={3}
+              />
+            </div>
           </div>
 
           {/* 图片粘贴区域 */}

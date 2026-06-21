@@ -69,6 +69,7 @@ export const TradingRecordSchema = z.object({
   hasMonthlyStats: z.boolean().default(false),
   cycleId: z.string().optional(),
   subsequentProfitSpace: z.union([z.number(), z.null()]),
+  remark: z.string().max(1000, '备注不能超过1000个字符').default(''),
 }) satisfies z.ZodType<TradingRecord>;
 
 export const TradingRecordArraySchema = z.array(TradingRecordSchema);

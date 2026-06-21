@@ -31,6 +31,7 @@ const emptyRecord: TradingRecordInput = {
   imagePrefix: '',
   subsequentProfitSpace: null,
   preMarket: '否',
+  remark: '',
 };
 
 interface Filters {
@@ -197,6 +198,7 @@ export const DataEditor: React.FC = () => {
       ...formData, profitPercent: formData.profitPercent, holdDays: formData.holdDays,
       images: formData.images || [], imagePrefix: formData.imagePrefix || '',
       subsequentProfitSpace: formData.subsequentProfitSpace ?? null,
+      remark: formData.remark ?? '',
     };
     if (editingRecord) updateRecord(editingRecord.id, saveData);
     else addRecord(saveData);

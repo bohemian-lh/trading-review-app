@@ -20,6 +20,8 @@ export interface TradingRecord {
   cycleId?: string;
   // 后续盈亏空间
   subsequentProfitSpace: number | null;
+  // 备注
+  remark: string;
 }
 
 // 合法值由 fieldConfig 动态控制，类型层面不做约束
@@ -48,6 +50,7 @@ export interface TradingRecordInput {
   hasMonthlyStats?: boolean;
   cycleId?: string;
   subsequentProfitSpace?: number | null;
+  remark?: string;
 }
 
 // ============ 数据集 ============
