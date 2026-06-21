@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType } from '@/types';
+import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType, EntryType, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType } from '@/types';
 import { generateId } from '@/utils';
 
 export const SHEET_NAME_1 = '表1-交易复盘数据';
@@ -261,16 +261,10 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     return null;
   }
 
-  const tradingType = row['交易类型'] as string;
-  const validTradingTypes = ['齐飞水底', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统', '齐飞水底三等量', '未知'] as const;
-  const validTradingType = validTradingTypes.includes(tradingType as any) 
-    ? tradingType as TradingType 
-    : '未知';
+  const tradingType = (String(row['交易类型'] || '').trim() || '未知') as TradingType;
 
-  // 解析交易切入类型，不在枚举中的映射为「未知」
-  const entryTypeRaw = String(row['交易切入类型'] || '').trim();
-  const validEntryTypes = ['p2前', 'p34', 'p4后', '未知'];
-  const entryType = validEntryTypes.includes(entryTypeRaw) ? entryTypeRaw : '未知';
+  // 解析交易切入类型
+  const entryType = (String(row['交易切入类型'] || '').trim() || '未知') as EntryType;
 
   // 解析盈亏情况，可能带有 %
   const profitStr = String(row['盈亏情况'] || '').trim().replace('%', '');
@@ -289,8 +283,8 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     openDate: String(row['开单时间'] || ''),
     stockName: String(row['股票名称'] || ''),
     stockCode: String(row['股票代码'] || ''),
-    tradingType: validTradingType,
-    entryType: entryType as any,
+    tradingType,
+    entryType,
     isSystem: row['是否符合系统'] === '是' ? '是' : '否',
     hasMistake: row['有无大的失误'] === '是' ? '是' : row['有无大的失误'] === '其他' ? '其他' : '否',
     profitPercent,

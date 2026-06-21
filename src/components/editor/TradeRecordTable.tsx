@@ -1,26 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Plus, Filter, RefreshCw, CheckCircle, AlertCircle, Image, ChevronUp, ChevronDown, Pencil, Trash2, Eye, FolderOpen, Loader2 } from 'lucide-react';
 import { Button, Select, ZoomControls } from '@/components/common';
 import { Pagination } from '@/components/common/Pagination';
 import { useTableZoom } from '@/hooks/useTableZoom';
+import { useRecordsStore } from '@/stores';
 import type { TradingRecord } from '@/types';
-
-const TRADING_TYPE_OPTIONS = [
-  { value: '齐飞水底', label: '齐飞水底' },
-  { value: '齐飞前多踩MA', label: '齐飞前多踩MA' },
-  { value: '风险释放平台转一致', label: '风险释放平台转一致' },
-  { value: '双阳平台转一致', label: '双阳平台转一致' },
-  { value: '非系统', label: '非系统' },
-  { value: '齐飞水底三等量', label: '齐飞水底三等量' },
-  { value: '未知', label: '未知' },
-];
-
-const ENTRY_TYPE_OPTIONS = [
-  { value: 'p2前', label: 'p2前' },
-  { value: 'p34', label: 'p34' },
-  { value: 'p4后', label: 'p4后' },
-  { value: '未知', label: '未知' },
-];
 
 const YES_NO_OPTIONS = [
   { value: '是', label: '是' },
@@ -98,8 +82,20 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
 }) => {
   const { zoom, containerRef, showZoomHint, zoomHint, resetZoom, increaseZoom, decreaseZoom, isAtMin, isAtMax, zoomStyle } = useTableZoom();
 
+  // 从 fieldConfig 动态生成筛选选项
+  const fieldConfig = useRecordsStore(s => s.fieldConfig);
+  const tradingTypeOptions = useMemo(() =>
+    fieldConfig.tradingTypes.map(t => ({ value: t, label: t })),
+    [fieldConfig.tradingTypes]
+  );
+  const entryTypeOptions = useMemo(() =>
+    fieldConfig.entryTypes.map(t => ({ value: t, label: t })),
+    [fieldConfig.entryTypes]
+  );
+
   const allMonthOptions = [{ value: '', label: '全部月份' }, ...monthOptions];
-  const allTradingTypeOptions = [{ value: '', label: '全部类型' }, ...TRADING_TYPE_OPTIONS];
+  const allTradingTypeOptions = [{ value: '', label: '全部类型' }, ...tradingTypeOptions];
+  const allEntryTypeOptions = [{ value: '', label: '全部' }, ...entryTypeOptions];
   const allYesNoOptions = [{ value: '', label: '全部' }, ...YES_NO_OPTIONS];
 
   return (
@@ -206,7 +202,7 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
             <Select
               value={filters.entryType || ''}
               onChange={(e) => onFilterChange({ ...filters, entryType: e.target.value })}
-              options={[{ value: '', label: '全部' }, ...ENTRY_TYPE_OPTIONS]}
+              options={allEntryTypeOptions}
             />
           </div>
           <div>

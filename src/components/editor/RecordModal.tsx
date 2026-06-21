@@ -1,25 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Save, Clipboard, AlertCircle, Loader2, X } from 'lucide-react';
 import { Button, Input, Select, Modal } from '@/components/common';
 import { ImagePreviewModal } from '@/components/editor/ImagePreviewModal';
+import { useRecordsStore } from '@/stores';
 import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus, EntryType } from '@/types';
-
-const TRADING_TYPE_OPTIONS = [
-  { value: '齐飞水底', label: '齐飞水底' },
-  { value: '齐飞前多踩MA', label: '齐飞前多踩MA' },
-  { value: '风险释放平台转一致', label: '风险释放平台转一致' },
-  { value: '双阳平台转一致', label: '双阳平台转一致' },
-  { value: '非系统', label: '非系统' },
-  { value: '齐飞水底三等量', label: '齐飞水底三等量' },
-  { value: '未知', label: '未知' },
-];
-
-const ENTRY_TYPE_OPTIONS = [
-  { value: 'p2前', label: 'p2前' },
-  { value: 'p34', label: 'p34' },
-  { value: 'p4后', label: 'p4后' },
-  { value: '未知', label: '未知' },
-];
 
 const YES_NO_OPTIONS = [
   { value: '是', label: '是' },
@@ -66,6 +50,17 @@ export const RecordModal: React.FC<RecordModalProps> = ({
   const [imagePreviewImages, setImagePreviewImages] = useState<string[]>([]);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
   const [subsequentNumberMode, setSubsequentNumberMode] = useState(true);
+
+  // 从 fieldConfig 动态生成选项
+  const fieldConfig = useRecordsStore(s => s.fieldConfig);
+  const tradingTypeOptions = useMemo(() =>
+    fieldConfig.tradingTypes.map(t => ({ value: t, label: t })),
+    [fieldConfig.tradingTypes]
+  );
+  const entryTypeOptions = useMemo(() =>
+    fieldConfig.entryTypes.map(t => ({ value: t, label: t })),
+    [fieldConfig.entryTypes]
+  );
 
   const getFieldError = (field: string): string | undefined => {
     return validationErrors.find((e) => e.field === field)?.message;
@@ -119,7 +114,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
               <Select
                 value={formData.tradingType}
                 onChange={(e) => onFormChange({ ...formData, tradingType: e.target.value as TradingType })}
-                options={TRADING_TYPE_OPTIONS}
+                options={tradingTypeOptions}
               />
             </div>
             <div>
@@ -129,7 +124,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
               <Select
                 value={formData.entryType}
                 onChange={(e) => onFormChange({ ...formData, entryType: e.target.value as EntryType })}
-                options={ENTRY_TYPE_OPTIONS}
+                options={entryTypeOptions}
               />
             </div>
             <div>

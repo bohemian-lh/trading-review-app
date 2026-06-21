@@ -22,16 +22,9 @@ export interface TradingRecord {
   subsequentProfitSpace: number | null;
 }
 
-export type TradingType = 
-  | '齐飞水底'
-  | '齐飞水底三等量'
-  | '齐飞前多踩MA'
-  | '风险释放平台转一致'
-  | '双阳平台转一致'
-  | '非系统'
-  | '未知';
-
-export type EntryType = 'p2前' | 'p34' | 'p4后' | '未知';
+// 合法值由 fieldConfig 动态控制，类型层面不做约束
+export type TradingType = string;
+export type EntryType = string;
 
 export type YesNo = '是' | '否';
 

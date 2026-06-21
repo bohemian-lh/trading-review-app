@@ -3,7 +3,8 @@ import type { TradingRecord, TradingType, YesNo, MistakeStatus } from './trading
 import type { CustomAnalysisData, CustomMonthlyData, AnalysisResult, MonthlyAnalysis } from './analysis';
 import type { CycleStats, CycleStatType } from './cycleStats';
 
-const TradingTypeSchema = z.enum(['齐飞水底', '齐飞水底三等量', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统', '未知']) satisfies z.ZodType<TradingType>;
+// 交易类型和切入类型接受任意字符串（合法值由 fieldConfig 动态控制）
+const TradingTypeSchema = z.string() satisfies z.ZodType<TradingType>;
 
 const YesNoSchema = z.enum(['是', '否']) satisfies z.ZodType<YesNo>;
 
@@ -56,7 +57,7 @@ export const TradingRecordSchema = z.object({
   stockName: z.string().min(1, '股票名称不能为空'),
   stockCode: z.string().min(1, '股票代码不能为空'),
   tradingType: TradingTypeSchema,
-  entryType: z.enum(['p2前', 'p34', 'p4后', '未知']).default('未知'),
+  entryType: z.string().default('未知'),
   isSystem: YesNoSchema,
   hasMistake: MistakeStatusSchema,
   profitPercent: z.number().min(-100, '盈亏不能小于-100%').max(1000, '盈亏不能大于1000%'),
