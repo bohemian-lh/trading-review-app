@@ -71,6 +71,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
       <Modal isOpen={isOpen} onClose={onClose} title={editingRecord ? '编辑记录' : '添加记录'} size="2xl">
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+            {/* 开单时间 */}
             <div>
               <label className="block text-base font-medium text-gray-700 mb-2">
                 开单时间 (yyyymmdd) <span className="text-red-500">*</span>
@@ -83,18 +84,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 error={getFieldError('openDate')}
               />
             </div>
-            <div>
-              <label className="block text-base font-medium text-gray-700 mb-2">
-                股票名称 <span className="text-red-500">*</span>
-              </label>
-              <Input
-                type="text"
-                value={formData.stockName}
-                onChange={(e) => onFormChange({ ...formData, stockName: e.target.value })}
-                placeholder="例如: 贵州茅台"
-                error={getFieldError('stockName')}
-              />
-            </div>
+            {/* 股票代码 */}
             <div>
               <label className="block text-base font-medium text-gray-700 mb-2">
                 股票代码 <span className="text-red-500">*</span>
@@ -107,26 +97,31 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 error={getFieldError('stockCode')}
               />
             </div>
+            {/* 盘前是否 */}
             <div>
               <label className="block text-base font-medium text-gray-700 mb-2">
-                交易类型
+                盘前是否
               </label>
               <Select
-                value={formData.tradingType}
-                onChange={(e) => onFormChange({ ...formData, tradingType: e.target.value as TradingType })}
-                options={tradingTypeOptions}
+                value={formData.preMarket}
+                onChange={(e) => onFormChange({ ...formData, preMarket: e.target.value as '是' | '否' })}
+                options={YES_NO_OPTIONS}
               />
             </div>
+            {/* 股票名称 */}
             <div>
               <label className="block text-base font-medium text-gray-700 mb-2">
-                交易切入类型
+                股票名称 <span className="text-red-500">*</span>
               </label>
-              <Select
-                value={formData.entryType}
-                onChange={(e) => onFormChange({ ...formData, entryType: e.target.value as EntryType })}
-                options={entryTypeOptions}
+              <Input
+                type="text"
+                value={formData.stockName}
+                onChange={(e) => onFormChange({ ...formData, stockName: e.target.value })}
+                placeholder="例如: 贵州茅台"
+                error={getFieldError('stockName')}
               />
             </div>
+            {/* 符合系统 */}
             <div>
               <label className="block text-base font-medium text-gray-700 mb-2">
                 符合系统
@@ -145,16 +140,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 options={YES_NO_OPTIONS}
               />
             </div>
-            <div>
-              <label className="block text-base font-medium text-gray-700 mb-2">
-                有失误
-              </label>
-              <Select
-                value={formData.hasMistake}
-                onChange={(e) => onFormChange({ ...formData, hasMistake: e.target.value as MistakeStatus })}
-                options={HAS_MISTAKE_OPTIONS}
-              />
-            </div>
+            {/* 盈亏% */}
             <div>
               <label className="block text-base font-medium text-gray-700 mb-2">
                 盈亏% <span className="text-red-500">*</span>
@@ -178,6 +164,18 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 error={getFieldError('profitPercent')}
               />
             </div>
+            {/* 交易类型 */}
+            <div>
+              <label className="block text-base font-medium text-gray-700 mb-2">
+                交易类型
+              </label>
+              <Select
+                value={formData.tradingType}
+                onChange={(e) => onFormChange({ ...formData, tradingType: e.target.value as TradingType })}
+                options={tradingTypeOptions}
+              />
+            </div>
+            {/* 持仓天数 */}
             <div>
               <label className="block text-base font-medium text-gray-700 mb-2">
                 持仓天数 <span className="text-red-500">*</span>
@@ -201,9 +199,32 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 error={getFieldError('holdDays')}
               />
             </div>
+            {/* 交易切入类型 */}
+            <div>
+              <label className="block text-base font-medium text-gray-700 mb-2">
+                交易切入类型
+              </label>
+              <Select
+                value={formData.entryType}
+                onChange={(e) => onFormChange({ ...formData, entryType: e.target.value as EntryType })}
+                options={entryTypeOptions}
+              />
+            </div>
+            {/* 存在重大失误 */}
+            <div>
+              <label className="block text-base font-medium text-gray-700 mb-2">
+                存在重大失误
+              </label>
+              <Select
+                value={formData.hasMistake}
+                onChange={(e) => onFormChange({ ...formData, hasMistake: e.target.value as MistakeStatus })}
+                options={HAS_MISTAKE_OPTIONS}
+              />
+            </div>
+            {/* 后续盈亏空间% */}
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
-                后续盈亏空间
+                后续盈亏空间%
               </label>
               <div className="flex gap-2">
                 <select
@@ -238,16 +259,6 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                   />
                 )}
               </div>
-            </div>
-            <div>
-              <label className="block text-base font-medium text-gray-700 mb-2">
-                盘前是否
-              </label>
-              <Select
-                value={formData.preMarket}
-                onChange={(e) => onFormChange({ ...formData, preMarket: e.target.value as '是' | '否' })}
-                options={YES_NO_OPTIONS}
-              />
             </div>
           </div>
 
