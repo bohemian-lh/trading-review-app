@@ -1,4 +1,5 @@
 import { OcrStrategy, OcrStrategyHandler, OcrResult } from '../../../types';
+import { calculateHoldDays } from '@/utils/holdDays';
 
 export class TesseractOcrStrategy implements OcrStrategyHandler {
   readonly name = OcrStrategy.TESSERACT;
@@ -396,15 +397,7 @@ export class TesseractOcrStrategy implements OcrStrategyHandler {
           const minDate = Math.min(...dateNums);
           const maxDate = Math.max(...dateNums);
           openDate = minDate.toString();
-          
-          const minMonth = Math.floor(minDate / 100);
-          const maxMonth = Math.floor(maxDate / 100);
-          
-          if (minMonth === maxMonth) {
-            holdDays = (maxDate % 100) - (minDate % 100) + 1;
-          } else {
-            holdDays = (maxDate % 100) + 31 - (minDate % 100);
-          }
+          holdDays = calculateHoldDays(minDate.toString(), maxDate.toString());
         }
       }
     }

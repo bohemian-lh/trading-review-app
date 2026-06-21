@@ -4,6 +4,8 @@
  * 使用表头关键字定位列，不依赖固定位置
  */
 
+import { calculateHoldDays } from '@/utils/holdDays';
+
 export interface ParsedTextResult {
   openDate: string;
   stockCode: string;
@@ -230,22 +232,7 @@ export function parseTradeText(text: string): ParsedTextResult {
         const minDate = Math.min(...dateNums);
         const maxDate = Math.max(...dateNums);
         openDate = minDate.toString();
-        
-        // 使用 Date 对象精确计算跨月天数
-        const minStr = minDate.toString();
-        const maxStr = maxDate.toString();
-        const startDate = new Date(
-          parseInt(minStr.slice(0, 4)),
-          parseInt(minStr.slice(4, 6)) - 1,
-          parseInt(minStr.slice(6, 8))
-        );
-        const endDate = new Date(
-          parseInt(maxStr.slice(0, 4)),
-          parseInt(maxStr.slice(4, 6)) - 1,
-          parseInt(maxStr.slice(6, 8))
-        );
-        const diffTime = endDate.getTime() - startDate.getTime();
-        holdDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        holdDays = calculateHoldDays(minDate.toString(), maxDate.toString());
       }
     }
   }
