@@ -25,6 +25,8 @@ export const FieldConfigPage: React.FC = () => {
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dragType, setDragType] = useState<'trading' | 'entry' | null>(null);
+  const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
 
   // 重置为 store 中的当前值
   const resetFromStore = useCallback(() => {
@@ -55,6 +57,25 @@ export const FieldConfigPage: React.FC = () => {
     }
     setPending(p => ({ ...p, tradingTypes: [...p.tradingTypes, trimmed] }));
     setMessage(null);
+  };
+
+  // ---------- 拖动排序 ----------
+  const handleDragStart = (type: 'trading' | 'entry', index: number) => {
+    setDragType(type);
+    setDragFromIndex(index);
+  };
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+  const handleDrop = (type: 'trading' | 'entry', toIndex: number) => {
+    if (dragType !== type || dragFromIndex === null || dragFromIndex === toIndex) {
+      setDragType(null); setDragFromIndex(null); return;
+    }
+    setPending(p => {
+      const list = type === 'trading' ? [...p.tradingTypes] : [...p.entryTypes];
+      const [moved] = list.splice(dragFromIndex, 1);
+      list.splice(toIndex, 0, moved);
+      return type === 'trading' ? { ...p, tradingTypes: list } : { ...p, entryTypes: list };
+    });
+    setDragType(null); setDragFromIndex(null);
   };
 
   const deleteTradingType = (type: string) => {
@@ -229,9 +250,19 @@ export const FieldConfigPage: React.FC = () => {
             <Plus className="h-3.5 w-3.5" /> 新增
           </button>
         </div>
+        <p className="text-xs text-gray-400 mt-1 mb-3">拖动标签可调整排序，下拉框按此顺序显示</p>
         <div className="flex flex-wrap gap-2">
-          {pending.tradingTypes.map(t => (
-            <span key={t} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-800 rounded-full text-sm">
+          {pending.tradingTypes.map((t, idx) => (
+            <span
+              key={t}
+              draggable
+              onDragStart={() => handleDragStart('trading', idx)}
+              onDragOver={handleDragOver}
+              onDrop={() => handleDrop('trading', idx)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-800 rounded-full text-sm cursor-grab active:cursor-grabbing select-none ${
+                dragType === 'trading' && dragFromIndex === idx ? 'opacity-40' : ''
+              }`}
+            >
               {t}
               {t !== '未知' && (
                 <button onClick={() => deleteTradingType(t)} className="hover:text-red-600">
@@ -251,9 +282,19 @@ export const FieldConfigPage: React.FC = () => {
             <Plus className="h-3.5 w-3.5" /> 新增
           </button>
         </div>
+        <p className="text-xs text-gray-400 mt-1 mb-3">拖动标签可调整排序，下拉框按此顺序显示</p>
         <div className="flex flex-wrap gap-2">
-          {pending.entryTypes.map(e => (
-            <span key={e} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-800 rounded-full text-sm">
+          {pending.entryTypes.map((e, idx) => (
+            <span
+              key={e}
+              draggable
+              onDragStart={() => handleDragStart('entry', idx)}
+              onDragOver={handleDragOver}
+              onDrop={() => handleDrop('entry', idx)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-800 rounded-full text-sm cursor-grab active:cursor-grabbing select-none ${
+                dragType === 'entry' && dragFromIndex === idx ? 'opacity-40' : ''
+              }`}
+            >
               {e}
               {e !== '未知' && (
                 <button onClick={() => deleteEntryType(e)} className="hover:text-red-600">
