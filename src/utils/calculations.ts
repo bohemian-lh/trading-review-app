@@ -45,6 +45,33 @@ export function calculateProfitRatio(
   return parseFloat(ratio.toFixed(2));
 }
 
+/** 计算理论盈亏比（使用 theoreticalProfitPercent 字段） */
+export function calculateTheoreticalSystemProfitRatio(records: TradingRecord[]): number | 'N/A' {
+  const systemRecords = records.filter(r => r.isSystem === '是');
+  let sumPositive = 0;
+  let sumNegative = 0;
+
+  for (const r of systemRecords) {
+    const val = r.theoreticalProfitPercent;
+    if (val > 0) sumPositive += val;
+    else if (val < 0) sumNegative += val;
+  }
+
+  const absProfit = Math.abs(sumPositive);
+  const absLoss = Math.abs(sumNegative);
+
+  if (absProfit === 0 && absLoss === 0) return 'N/A';
+  if (absProfit > 0 && absLoss === 0) return parseFloat((absProfit / 1).toFixed(2));
+  if (absProfit === 0 && absLoss > 0) return parseFloat((-absLoss / 1).toFixed(2));
+
+  let ratio: number;
+  if (absProfit > absLoss) ratio = absProfit / absLoss;
+  else if (absProfit < absLoss) ratio = -(absLoss / absProfit);
+  else ratio = sumPositive > 0 ? 1.0 : -1.0;
+
+  return parseFloat(ratio.toFixed(2));
+}
+
 export function calculateAvgProfitRatio(
   records: TradingRecord[]
 ): number | 'N/A' {

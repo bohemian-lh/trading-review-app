@@ -11,6 +11,7 @@ const ExcelUploader = lazy(() => import('@/components/excel').then(m => ({ defau
 const DataEditor = lazy(() => import('@/components/editor').then(m => ({ default: m.DataEditor })));
 const FieldConfigPage = lazy(() => import('@/components/config/FieldConfigPage').then(m => ({ default: m.FieldConfigPage })));
 const SubsequentProfitPage = lazy(() => import('@/components/charts/SubsequentProfitPage').then(m => ({ default: m.SubsequentProfitPage })));
+const TheoryVsActualPage = lazy(() => import('@/pages/TheoryVsActualPage').then(m => ({ default: m.default })));
 
 const PageLoader: React.FC = () => (
   <div className="min-h-[50vh] flex items-center justify-center">
@@ -59,6 +60,7 @@ const App: React.FC = () => {
               <Route path="/import" element={<ExcelUploader />} />
               <Route path="/editor" element={<DataEditor />} />
               <Route path="/subsequent-profit" element={<SubsequentProfitPage />} />
+              <Route path="/theory-vs-actual" element={<TheoryVsActualPage />} />
               <Route path="/config" element={<FieldConfigPage />} />
             </Routes>
           </Suspense>

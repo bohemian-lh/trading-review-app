@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Save, Clipboard, AlertCircle, Loader2, X } from 'lucide-react';
 import { Button, Input, Select, Modal } from '@/components/common';
 import { ImagePreviewModal } from '@/components/editor/ImagePreviewModal';
@@ -50,6 +50,19 @@ export const RecordModal: React.FC<RecordModalProps> = ({
   const [imagePreviewImages, setImagePreviewImages] = useState<string[]>([]);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
   const [subsequentNumberMode, setSubsequentNumberMode] = useState(true);
+  const [theoryManual, setTheoryManual] = useState(false);
+
+  // 新记录时，自动计算理论盈亏比，除非用户已手动修改
+  useEffect(() => {
+    if (!editingRecord && !theoryManual && formData.profitPercent !== null) {
+      const subsequent = subsequentNumberMode ? (formData.subsequentProfitSpace ?? 0) : 0;
+      const computed = parseFloat((formData.profitPercent + subsequent).toFixed(2));
+      if (computed !== formData.theoreticalProfitPercent) {
+        onFormChange({ ...formData, theoreticalProfitPercent: computed });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.profitPercent, subsequentNumberMode, formData.subsequentProfitSpace]);
 
   // 从 fieldConfig 动态生成选项
   const fieldConfig = useRecordsStore(s => s.fieldConfig);
@@ -219,6 +232,30 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 value={formData.hasMistake}
                 onChange={(e) => onFormChange({ ...formData, hasMistake: e.target.value as MistakeStatus })}
                 options={HAS_MISTAKE_OPTIONS}
+              />
+            </div>
+            {/* 理论盈亏比 */}
+            <div>
+              <label className="block text-base font-medium text-gray-700 mb-2">
+                理论盈亏比%
+              </label>
+              <Input
+                type="number"
+                step="0.1"
+                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                value={formData.theoreticalProfitPercent !== undefined ? formData.theoreticalProfitPercent : ''}
+                onChange={(e) => {
+                  if (!theoryManual) setTheoryManual(true);
+                  const raw = e.target.value;
+                  if (raw === '' || raw === '-') {
+                    onFormChange({ ...formData, theoreticalProfitPercent: 0 });
+                    return;
+                  }
+                  const num = parseFloat(raw);
+                  if (isNaN(num)) return;
+                  onFormChange({ ...formData, theoreticalProfitPercent: parseFloat(num.toFixed(2)) });
+                }}
+                placeholder="默认 = 盈亏% + 后续盈亏空间%"
               />
             </div>
             {/* 后续盈亏空间% */}

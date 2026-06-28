@@ -11,6 +11,8 @@ export interface AnalysisResult {
   tradingTypeRatios: Record<string, number>;
   entryTypeRatios: Record<string, number>;
   aggregateRatios: Record<string, number>;
+  // 系统理论盈亏比
+  systemTheoreticalProfitRatio: number | 'N/A';
 }
 
 export interface MonthlyAnalysis {

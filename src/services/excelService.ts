@@ -21,6 +21,7 @@ const HEADERS_1 = [
   '图片',
   '盘前是否',
   '备注',
+  '理论盈亏率',
 ];
 
 const HEADERS_2 = [
@@ -207,6 +208,7 @@ function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
     tradingTypeRatios: {},
     entryTypeRatios: {},
     aggregateRatios: {},
+    systemTheoreticalProfitRatio: analysisMap.get('系统理论盈亏比') || 'N/A',
   };
 }
 
@@ -297,6 +299,7 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     hasMonthlyStats: false,
     subsequentProfitSpace,
     remark: String(row['备注'] || '').slice(0, 1000),
+    theoreticalProfitPercent: parseFloat(String(row['理论盈亏率'] || '')) || 0,
   };
 }
 
@@ -319,6 +322,7 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string):
       record.images ? record.images.join(',') : '',
       record.preMarket,
       record.remark,
+      record.theoreticalProfitPercent,
     ]),
   ];
 
@@ -338,6 +342,7 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string):
     { wch: 15 },
     { wch: 15 },
     { wch: 10 },
+    { wch: 12 },
   ];
 
   XLSX.utils.book_append_sheet(workbook, worksheet, SHEET_NAME_1);
@@ -357,6 +362,7 @@ export function exportTable2ToExcel(analysis: AnalysisResult, filename: string):
     ['系统亏损平均持仓天数', formatValue(analysis.systemLossAvgHoldDays, false)],
     ['非系统盈利平均持仓天数', formatValue(analysis.nonSystemProfitAvgHoldDays, false)],
     ['非系统亏损平均持仓天数', formatValue(analysis.nonSystemLossAvgHoldDays, false)],
+    ['系统理论盈亏比', formatValue(analysis.systemTheoreticalProfitRatio, true)],
   ];
 
   const worksheet = XLSX.utils.aoa_to_sheet(data);

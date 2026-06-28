@@ -264,6 +264,7 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏情况</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">持仓时间（天）</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">后续盈亏空间</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">理论盈亏率</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">图片</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
                 </tr>
@@ -271,7 +272,7 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={14} className="px-4 py-8 text-center text-gray-500">
                       {records.length === 0 ? '暂无数据，请导入Excel或添加记录' : '无符合筛选条件的记录'}
                     </td>
                   </tr>
@@ -308,6 +309,11 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                       <td className="px-4 py-3 text-sm text-gray-900">{record.holdDays}</td>
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {record.subsequentProfitSpace === null ? 'N/A' : `${record.subsequentProfitSpace}%`}
+                      </td>
+                      <td className={`px-4 py-3 text-sm font-medium ${
+                        record.theoreticalProfitPercent >= 0 ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {record.theoreticalProfitPercent}%
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {record.images && record.images.length > 0
@@ -347,7 +353,7 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                     </tr>
                     {expandedRemarkId === record.id && (
                       <tr key={`${record.id}-remark`} className="bg-gray-50">
-                        <td colSpan={13} className="px-4 py-3">
+                        <td colSpan={14} className="px-4 py-3">
                           <div className="text-xs text-gray-500 mb-1">备注</div>
                           <textarea
                             value={remarkEditValues[record.id] ?? record.remark}

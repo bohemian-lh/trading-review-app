@@ -6,6 +6,7 @@ import type { AnalysisResult } from '@/types';
 
 const ANALYSIS_FIELDS: Array<{ key: keyof AnalysisResult; label: string }> = [
   { key: 'systemProfitRatio', label: '符合系统盈亏比' },
+  { key: 'systemTheoreticalProfitRatio', label: '系统理论盈亏比' },
   { key: 'systemNoMistakeProfitRatio', label: '符合系统无失误盈亏比' },
   { key: 'systemWithMistakeProfitRatio', label: '符合系统有失误盈亏比' },
   { key: 'nonSystemProfitRatio', label: '不符合系统盈亏比' },

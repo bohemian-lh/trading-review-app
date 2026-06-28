@@ -42,6 +42,7 @@ const emptyAnalysis: AnalysisResult = {
   nonSystemProfitRatio: 'N/A', systemProfitAvgHoldDays: 'N/A', systemLossAvgHoldDays: 'N/A',
   nonSystemProfitAvgHoldDays: 'N/A', nonSystemLossAvgHoldDays: 'N/A',
   tradingTypeRatios: {}, entryTypeRatios: {}, aggregateRatios: {},
+  systemTheoreticalProfitRatio: 'N/A',
 };
 
 export const emptyCycleStats: Record<string, CycleStats[]> = {};

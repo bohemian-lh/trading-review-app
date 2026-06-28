@@ -22,6 +22,8 @@ export interface TradingRecord {
   subsequentProfitSpace: number | null;
   // 备注
   remark: string;
+  // 理论盈亏比
+  theoreticalProfitPercent: number;
 }
 
 // 合法值由 fieldConfig 动态控制，类型层面不做约束
@@ -51,6 +53,7 @@ export interface TradingRecordInput {
   cycleId?: string;
   subsequentProfitSpace?: number | null;
   remark?: string;
+  theoreticalProfitPercent?: number;
 }
 
 // ============ 数据集 ============

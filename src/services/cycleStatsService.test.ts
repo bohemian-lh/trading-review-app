@@ -24,8 +24,8 @@ function makeRecord(overrides: Partial<TradingRecord> = {}): TradingRecord {
 describe('buildStatTypes', () => {
   it('默认配置生成正确数量的类型', () => {
     const types = buildStatTypes(DEFAULT_CONFIG);
-    // 4固定 + 6 tradingType(排除未知) + 3 entryType(排除未知) + 2 aggregate
-    expect(types).toHaveLength(15);
+    // 4固定 + 4理论固定 + 6 tradingType(排除未知) + 6 理论tradingType(排除未知) + 3 entryType(排除未知) + 2 aggregate
+    expect(types).toHaveLength(25);
   });
 
   it('包含4个固定维度', () => {
@@ -51,7 +51,10 @@ describe('buildStatTypes', () => {
 
   it('空配置只返回固定维度', () => {
     const types = buildStatTypes({ tradingTypes: [], entryTypes: [], aggregateRules: [] });
-    expect(types).toEqual(['系统', '系统无失误', '系统有失误', '非系统']);
+    expect(types).toEqual([
+      '系统', '系统无失误', '系统有失误', '非系统',
+      '理论-系统', '理论-系统无失误', '理论-系统有失误', '理论-非系统',
+    ]);
   });
 });
 

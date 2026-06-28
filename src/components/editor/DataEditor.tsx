@@ -32,6 +32,7 @@ const emptyRecord: TradingRecordInput = {
   subsequentProfitSpace: null,
   preMarket: '否',
   remark: '',
+  theoreticalProfitPercent: 0,
 };
 
 interface Filters {
@@ -150,10 +151,11 @@ export const DataEditor: React.FC = () => {
         hasMistake: record.hasMistake, profitPercent: record.profitPercent, holdDays: record.holdDays,
         images: record.images || [], imagePrefix: record.imagePrefix || '',
         subsequentProfitSpace: record.subsequentProfitSpace, preMarket: record.preMarket,
+        remark: record.remark, theoreticalProfitPercent: record.theoreticalProfitPercent,
       });
     } else {
       setEditingRecord(null);
-      setFormData({ ...emptyRecord, openDate: getDefaultOpenDate() });
+      setFormData({ ...emptyRecord, openDate: getDefaultOpenDate(), theoreticalProfitPercent: 0 });
     }
     setValidationErrors([]);
     setSaveError(null);
@@ -199,6 +201,7 @@ export const DataEditor: React.FC = () => {
       images: formData.images || [], imagePrefix: formData.imagePrefix || '',
       subsequentProfitSpace: formData.subsequentProfitSpace ?? null,
       remark: formData.remark ?? '',
+      theoreticalProfitPercent: formData.theoreticalProfitPercent ?? 0,
     };
     if (editingRecord) updateRecord(editingRecord.id, saveData);
     else addRecord(saveData);
