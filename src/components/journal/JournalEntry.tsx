@@ -21,9 +21,6 @@ interface EntryState {
   stockName: string;
   stage: string;
   strategies: string[];
-  isBold: boolean;
-  isRed: boolean;
-  isYellow: boolean;
   expanded: boolean;
   submitting: boolean;
   message: string | null;
@@ -48,9 +45,6 @@ export const JournalEntry: React.FC = () => {
       stockName: '',
       stage: 'stage1_left',
       strategies: [],
-      isBold: false,
-      isRed: false,
-      isYellow: false,
       expanded: true,
       submitting: false,
       message: null,
@@ -66,9 +60,6 @@ export const JournalEntry: React.FC = () => {
       stockName: e.stockName,
       stage: e.stage,
       strategies: e.strategies,
-      isBold: e.isBold,
-      isRed: e.isRed,
-      isYellow: e.isYellow,
     });
   }, [saveDraft]);
 
@@ -90,9 +81,6 @@ export const JournalEntry: React.FC = () => {
         stockName: '',
         stage: 'stage1_left',
         strategies: [],
-        isBold: false,
-        isRed: false,
-        isYellow: false,
         expanded: true,
         submitting: false,
         message: null,
@@ -138,9 +126,6 @@ export const JournalEntry: React.FC = () => {
         stockName: entry.stockName.trim(),
         stage: entry.stage,
         strategies: entry.strategies,
-        isBold: entry.isBold,
-        isRed: entry.isRed,
-        isYellow: entry.isYellow,
       }, snapshot.snapshotId, datasetId);
       // 提交成功，删除该卡片
       setEntries(prev => prev.filter(e => e.entryId !== entry.entryId));

@@ -16,7 +16,7 @@ interface TableSettings {
 
 const DEFAULT_SETTINGS: TableSettings = {
   showOps: true,
-  colWidths: { name: 120, g1: 120, g2: 120, g3: 120, g4: 120, ops: 90 },
+  colWidths: { name: 120, g1: 120, g2: 120, g3: 120, g4: 120, ops: 120 },
   fontSizes: { name: 13, g1: 12, g2: 12, g3: 12, g4: 12 },
 };
 
@@ -32,23 +32,27 @@ function saveSettings(s: TableSettings) {
   localStorage.setItem(UI_PREFIX + 'settings', JSON.stringify(s));
 }
 
-// ─── 策略分组 helper ───────────────────────────────────────────────
+// ─── 策略分组 helper（返回 text + strategyId）──────────────────────
+interface StrategyItem {
+  text: string;
+  strategyId: string;
+}
+
 function groupStrategies(
   journal: TradingJournal,
   stages: any[],
   snapshots: any[]
-): Record<string, string[]> {
+): Record<string, StrategyItem[]> {
   const snapshot = snapshots.find((s: any) => s.snapshotId === journal.snapshotId);
   const stageConfigs = snapshot?.stages || stages;
   const stage = stageConfigs.find((s: any) => s.stageId === journal.stage);
   if (!stage) return {};
-  const result: Record<string, string[]> = {};
+  const result: Record<string, StrategyItem[]> = {};
   for (const g of stage.strategyGroups) {
     result[g.groupId] = [];
-    result[`${g.groupId}_name`] = [g.groupName];
     for (const s of g.strategies) {
       if (journal.strategies.includes(s.strategyId)) {
-        result[g.groupId].push(s.text);
+        result[g.groupId].push({ text: s.text, strategyId: s.strategyId });
       }
     }
   }
@@ -66,6 +70,63 @@ const COLUMNS = [
 
 const FONT_SIZE_OPTIONS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 24];
 
+// ─── Popover 组件 ──────────────────────────────────────────────────
+const StrategyPopover: React.FC<{
+  x: number;
+  y: number;
+  isBold: boolean;
+  isRed: boolean;
+  isYellow: boolean;
+  onToggle: (field: 'strategyBold' | 'strategyRed' | 'strategyYellow') => void;
+  onClose: () => void;
+}> = ({ x, y, isBold, isRed, isYellow, onToggle, onClose }) => {
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    // 延迟绑定避免触发点击事件的同一事件关闭 popover
+    setTimeout(() => document.addEventListener('mousedown', handler), 0);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  // 限制 popover 不超出视口
+  const adjustedX = Math.min(x, window.innerWidth - 160);
+  const adjustedY = Math.min(y, window.innerHeight - 140);
+
+  return (
+    <div
+      ref={popoverRef}
+      className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-36"
+      style={{ left: adjustedX, top: adjustedY }}
+    >
+      <div className="space-y-1">
+        <button
+          onClick={() => onToggle('strategyBold')}
+          className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs ${isBold ? 'bg-gray-200 text-gray-900 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}
+        >
+          <Bold className="h-3.5 w-3.5" />加粗
+        </button>
+        <button
+          onClick={() => onToggle('strategyRed')}
+          className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs ${isRed ? 'bg-red-100 text-red-700' : 'text-gray-600 hover:bg-red-50'}`}
+        >
+          <AlertTriangle className="h-3.5 w-3.5" />标红
+        </button>
+        <button
+          onClick={() => onToggle('strategyYellow')}
+          className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs ${isYellow ? 'bg-yellow-100 text-yellow-700' : 'text-gray-600 hover:bg-yellow-50'}`}
+        >
+          <Sun className="h-3.5 w-3.5" />标黄
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ─── 组件 ──────────────────────────────────────────────────────────
 export const JournalDrafts: React.FC = () => {
   const { journals, snapshots, activeStages, createSnapshot, finalizeJournal, updateDraftJournal, deleteJournal } = useJournalStore();
@@ -73,8 +134,11 @@ export const JournalDrafts: React.FC = () => {
 
   // 编辑状态
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<Record<string, { stage: string; strategies: string[]; isBold: boolean; isRed: boolean; isYellow: boolean }>>({});
+  const [editState, setEditState] = useState<Record<string, { stage: string; strategies: string[] }>>({});
   const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
+
+  // Popover 状态
+  const [popover, setPopover] = useState<{ journalId: string; strategyId: string; x: number; y: number } | null>(null);
 
   // UI 设置
   const [settings, setSettings] = useState<TableSettings>(loadSettings);
@@ -143,23 +207,16 @@ export const JournalDrafts: React.FC = () => {
     setEditingId(j.id);
     setEditState(prev => ({
       ...prev,
-      [j.id]: { stage: j.stage, strategies: [...j.strategies], isBold: j.isBold, isRed: j.isRed, isYellow: j.isYellow },
+      [j.id]: { stage: j.stage, strategies: [...j.strategies] },
     }));
   };
 
   const cancelEditing = () => setEditingId(null);
 
-  const getEditState = (id: string) => editState[id] || { stage: '', strategies: [], isBold: false, isRed: false, isYellow: false };
+  const getEditState = (id: string) => editState[id] || { stage: '', strategies: [] };
 
   const updateEditState = (id: string, patch: Partial<typeof editState[string]>) => {
-    setEditState(prev => {
-      const prevState = prev[id] || { stage: '', strategies: [], isBold: false, isRed: false, isYellow: false };
-      const merged = { ...prevState, ...patch };
-      // 标红和标黄互斥
-      if (patch.isRed && !prevState.isRed) merged.isYellow = false;
-      if (patch.isYellow && !prevState.isYellow) merged.isRed = false;
-      return { ...prev, [id]: merged };
-    });
+    setEditState(prev => ({ ...prev, [id]: { ...getEditState(id), ...patch } }));
   };
 
   const handleToggleStrategy = (id: string, strategyId: string) => {
@@ -180,9 +237,6 @@ export const JournalDrafts: React.FC = () => {
       stage: es.stage,
       strategies: es.strategies,
       snapshotId: snapshot.snapshotId,
-      isBold: es.isBold,
-      isRed: es.isRed,
-      isYellow: es.isYellow,
     }, datasetId);
     setEditingId(null);
   };
@@ -206,33 +260,76 @@ export const JournalDrafts: React.FC = () => {
     await deleteJournal(journalId, datasetId);
   };
 
-  // ─── 快速切换样式（compact 视图直接 toggle，标红/标黄互斥）─────────
-  const handleQuickToggle = async (journalId: string, field: 'isBold' | 'isRed' | 'isYellow') => {
+  // ─── 策略级样式 toggle（标红/标黄互斥）─────────────────────────
+  const handleStrategyToggle = async (
+    journalId: string,
+    strategyId: string,
+    field: 'strategyBold' | 'strategyRed' | 'strategyYellow'
+  ) => {
     const journal = journals.find(j => j.id === journalId);
     if (!journal) return;
-    if (field === 'isRed' && !journal.isRed) {
-      await updateDraftJournal(journalId, { isRed: true, isYellow: false }, datasetId);
-    } else if (field === 'isYellow' && !journal.isYellow) {
-      await updateDraftJournal(journalId, { isYellow: true, isRed: false }, datasetId);
-    } else {
-      await updateDraftJournal(journalId, { [field]: !journal[field] }, datasetId);
+    const enabled = journal[field].includes(strategyId);
+    const patch: Partial<TradingJournal> = {};
+
+    if (field === 'strategyBold') {
+      patch.strategyBold = enabled
+        ? journal.strategyBold.filter(s => s !== strategyId)
+        : [...journal.strategyBold, strategyId];
+    } else if (field === 'strategyRed') {
+      patch.strategyRed = enabled
+        ? journal.strategyRed.filter(s => s !== strategyId)
+        : [...journal.strategyRed, strategyId];
+      if (!enabled) {
+        // 开启标红时关闭标黄
+        patch.strategyYellow = journal.strategyYellow.filter(s => s !== strategyId);
+      }
+    } else if (field === 'strategyYellow') {
+      patch.strategyYellow = enabled
+        ? journal.strategyYellow.filter(s => s !== strategyId)
+        : [...journal.strategyYellow, strategyId];
+      if (!enabled) {
+        // 开启标黄时关闭标红
+        patch.strategyRed = journal.strategyRed.filter(s => s !== strategyId);
+      }
     }
+
+    await updateDraftJournal(journalId, patch, datasetId);
+    setPopover(null);
   };
 
   const stageOptions = activeStages;
 
-  // ─── 渲染行样式 ───────────────────────────────────────────────
+  // ─── 渲染行样式（仅字号）───────────────────────────────────────
   const getCellStyle = (colId: string): React.CSSProperties => {
     const fs = settings.fontSizes[colId] || 12;
     return { fontSize: `${fs}px` };
   };
 
-  const getCompactCellStyle = (j: TradingJournal, colId: string): React.CSSProperties => {
-    return {
-      ...getCellStyle(colId),
-      fontWeight: j.isBold ? 700 : undefined,
-      backgroundColor: j.isRed ? '#fee2e2' : j.isYellow ? '#fef08a' : undefined,
-    };
+  // ─── 策略卡片渲染 ─────────────────────────────────────────────
+  const renderStrategyCard = (
+    item: StrategyItem,
+    journal: TradingJournal,
+  ) => {
+    const sid = item.strategyId;
+    const isBold = journal.strategyBold.includes(sid);
+    const isRed = journal.strategyRed.includes(sid);
+    const isYellow = journal.strategyYellow.includes(sid);
+
+    const bgClass = isRed ? 'bg-red-100 text-red-800' : isYellow ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-700';
+    const boldClass = isBold ? 'font-bold' : '';
+
+    return (
+      <span
+        key={sid}
+        className={`px-1.5 py-0.5 rounded text-xs cursor-pointer hover:ring-1 hover:ring-blue-300 ${bgClass} ${boldClass}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setPopover({ journalId: journal.id, strategyId: sid, x: e.clientX, y: e.clientY + 4 });
+        }}
+      >
+        {item.text}
+      </span>
+    );
   };
 
   // ─── 可见列 ───────────────────────────────────────────────────
@@ -329,7 +426,7 @@ export const JournalDrafts: React.FC = () => {
               {settings.showOps && (
                 <th
                   className="px-3 py-2 text-center text-xs font-medium text-gray-500 relative"
-                  style={{ width: `${settings.colWidths.ops || 90}px`, minWidth: `${settings.colWidths.ops || 90}px` }}
+                  style={{ width: `${settings.colWidths.ops || 120}px`, minWidth: `${settings.colWidths.ops || 120}px` }}
                 >
                   操作
                   <div
@@ -383,18 +480,7 @@ export const JournalDrafts: React.FC = () => {
                               ))}
                             </div>
                           )}
-                          <div className="flex items-center justify-between pt-3 border-t">
-                            <div className="flex items-center gap-3">
-                              <button onClick={() => updateEditState(journal.id, { isBold: !es.isBold })}
-                                className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${es.isBold ? 'bg-gray-200 text-gray-900 font-bold' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
-                                <Bold className="h-3.5 w-3.5" />加粗</button>
-                              <button onClick={() => updateEditState(journal.id, { isRed: !es.isRed })}
-                                className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${es.isRed ? 'bg-red-100 text-red-700 border border-red-300' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
-                                <AlertTriangle className="h-3.5 w-3.5" />标红</button>
-                              <button onClick={() => updateEditState(journal.id, { isYellow: !es.isYellow })}
-                                className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${es.isYellow ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
-                                <Sun className="h-3.5 w-3.5" />标黄</button>
-                            </div>
+                          <div className="flex items-center justify-end pt-3 border-t">
                             <button onClick={() => handleFinalize(journal.id)} disabled={isSubmitting}
                               className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium">
                               <Send className="h-3.5 w-3.5" />{isSubmitting ? '...' : '提交日志'}</button>
@@ -409,18 +495,16 @@ export const JournalDrafts: React.FC = () => {
               // 紧凑模式
               return (
                 <tr key={journal.id} className="border-b transition-colors">
-                  <td className="px-3 py-1 border-r align-top" style={getCompactCellStyle(journal, 'name')}>
+                  <td className="px-3 py-1 border-r align-top" style={getCellStyle('name')}>
                     {journal.stockName || '-'}
                   </td>
                   {groupIds.map(gid => {
                     const items = grouped[gid] || [];
                     return (
-                      <td key={gid} className="px-3 py-1 border-r align-top" style={getCompactCellStyle(journal, gid)}>
+                      <td key={gid} className="px-3 py-1 border-r align-top" style={getCellStyle(gid)}>
                         {items.length > 0 ? (
                           <div className="flex flex-col gap-0.5">
-                            {items.map((text, i) => (
-                              <span key={i}>{text}</span>
-                            ))}
+                            {items.map(item => renderStrategyCard(item, journal))}
                           </div>
                         ) : (
                           <span className="text-gray-300">-</span>
@@ -429,20 +513,8 @@ export const JournalDrafts: React.FC = () => {
                     );
                   })}
                   {settings.showOps && (
-                    <td className="px-2 py-1 text-center" style={getCompactCellStyle(journal, 'ops')}>
-                      <div className="flex items-center justify-center gap-0.5 flex-wrap">
-                        <button onClick={() => handleQuickToggle(journal.id, 'isBold')}
-                          className={`p-1 rounded ${journal.isBold ? 'bg-gray-200 text-gray-900' : 'text-gray-400 hover:bg-gray-100'}`} title="加粗">
-                          <Bold className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => handleQuickToggle(journal.id, 'isRed')}
-                          className={`p-1 rounded ${journal.isRed ? 'bg-red-200 text-red-700' : 'text-gray-400 hover:bg-red-50'}`} title="标红">
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => handleQuickToggle(journal.id, 'isYellow')}
-                          className={`p-1 rounded ${journal.isYellow ? 'bg-yellow-200 text-yellow-700' : 'text-gray-400 hover:bg-yellow-50'}`} title="标黄">
-                          <Sun className="h-3.5 w-3.5" />
-                        </button>
+                    <td className="px-2 py-1 text-center" style={getCellStyle('ops')}>
+                      <div className="flex items-center justify-center gap-1 flex-wrap">
                         <button onClick={() => startEditing(journal)} className="text-xs text-blue-600 hover:bg-blue-50 p-1 rounded" title="编辑策略">
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
@@ -462,6 +534,24 @@ export const JournalDrafts: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Popover */}
+      {popover && (() => {
+        const j = journals.find(j => j.id === popover.journalId);
+        if (!j) return null;
+        const sid = popover.strategyId;
+        return (
+          <StrategyPopover
+            x={popover.x}
+            y={popover.y}
+            isBold={j.strategyBold.includes(sid)}
+            isRed={j.strategyRed.includes(sid)}
+            isYellow={j.strategyYellow.includes(sid)}
+            onToggle={(field) => handleStrategyToggle(j.id, sid, field)}
+            onClose={() => setPopover(null)}
+          />
+        );
+      })()}
 
       {/* 点击空白处关闭设置面板 */}
       {showSettings && (

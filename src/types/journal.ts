@@ -39,11 +39,11 @@ export interface TradingJournal {
   stockName: string;       // 股票名称
   stage: string;           // 阶段 ID
   strategies: string[];    // strategyId 列表
+  strategyBold: string[];  // 加粗的策略 strategyId 列表
+  strategyRed: string[];   // 标红的策略 strategyId 列表
+  strategyYellow: string[];// 标黄的策略 strategyId 列表
   snapshotId: string;      // 写入时的配置快照 ID
   status: 'draft' | 'submitted';  // draft=中间态, submitted=已完成
-  isBold: boolean;         // 行内容加粗
-  isRed: boolean;          // 行内容标红背景
-  isYellow: boolean;       // 行内容标黄背景
   createdAt: string;
 }
 
@@ -55,9 +55,6 @@ export interface JournalDraft {
   stockName: string;
   stage: string;
   strategies: string[];
-  isBold: boolean;
-  isRed: boolean;
-  isYellow: boolean;
 }
 
 /** 默认 3 阶段 + 特殊阶段 */
