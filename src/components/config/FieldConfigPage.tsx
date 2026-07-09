@@ -2,14 +2,17 @@ import React, { useState, useCallback } from 'react';
 import { Settings, Plus, Trash2, Save, X } from 'lucide-react';
 import { useRecordsStore } from '@/stores';
 import { saveFieldConfigToR2 } from '@/hooks/useStoreSync';
-import type { FieldConfig, AggregateRule, HistogramConfig } from '@/types';
-import { DEFAULT_HISTOGRAM_CUTS } from '@/types';
+import type { FieldConfig, AggregateRule, HistogramConfig, JournalStageConfig, MindsetRow, DecisionCheckItem } from '@/types';
+import { DEFAULT_HISTOGRAM_CUTS, DEFAULT_JOURNAL_STAGES, DEFAULT_MINDSET_ROWS } from '@/types';
 
 type PendingConfig = {
   tradingTypes: string[];
   entryTypes: string[];
   aggregateRules: AggregateRule[];
   histogramConfigs: Record<string, HistogramConfig>;
+  journalStrategyConfig: JournalStageConfig[];
+  mindsetTable: MindsetRow[];
+  decisionChecklist: DecisionCheckItem[];
 };
 
 export const FieldConfigPage: React.FC = () => {
@@ -22,6 +25,15 @@ export const FieldConfigPage: React.FC = () => {
     entryTypes: [...fieldConfig.entryTypes],
     aggregateRules: fieldConfig.aggregateRules.map(r => ({ ...r, includedTypes: [...r.includedTypes] })),
     histogramConfigs: fieldConfig.histogramConfigs ? { ...fieldConfig.histogramConfigs } : {},
+    journalStrategyConfig: fieldConfig.journalStrategyConfig
+      ? fieldConfig.journalStrategyConfig.map(s => ({ ...s, strategyGroups: s.strategyGroups.map(g => ({ ...g, strategies: [...g.strategies] })) }))
+      : DEFAULT_JOURNAL_STAGES.map(s => ({ ...s, strategyGroups: s.strategyGroups.map(g => ({ ...g, strategies: [...g.strategies] })) })),
+    mindsetTable: fieldConfig.mindsetTable
+      ? fieldConfig.mindsetTable.map(r => ({ ...r }))
+      : DEFAULT_MINDSET_ROWS.map(r => ({ ...r })),
+    decisionChecklist: fieldConfig.decisionChecklist
+      ? fieldConfig.decisionChecklist.map(i => ({ ...i }))
+      : [],
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -35,6 +47,15 @@ export const FieldConfigPage: React.FC = () => {
       entryTypes: [...fieldConfig.entryTypes],
       aggregateRules: fieldConfig.aggregateRules.map(r => ({ ...r, includedTypes: [...r.includedTypes] })),
       histogramConfigs: fieldConfig.histogramConfigs ? { ...fieldConfig.histogramConfigs } : {},
+      journalStrategyConfig: fieldConfig.journalStrategyConfig
+        ? fieldConfig.journalStrategyConfig.map(s => ({ ...s, strategyGroups: s.strategyGroups.map(g => ({ ...g, strategies: [...g.strategies] })) }))
+        : DEFAULT_JOURNAL_STAGES.map(s => ({ ...s, strategyGroups: s.strategyGroups.map(g => ({ ...g, strategies: [...g.strategies] })) })),
+      mindsetTable: fieldConfig.mindsetTable
+        ? fieldConfig.mindsetTable.map(r => ({ ...r }))
+        : DEFAULT_MINDSET_ROWS.map(r => ({ ...r })),
+      decisionChecklist: fieldConfig.decisionChecklist
+        ? fieldConfig.decisionChecklist.map(i => ({ ...i }))
+        : [],
     });
     setMessage(null);
   }, [fieldConfig]);
@@ -44,6 +65,9 @@ export const FieldConfigPage: React.FC = () => {
     entryTypes: fieldConfig.entryTypes,
     aggregateRules: fieldConfig.aggregateRules,
     histogramConfigs: fieldConfig.histogramConfigs || {},
+    journalStrategyConfig: fieldConfig.journalStrategyConfig || DEFAULT_JOURNAL_STAGES,
+    mindsetTable: fieldConfig.mindsetTable || DEFAULT_MINDSET_ROWS,
+    decisionChecklist: fieldConfig.decisionChecklist || [],
   });
 
   // ---------- tradingType ----------
@@ -103,6 +127,9 @@ export const FieldConfigPage: React.FC = () => {
           includedTypes: r.includedTypes.filter(t => t !== type),
         })),
         histogramConfigs: restHistogramConfigs,
+        journalStrategyConfig: p.journalStrategyConfig,
+        mindsetTable: p.mindsetTable,
+        decisionChecklist: p.decisionChecklist,
       };
     });
     setMessage(null);
@@ -199,6 +226,9 @@ export const FieldConfigPage: React.FC = () => {
         entryTypes: pending.entryTypes,
         aggregateRules: pending.aggregateRules.map(r => ({ name: r.name, includedTypes: [...r.includedTypes] })),
         histogramConfigs: { ...pending.histogramConfigs },
+        journalStrategyConfig: pending.journalStrategyConfig,
+        mindsetTable: pending.mindsetTable,
+        decisionChecklist: pending.decisionChecklist,
       };
       setFieldConfig(newConfig);
       await saveFieldConfigToR2(newConfig);
@@ -442,6 +472,157 @@ export const FieldConfigPage: React.FC = () => {
             );
           })}
         </div>
+      </div>
+
+      {/* ───────── 交易日志策略配置 ───────── */}
+      <div className="border rounded-lg p-5 space-y-4">
+        <h3 className="text-lg font-semibold text-gray-900">交易日志 - 策略配置</h3>
+        <p className="text-xs text-gray-400">配置每个阶段的策略组和策略内容，支持组名和策略文本编辑</p>
+        {pending.journalStrategyConfig.map((stage, si) => (
+          <div key={stage.stageId} className="border rounded p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={stage.stageName}
+                onChange={(e) => setPending(p => ({
+                  ...p,
+                  journalStrategyConfig: p.journalStrategyConfig.map((s, i) =>
+                    i === si ? { ...s, stageName: e.target.value } : s
+                  ),
+                }))}
+                className="font-medium text-sm border rounded px-2 py-1 flex-1"
+              />
+            </div>
+            {stage.strategyGroups.map((group, gi) => (
+              <div key={group.groupId} className="ml-4 border-l-2 border-blue-200 pl-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">组名:</span>
+                  <input
+                    type="text"
+                    value={group.groupName}
+                    onChange={(e) => setPending(p => ({
+                      ...p,
+                      journalStrategyConfig: p.journalStrategyConfig.map((s, i) =>
+                        i === si ? { ...s, strategyGroups: s.strategyGroups.map((g, j) => j === gi ? { ...g, groupName: e.target.value } : g) } : s
+                      ),
+                    }))}
+                    className="text-xs border rounded px-2 py-1 flex-1"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {group.strategies.map((strat, stri) => (
+                    <span key={strat.strategyId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-50 rounded text-xs">
+                      <input
+                        type="text"
+                        value={strat.text}
+                        onChange={(e) => setPending(p => ({
+                          ...p,
+                          journalStrategyConfig: p.journalStrategyConfig.map((s, i) =>
+                            i === si ? { ...s, strategyGroups: s.strategyGroups.map((g, j) => j === gi ? {
+                              ...g, strategies: g.strategies.map((st, k) => k === stri ? { ...st, text: e.target.value } : st)
+                            } : g) } : s
+                          ),
+                        }))}
+                        className="w-32 bg-transparent border-0 p-0 text-xs focus:outline-none"
+                      />
+                      <button onClick={() => setPending(p => ({
+                        ...p,
+                        journalStrategyConfig: p.journalStrategyConfig.map((s, i) =>
+                          i === si ? { ...s, strategyGroups: s.strategyGroups.map((g, j) => j === gi ? {
+                            ...g, strategies: g.strategies.filter((_, k) => k !== stri)
+                          } : g) } : s
+                        ),
+                      }))}><X className="h-2.5 w-2.5 text-gray-400 hover:text-red-500" /></button>
+                    </span>
+                  ))}
+                  <button
+                    onClick={() => {
+                      const text = prompt('输入新策略内容：');
+                      if (!text?.trim()) return;
+                      setPending(p => ({
+                        ...p,
+                        journalStrategyConfig: p.journalStrategyConfig.map((s, i) =>
+                          i === si ? { ...s, strategyGroups: s.strategyGroups.map((g, j) => j === gi ? {
+                            ...g, strategies: [...g.strategies, { strategyId: `s_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, text: text.trim(), sortOrder: g.strategies.length }]
+                          } : g) } : s
+                        ),
+                      }));
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-800 px-2 py-0.5"
+                  >
+                    <Plus className="h-3 w-3 inline mr-0.5" />添加策略
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* ───────── 心态管理表格配置 ───────── */}
+      <div className="border rounded-lg p-5 space-y-4">
+        <h3 className="text-lg font-semibold text-gray-900">心态管理 - 表格配置</h3>
+        <p className="text-xs text-gray-400">配置3行3列表格的内容（等级、现象、策略）</p>
+        <table className="w-full border text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border">等级</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border">现象</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border">策略</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pending.mindsetTable.map((row, ri) => (
+              <tr key={row.id}>
+                <td className="border px-2 py-1">
+                  <input type="text" value={row.level} onChange={(e) => setPending(p => ({ ...p, mindsetTable: p.mindsetTable.map((r, i) => i === ri ? { ...r, level: e.target.value } : r) }))} className="w-full border-0 p-1 text-xs" />
+                </td>
+                <td className="border px-2 py-1">
+                  <input type="text" value={row.phenomenon} onChange={(e) => setPending(p => ({ ...p, mindsetTable: p.mindsetTable.map((r, i) => i === ri ? { ...r, phenomenon: e.target.value } : r) }))} className="w-full border-0 p-1 text-xs" />
+                </td>
+                <td className="border px-2 py-1">
+                  <input type="text" value={row.strategy} onChange={(e) => setPending(p => ({ ...p, mindsetTable: p.mindsetTable.map((r, i) => i === ri ? { ...r, strategy: e.target.value } : r) }))} className="w-full border-0 p-1 text-xs" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ───────── 决策质量控制表配置 ───────── */}
+      <div className="border rounded-lg p-5 space-y-4">
+        <h3 className="text-lg font-semibold text-gray-900">决策质量控制 - 检查清单配置</h3>
+        <p className="text-xs text-gray-400">每行一个检查项，可添加/删除/编辑</p>
+        {pending.decisionChecklist.map((item, di) => (
+          <div key={item.id} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={item.label}
+              onChange={(e) => setPending(p => ({ ...p, decisionChecklist: p.decisionChecklist.map((it, i) => i === di ? { ...it, label: e.target.value } : it) }))}
+              placeholder="分类"
+              className="w-24 text-xs border rounded px-2 py-1"
+            />
+            <input
+              type="text"
+              value={item.question}
+              onChange={(e) => setPending(p => ({ ...p, decisionChecklist: p.decisionChecklist.map((it, i) => i === di ? { ...it, question: e.target.value } : it) }))}
+              placeholder="判断项"
+              className="flex-1 text-xs border rounded px-2 py-1"
+            />
+            <button onClick={() => setPending(p => ({ ...p, decisionChecklist: p.decisionChecklist.filter((_, i) => i !== di) }))}>
+              <X className="h-3.5 w-3.5 text-gray-400 hover:text-red-500" />
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={() => setPending(p => ({
+            ...p,
+            decisionChecklist: [...p.decisionChecklist, { id: `dc_${Date.now()}`, label: '新分类', question: '新判断项', checked: false }],
+          }))}
+          className="text-sm text-blue-600 hover:text-blue-800"
+        >
+          <Plus className="h-3.5 w-3.5 inline mr-0.5" />添加检查项
+        </button>
       </div>
     </div>
   );
