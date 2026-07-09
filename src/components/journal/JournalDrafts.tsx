@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Bold, AlertTriangle, Send, Trash2, Edit2, X, Settings } from 'lucide-react';
+import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings } from 'lucide-react';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
@@ -64,7 +64,7 @@ const COLUMNS = [
   { id: 'g4', label: '' },
 ] as const;
 
-const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16];
+const FONT_SIZE_OPTIONS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 24];
 
 // ─── 组件 ──────────────────────────────────────────────────────────
 export const JournalDrafts: React.FC = () => {
@@ -73,7 +73,7 @@ export const JournalDrafts: React.FC = () => {
 
   // 编辑状态
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<Record<string, { stage: string; strategies: string[]; isBold: boolean; isRed: boolean }>>({});
+  const [editState, setEditState] = useState<Record<string, { stage: string; strategies: string[]; isBold: boolean; isRed: boolean; isYellow: boolean }>>({});
   const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
 
   // UI 设置
@@ -143,13 +143,13 @@ export const JournalDrafts: React.FC = () => {
     setEditingId(j.id);
     setEditState(prev => ({
       ...prev,
-      [j.id]: { stage: j.stage, strategies: [...j.strategies], isBold: j.isBold, isRed: j.isRed },
+      [j.id]: { stage: j.stage, strategies: [...j.strategies], isBold: j.isBold, isRed: j.isRed, isYellow: j.isYellow },
     }));
   };
 
   const cancelEditing = () => setEditingId(null);
 
-  const getEditState = (id: string) => editState[id] || { stage: '', strategies: [], isBold: false, isRed: false };
+  const getEditState = (id: string) => editState[id] || { stage: '', strategies: [], isBold: false, isRed: false, isYellow: false };
 
   const updateEditState = (id: string, patch: Partial<typeof editState[string]>) => {
     setEditState(prev => ({ ...prev, [id]: { ...getEditState(id), ...patch } }));
@@ -175,6 +175,7 @@ export const JournalDrafts: React.FC = () => {
       snapshotId: snapshot.snapshotId,
       isBold: es.isBold,
       isRed: es.isRed,
+      isYellow: es.isYellow,
     }, datasetId);
     setEditingId(null);
   };
@@ -207,9 +208,10 @@ export const JournalDrafts: React.FC = () => {
   };
 
   const getRowClasses = (j: TradingJournal): string => {
-    const classes = ['border-b', 'hover:bg-gray-50', 'transition-colors'];
-    if (j.isBold) classes.push('font-bold');
-    if (j.isRed) classes.push('text-red-600');
+    const classes = ['border-b', 'transition-colors'];
+    if (j.isBold) classes.push('[&_td]:font-bold');
+    if (j.isRed) classes.push('bg-red-100');
+    if (j.isYellow) classes.push('bg-yellow-100');
     return classes.join(' ');
   };
 
@@ -283,7 +285,7 @@ export const JournalDrafts: React.FC = () => {
 
       {/* ─── 表格式列表 ──────────────────────────────────────── */}
       <div className="overflow-x-auto">
-        <table className="w-full border border-gray-200 rounded-lg overflow-hidden text-sm">
+        <table className="border border-gray-200 rounded-lg overflow-hidden text-sm" style={{ tableLayout: 'fixed' }}>
           <thead>
             <tr className="bg-gray-50 relative">
               {visibleCols.map(col => {
@@ -368,7 +370,10 @@ export const JournalDrafts: React.FC = () => {
                                 <Bold className="h-3.5 w-3.5" />加粗</button>
                               <button onClick={() => updateEditState(journal.id, { isRed: !es.isRed })}
                                 className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${es.isRed ? 'bg-red-100 text-red-700 border border-red-300' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
-                                <AlertTriangle className="h-3.5 w-3.5" />圈红</button>
+                                <AlertTriangle className="h-3.5 w-3.5" />标红</button>
+                              <button onClick={() => updateEditState(journal.id, { isYellow: !es.isYellow })}
+                                className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${es.isYellow ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                                <Sun className="h-3.5 w-3.5" />标黄</button>
                             </div>
                             <button onClick={() => handleFinalize(journal.id)} disabled={isSubmitting}
                               className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium">

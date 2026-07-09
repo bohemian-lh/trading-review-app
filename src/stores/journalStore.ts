@@ -60,6 +60,7 @@ function migrateJournal(j: any): TradingJournal {
     status: j.status || 'submitted', // 旧数据默认为 submitted
     isBold: j.isBold || false,
     isRed: j.isRed || false,
+    isYellow: j.isYellow || false,
   };
 }
 
@@ -124,6 +125,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       status: 'draft',
       isBold: draft.isBold,
       isRed: draft.isRed,
+      isYellow: draft.isYellow,
       createdAt: new Date().toISOString(),
     };
     const newJournals = [...journals, newJournal];

@@ -42,7 +42,8 @@ export interface TradingJournal {
   snapshotId: string;      // 写入时的配置快照 ID
   status: 'draft' | 'submitted';  // draft=中间态, submitted=已完成
   isBold: boolean;         // 行内容加粗
-  isRed: boolean;          // 行内容标红
+  isRed: boolean;          // 行内容标红背景
+  isYellow: boolean;       // 行内容标黄背景
   createdAt: string;
 }
 
@@ -56,6 +57,7 @@ export interface JournalDraft {
   strategies: string[];
   isBold: boolean;
   isRed: boolean;
+  isYellow: boolean;
 }
 
 /** 默认 3 阶段 + 特殊阶段 */

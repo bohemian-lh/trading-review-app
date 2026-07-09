@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Bold, AlertTriangle, Send, Plus, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { Bold, AlertTriangle, Sun, Send, Plus, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
@@ -23,6 +23,7 @@ interface EntryState {
   strategies: string[];
   isBold: boolean;
   isRed: boolean;
+  isYellow: boolean;
   expanded: boolean;
   submitting: boolean;
   message: string | null;
@@ -49,6 +50,7 @@ export const JournalEntry: React.FC = () => {
       strategies: [],
       isBold: false,
       isRed: false,
+      isYellow: false,
       expanded: true,
       submitting: false,
       message: null,
@@ -66,6 +68,7 @@ export const JournalEntry: React.FC = () => {
       strategies: e.strategies,
       isBold: e.isBold,
       isRed: e.isRed,
+      isYellow: e.isYellow,
     });
   }, [saveDraft]);
 
@@ -89,6 +92,7 @@ export const JournalEntry: React.FC = () => {
         strategies: [],
         isBold: false,
         isRed: false,
+        isYellow: false,
         expanded: true,
         submitting: false,
         message: null,
@@ -136,6 +140,7 @@ export const JournalEntry: React.FC = () => {
         strategies: entry.strategies,
         isBold: entry.isBold,
         isRed: entry.isRed,
+        isYellow: entry.isYellow,
       }, snapshot.snapshotId, datasetId);
       // 提交成功，删除该卡片
       setEntries(prev => prev.filter(e => e.entryId !== entry.entryId));
@@ -269,7 +274,14 @@ export const JournalEntry: React.FC = () => {
                       className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${entry.isRed ? 'bg-red-100 text-red-700 border border-red-300' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
                     >
                       <AlertTriangle className="h-3.5 w-3.5" />
-                      圈红
+                      标红
+                    </button>
+                    <button
+                      onClick={() => updateEntry(entry.entryId, { isYellow: !entry.isYellow })}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${entry.isYellow ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                    >
+                      <Sun className="h-3.5 w-3.5" />
+                      标黄
                     </button>
                   </div>
                   <div className="flex items-center gap-3">
