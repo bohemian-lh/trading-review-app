@@ -1,4 +1,6 @@
 # 优先让 API 请求通过，不重定向
-/api/*    /api/:splat    200
+/api/*      /api/:splat     200
+# 静态资源显式匹配，不存在就 404，不回退到 index.html
+/assets/*   /assets/:splat  200
 # 其他所有请求重定向到 index.html（SPA 路由）
-/*    /index.html   200
+/*          /index.html     200

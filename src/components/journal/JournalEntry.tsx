@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Bold, AlertTriangle, Sun, Send, Plus, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { Send, Plus, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
@@ -171,9 +171,7 @@ export const JournalEntry: React.FC = () => {
       {entries.map(entry => {
         const stageConfig = activeStages.find(s => s.stageId === entry.stage);
         return (
-          <div key={entry.entryId} className="border border-gray-200 rounded-lg overflow-hidden" style={{
-            backgroundColor: entry.isRed ? '#fee2e2' : entry.isYellow ? '#fef08a' : undefined,
-          }}>
+          <div key={entry.entryId} className="border border-gray-200 rounded-lg bg-white overflow-hidden">
             {/* 折叠头 */}
             <div
               className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50"
@@ -181,7 +179,7 @@ export const JournalEntry: React.FC = () => {
             >
               <div className="flex items-center gap-4">
                 {entry.expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
-                <span className="text-sm text-gray-900" style={{ fontWeight: entry.isBold ? 700 : undefined }}>
+                <span className="text-sm font-medium text-gray-900">
                   {entry.openDate || '未填写日期'} | {entry.stockCode || '未填代码'} | {entry.stockName || '未填名称'}
                 </span>
                 {entry.strategies.length > 0 && (
@@ -263,29 +261,7 @@ export const JournalEntry: React.FC = () => {
 
                 {/* 标记 + 提交 */}
                 <div className="flex items-center justify-between pt-3 border-t">
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => updateEntry(entry.entryId, { isBold: !entry.isBold })}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${entry.isBold ? 'bg-gray-200 text-gray-900 font-bold' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
-                    >
-                      <Bold className="h-3.5 w-3.5" />
-                      加粗
-                    </button>
-                    <button
-                      onClick={() => updateEntry(entry.entryId, { isRed: !entry.isRed })}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${entry.isRed ? 'bg-red-100 text-red-700 border border-red-300' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
-                    >
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      标红
-                    </button>
-                    <button
-                      onClick={() => updateEntry(entry.entryId, { isYellow: !entry.isYellow })}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${entry.isYellow ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
-                    >
-                      <Sun className="h-3.5 w-3.5" />
-                      标黄
-                    </button>
-                  </div>
+                  <div />
                   <div className="flex items-center gap-3">
                     {entry.message && (
                       <span className={`text-xs ${entry.message.includes('失败') ? 'text-red-600' : 'text-green-600'}`}>

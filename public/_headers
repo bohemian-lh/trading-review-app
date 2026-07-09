@@ -1,0 +1,7 @@
+# 带哈希的静态资源：永久强缓存（内容变则哈希变，文件名永远唯一）
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 入口文件：绝不缓存，保证永远加载最新版本
+/index.html
+  Cache-Control: no-cache
