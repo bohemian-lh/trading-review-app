@@ -1,11 +1,38 @@
-import React, { useState, useMemo } from 'react';
-import { Bold, AlertTriangle, Send, Trash2, Edit2, X } from 'lucide-react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { Bold, AlertTriangle, Send, Trash2, Edit2, X, Settings } from 'lucide-react';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
 import type { TradingJournal } from '@/types';
 
-/** 按策略组分组解析策略文本 */
+// ─── localStorage UI 设置 ──────────────────────────────────────────
+const UI_PREFIX = 'journal_table_';
+
+interface TableSettings {
+  showOps: boolean;
+  colWidths: Record<string, number>;
+  fontSizes: Record<string, number>;
+}
+
+const DEFAULT_SETTINGS: TableSettings = {
+  showOps: true,
+  colWidths: { name: 120, g1: 120, g2: 120, g3: 120, g4: 120, ops: 90 },
+  fontSizes: { name: 13, g1: 12, g2: 12, g3: 12, g4: 12 },
+};
+
+function loadSettings(): TableSettings {
+  try {
+    const raw = localStorage.getItem(UI_PREFIX + 'settings');
+    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return { ...DEFAULT_SETTINGS };
+}
+
+function saveSettings(s: TableSettings) {
+  localStorage.setItem(UI_PREFIX + 'settings', JSON.stringify(s));
+}
+
+// ─── 策略分组 helper ───────────────────────────────────────────────
 function groupStrategies(
   journal: TradingJournal,
   stages: any[],
@@ -28,17 +55,34 @@ function groupStrategies(
   return result;
 }
 
+// ─── 列配置 ────────────────────────────────────────────────────────
+const COLUMNS = [
+  { id: 'name', label: '股票名称' },
+  { id: 'g1', label: '' },
+  { id: 'g2', label: '' },
+  { id: 'g3', label: '' },
+  { id: 'g4', label: '' },
+] as const;
+
+const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16];
+
+// ─── 组件 ──────────────────────────────────────────────────────────
 export const JournalDrafts: React.FC = () => {
   const { journals, snapshots, activeStages, createSnapshot, finalizeJournal, updateDraftJournal, deleteJournal } = useJournalStore();
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
+  // 编辑状态
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editState, setEditState] = useState<Record<string, { stage: string; strategies: string[]; isBold: boolean; isRed: boolean }>>({});
   const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
 
+  // UI 设置
+  const [settings, setSettings] = useState<TableSettings>(loadSettings);
+  const [showSettings, setShowSettings] = useState(false);
+
   const drafts = journals.filter(j => j.status === 'draft');
 
-  // 策略组 ID 顺序（固定 4 组）
+  // 策略组 ID 顺序
   const groupIds = ['g1', 'g2', 'g3', 'g4'];
   const groupNames = useMemo(() => {
     const stage = activeStages[0];
@@ -46,11 +90,60 @@ export const JournalDrafts: React.FC = () => {
     return stage.strategyGroups.map(g => g.groupName);
   }, [activeStages]);
 
+  // 持久化设置变更
+  const updateSettings = useCallback((patch: Partial<TableSettings>) => {
+    setSettings(prev => {
+      const next = { ...prev, ...patch };
+      saveSettings(next);
+      return next;
+    });
+  }, []);
+
+  // ─── 列拖拽 resize ────────────────────────────────────────────
+  const resizeState = useRef<{ colId: string; startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizeState.current) return;
+      const { colId, startX, startWidth } = resizeState.current;
+      const delta = e.clientX - startX;
+      const newWidth = Math.max(60, startWidth + delta);
+      setSettings(prev => ({ ...prev, colWidths: { ...prev.colWidths, [colId]: newWidth } }));
+    };
+    const handleMouseUp = () => {
+      if (resizeState.current) {
+        saveSettings({ ...loadSettings(), colWidths: settings.colWidths });
+        resizeState.current = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [settings.colWidths]);
+
+  const startResize = (colId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeState.current = {
+      colId,
+      startX: e.clientX,
+      startWidth: settings.colWidths[colId] || 120,
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  // ─── 编辑逻辑 ─────────────────────────────────────────────────
   const startEditing = (j: TradingJournal) => {
     setEditingId(j.id);
     setEditState(prev => ({
       ...prev,
-      [j.id]: { stage: j.stage, strategies: [...j.strategies], isBold: false, isRed: false },
+      [j.id]: { stage: j.stage, strategies: [...j.strategies], isBold: j.isBold, isRed: j.isRed },
     }));
   };
 
@@ -80,11 +173,14 @@ export const JournalDrafts: React.FC = () => {
       stage: es.stage,
       strategies: es.strategies,
       snapshotId: snapshot.snapshotId,
+      isBold: es.isBold,
+      isRed: es.isRed,
     }, datasetId);
     setEditingId(null);
   };
 
   const handleFinalize = async (journalId: string) => {
+    if (!confirm('确认提交此条日志？提交后将移至「已存储日志」。')) return;
     setSubmittingIds(prev => new Set([...prev, journalId]));
     try {
       await finalizeJournal(journalId, datasetId);
@@ -104,6 +200,22 @@ export const JournalDrafts: React.FC = () => {
 
   const stageOptions = activeStages;
 
+  // ─── 渲染行样式 ───────────────────────────────────────────────
+  const getCellStyle = (colId: string): React.CSSProperties => {
+    const fs = settings.fontSizes[colId] || 12;
+    return { fontSize: `${fs}px` };
+  };
+
+  const getRowClasses = (j: TradingJournal): string => {
+    const classes = ['border-b', 'hover:bg-gray-50', 'transition-colors'];
+    if (j.isBold) classes.push('font-bold');
+    if (j.isRed) classes.push('text-red-600');
+    return classes.join(' ');
+  };
+
+  // ─── 可见列 ───────────────────────────────────────────────────
+  const visibleCols = COLUMNS;
+
   if (drafts.length === 0) {
     return (
       <div className="text-center py-12 text-gray-400">
@@ -114,18 +226,96 @@ export const JournalDrafts: React.FC = () => {
 
   return (
     <div className="space-y-3">
-      <div className="text-sm text-gray-500">{drafts.length} 条当前交易</div>
+      {/* ─── 头部：计数 + 设置 ───────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-gray-500">{drafts.length} 条当前交易</div>
+        <div className="relative">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${showSettings ? 'bg-gray-200 text-gray-700' : 'text-gray-500 hover:bg-gray-100'}`}
+          >
+            <Settings className="h-3.5 w-3.5" />
+            表格设置
+          </button>
+          {showSettings && (
+            <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-20 p-3 space-y-3">
+              {/* 操作列显隐 */}
+              <label className="flex items-center justify-between cursor-pointer">
+                <span className="text-xs text-gray-600">显示操作列</span>
+                <button
+                  onClick={() => updateSettings({ showOps: !settings.showOps })}
+                  className={`w-8 h-4 rounded-full transition-colors ${settings.showOps ? 'bg-blue-500' : 'bg-gray-300'}`}
+                >
+                  <span className={`block w-3 h-3 rounded-full bg-white shadow transition-transform mx-0.5 ${settings.showOps ? 'translate-x-3.5' : ''}`} />
+                </button>
+              </label>
 
-      {/* ─── 表格式列表 ─── */}
+              <div className="border-t pt-2">
+                <div className="text-xs text-gray-500 mb-2">每列字号</div>
+                {[{ id: 'name', label: '股票名称' }, { id: 'g1', label: groupNames[0] }, { id: 'g2', label: groupNames[1] }, { id: 'g3', label: groupNames[2] }, { id: 'g4', label: groupNames[3] }].map(col => (
+                  <div key={col.id} className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs text-gray-500 truncate mr-2 max-w-[120px]">{col.label}</span>
+                    <select
+                      value={settings.fontSizes[col.id] || 12}
+                      onChange={(e) => updateSettings({ fontSizes: { ...settings.fontSizes, [col.id]: Number(e.target.value) } })}
+                      className="text-xs border rounded px-1.5 py-0.5"
+                    >
+                      {FONT_SIZE_OPTIONS.map(n => (
+                        <option key={n} value={n}>{n}px</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => {
+                  updateSettings(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)));
+                }}
+                className="text-xs text-blue-600 hover:text-blue-800"
+              >
+                恢复默认
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ─── 表格式列表 ──────────────────────────────────────── */}
       <div className="overflow-x-auto">
         <table className="w-full border border-gray-200 rounded-lg overflow-hidden text-sm">
           <thead>
-            <tr className="bg-gray-50">
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-r">股票名称</th>
-              {groupNames.map((name, i) => (
-                <th key={i} className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-r">{name}</th>
-              ))}
-              <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 w-40">操作</th>
+            <tr className="bg-gray-50 relative">
+              {visibleCols.map(col => {
+                const colName = col.id === 'name' ? col.label : (groupNames[parseInt(col.id.slice(1)) - 1] || col.id);
+                const width = settings.colWidths[col.id] || 120;
+                return (
+                  <th
+                    key={col.id}
+                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-r relative"
+                    style={{ width: `${width}px`, minWidth: `${width}px` }}
+                  >
+                    <span className="truncate block">{colName}</span>
+                    {/* 拖拽手柄 */}
+                    <div
+                      className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-400 transition-colors"
+                      onMouseDown={(e) => startResize(col.id, e)}
+                    />
+                  </th>
+                );
+              })}
+              {settings.showOps && (
+                <th
+                  className="px-3 py-2 text-center text-xs font-medium text-gray-500 relative"
+                  style={{ width: `${settings.colWidths.ops || 90}px`, minWidth: `${settings.colWidths.ops || 90}px` }}
+                >
+                  操作
+                  <div
+                    className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-400 transition-colors"
+                    onMouseDown={(e) => startResize('ops', e)}
+                  />
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -138,12 +328,12 @@ export const JournalDrafts: React.FC = () => {
               const currentStrategies = isEditing ? es.strategies : journal.strategies;
               const stageConfig = activeStages.find(s => s.stageId === currentStage);
 
-              // 编辑模式：单独的行上覆盖展开面板
+              // 编辑模式
               if (isEditing) {
                 return (
                   <React.Fragment key={journal.id}>
                     <tr className="bg-blue-50">
-                      <td className="px-3 py-2 border-r text-gray-900 font-medium" colSpan={5}>
+                      <td className="px-3 py-2 border-r text-gray-900 font-medium" colSpan={visibleCols.length + (settings.showOps ? 1 : 0)}>
                         <div className="flex items-center justify-between">
                           <span>编辑: {journal.stockName || '-'} ({journal.stockCode || '-'}) - {journal.openDate}</span>
                           <div className="flex items-center gap-2">
@@ -154,7 +344,7 @@ export const JournalDrafts: React.FC = () => {
                       </td>
                     </tr>
                     <tr className="bg-blue-50">
-                      <td className="px-3 py-3" colSpan={5}>
+                      <td className="px-3 py-3" colSpan={visibleCols.length + (settings.showOps ? 1 : 0)}>
                         <div className="space-y-4">
                           <div>
                             <label className="block text-xs font-medium text-gray-600 mb-1">阶段</label>
@@ -191,46 +381,55 @@ export const JournalDrafts: React.FC = () => {
                 );
               }
 
-              // 紧凑模式：表格式一行
+              // 紧凑模式
               return (
-                <tr key={journal.id} className="border-b hover:bg-gray-50 transition-colors">
-                  <td className="px-3 py-2 border-r min-w-[100px]">
-                    <div className="font-medium text-gray-900">{journal.stockName || '-'}</div>
-                    <div className="text-xs text-gray-400">{journal.stockCode}{journal.openDate ? ` / ${journal.openDate}` : ''}</div>
+                <tr key={journal.id} className={getRowClasses(journal)}>
+                  <td className="px-3 py-2 border-r align-top" style={getCellStyle('name')}>
+                    {journal.stockName || '-'}
                   </td>
-                  {groupIds.map(gid => (
-                    <td key={gid} className="px-3 py-2 border-r min-w-[80px] align-top">
-                      {(grouped[gid] || []).length > 0 ? (
-                        <div className="flex flex-col gap-0.5">
-                          {grouped[gid].map((text, i) => (
-                            <span key={i} className="text-xs text-gray-700">{text}</span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-300">-</span>
-                      )}
+                  {groupIds.map(gid => {
+                    const items = grouped[gid] || [];
+                    return (
+                      <td key={gid} className="px-3 py-2 border-r align-top" style={getCellStyle(gid)}>
+                        {items.length > 0 ? (
+                          <div className="flex flex-col gap-0.5">
+                            {items.map((text, i) => (
+                              <span key={i}>{text}</span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-300">-</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  {settings.showOps && (
+                    <td className="px-2 py-2 text-center" style={{ fontSize: '12px' }}>
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => startEditing(journal)} className="text-xs text-blue-600 hover:bg-blue-50 px-1.5 py-1 rounded" title="编辑">
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleFinalize(journal.id)} disabled={isSubmitting}
+                          className="text-xs text-green-600 hover:bg-green-50 px-1.5 py-1 rounded disabled:opacity-50" title="提交日志">
+                          <Send className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleDelete(journal.id)} className="text-red-400 hover:text-red-600 px-1.5 py-1 rounded" title="删除创建">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
-                  ))}
-                  <td className="px-2 py-2 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <button onClick={() => startEditing(journal)} className="text-xs text-blue-600 hover:bg-blue-50 px-1.5 py-1 rounded" title="编辑">
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => handleFinalize(journal.id)} disabled={isSubmitting}
-                        className="text-xs text-green-600 hover:bg-green-50 px-1.5 py-1 rounded disabled:opacity-50" title="提交日志">
-                        <Send className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => handleDelete(journal.id)} className="text-red-400 hover:text-red-600 px-1.5 py-1 rounded" title="删除创建">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
+                  )}
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+
+      {/* 点击空白处关闭设置面板 */}
+      {showSettings && (
+        <div className="fixed inset-0 z-10" onClick={() => setShowSettings(false)} />
+      )}
     </div>
   );
 };

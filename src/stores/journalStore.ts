@@ -17,6 +17,7 @@ interface JournalState {
   createSnapshot: (stages: JournalStageConfig[], datasetId: string) => Promise<JournalConfigSnapshot | null>;
   createJournal: (draft: JournalDraft, snapshotId: string, datasetId: string) => Promise<void>;
   finalizeJournal: (journalId: string, datasetId: string) => Promise<void>;
+  revertJournal: (journalId: string, datasetId: string) => Promise<void>;
   updateDraftJournal: (journalId: string, partial: Partial<TradingJournal>, datasetId: string) => Promise<void>;
   updateJournalRecordId: (journalId: string, recordId: string | undefined, datasetId: string) => Promise<void>;
   deleteJournal: (journalId: string, datasetId: string) => Promise<void>;
@@ -57,6 +58,8 @@ function migrateJournal(j: any): TradingJournal {
     stockCode: j.stockCode || '',
     stockName: j.stockName || '',
     status: j.status || 'submitted', // 旧数据默认为 submitted
+    isBold: j.isBold || false,
+    isRed: j.isRed || false,
   };
 }
 
@@ -119,6 +122,8 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       strategies: [...draft.strategies],
       snapshotId,
       status: 'draft',
+      isBold: draft.isBold,
+      isRed: draft.isRed,
       createdAt: new Date().toISOString(),
     };
     const newJournals = [...journals, newJournal];
@@ -136,6 +141,20 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     const { journals } = get();
     const newJournals = journals.map(j =>
       j.id === journalId ? { ...j, status: 'submitted' as const } : j
+    );
+    try {
+      await saveJournals(datasetId, newJournals);
+      set({ journals: newJournals });
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  // 撤回提交 → status: 'draft'（回退到中间态）
+  revertJournal: async (journalId: string, datasetId: string) => {
+    const { journals } = get();
+    const newJournals = journals.map(j =>
+      j.id === journalId ? { ...j, status: 'draft' as const } : j
     );
     try {
       await saveJournals(datasetId, newJournals);

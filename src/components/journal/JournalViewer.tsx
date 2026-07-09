@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Trash2, Link } from 'lucide-react';
+import { Trash2, Link, Undo2 } from 'lucide-react';
 import { useRecordsStore } from '@/stores';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
@@ -7,7 +7,7 @@ import type { TradingJournal } from '@/types';
 
 export const JournalViewer: React.FC = () => {
   const records = useRecordsStore(s => s.records);
-  const { journals, snapshots, activeStages, deleteJournal, updateJournalRecordId } = useJournalStore();
+  const { journals, snapshots, activeStages, deleteJournal, updateJournalRecordId, revertJournal } = useJournalStore();
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
   const [filterDate, setFilterDate] = useState('');
@@ -45,6 +45,11 @@ export const JournalViewer: React.FC = () => {
   const handleDelete = async (journalId: string) => {
     if (!confirm('确认删除此条日志？')) return;
     await deleteJournal(journalId, datasetId);
+  };
+
+  const handleRevert = async (journalId: string) => {
+    if (!confirm('确认回退此条日志到「当前交易」？回退后可在当前交易界面编辑。')) return;
+    await revertJournal(journalId, datasetId);
   };
 
   const handleMatch = async (journalId: string, recordId: string | undefined) => {
@@ -151,6 +156,13 @@ export const JournalViewer: React.FC = () => {
                       匹配记录
                     </button>
                   )}
+                  <button
+                    onClick={() => handleRevert(journal.id)}
+                    className="text-orange-400 hover:text-orange-600"
+                    title="回退到当前交易"
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </button>
                   <button
                     onClick={() => handleDelete(journal.id)}
                     className="text-red-400 hover:text-red-600"

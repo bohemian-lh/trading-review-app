@@ -41,6 +41,8 @@ export interface TradingJournal {
   strategies: string[];    // strategyId 列表
   snapshotId: string;      // 写入时的配置快照 ID
   status: 'draft' | 'submitted';  // draft=中间态, submitted=已完成
+  isBold: boolean;         // 行内容加粗
+  isRed: boolean;          // 行内容标红
   createdAt: string;
 }
 
