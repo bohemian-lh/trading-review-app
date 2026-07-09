@@ -1,5 +1,9 @@
 // 字段配置类型 — 驱动动态类型系统
 
+import type { JournalStageConfig } from './journal';
+import type { MindsetRow } from './mindset';
+import type { DecisionCheckItem } from './decision';
+
 export interface AggregateRule {
   name: string;
   includedTypes: string[];
@@ -15,6 +19,12 @@ export interface FieldConfig {
   entryTypes: string[];
   aggregateRules: AggregateRule[];
   histogramConfigs?: Record<string, HistogramConfig>;  // key = tradingType
+  // 交易日志策略配置（可选）
+  journalStrategyConfig?: JournalStageConfig[];
+  // 心态管理和策略表数据（可选）
+  mindsetTable?: MindsetRow[];
+  // 决策质量检查清单（可选）
+  decisionChecklist?: DecisionCheckItem[];
 }
 
 // 默认直方图 9 切分点

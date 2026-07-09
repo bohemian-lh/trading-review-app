@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FileSpreadsheet, BarChart3, LayoutDashboard, Settings, TrendingUp, GitCompare } from 'lucide-react';
+import { FileSpreadsheet, BarChart3, LayoutDashboard, Settings, TrendingUp, GitCompare, BookOpen, Brain, CheckSquare } from 'lucide-react';
 import { cn } from '@/utils';
 
 export const Navigation: React.FC = () => {
@@ -10,6 +10,9 @@ export const Navigation: React.FC = () => {
     { path: '/', label: '首页', icon: LayoutDashboard },
     { path: '/subsequent-profit', label: '后续盈亏', icon: TrendingUp },
     { path: '/theory-vs-actual', label: '理论vs实际', icon: GitCompare },
+    { path: '/journal', label: '交易日志', icon: BookOpen },
+    { path: '/mindset', label: '心态管理', icon: Brain },
+    { path: '/decision-quality', label: '决策质量控制', icon: CheckSquare },
     { path: '/import', label: '导入/导出', icon: FileSpreadsheet },
     { path: '/editor', label: '数据编辑', icon: BarChart3 },
     { path: '/config', label: '字段配置', icon: Settings },

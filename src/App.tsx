@@ -12,6 +12,9 @@ const DataEditor = lazy(() => import('@/components/editor').then(m => ({ default
 const FieldConfigPage = lazy(() => import('@/components/config/FieldConfigPage').then(m => ({ default: m.FieldConfigPage })));
 const SubsequentProfitPage = lazy(() => import('@/components/charts/SubsequentProfitPage').then(m => ({ default: m.SubsequentProfitPage })));
 const TheoryVsActualPage = lazy(() => import('@/pages/TheoryVsActualPage').then(m => ({ default: m.default })));
+const TradingJournalPage = lazy(() => import('@/pages/TradingJournalPage').then(m => ({ default: m.default })));
+const MindsetManagementPage = lazy(() => import('@/pages/MindsetManagementPage').then(m => ({ default: m.default })));
+const DecisionQualityPage = lazy(() => import('@/pages/DecisionQualityPage').then(m => ({ default: m.default })));
 
 const PageLoader: React.FC = () => (
   <div className="min-h-[50vh] flex items-center justify-center">
@@ -61,6 +64,9 @@ const App: React.FC = () => {
               <Route path="/editor" element={<DataEditor />} />
               <Route path="/subsequent-profit" element={<SubsequentProfitPage />} />
               <Route path="/theory-vs-actual" element={<TheoryVsActualPage />} />
+              <Route path="/journal" element={<TradingJournalPage />} />
+              <Route path="/mindset" element={<MindsetManagementPage />} />
+              <Route path="/decision-quality" element={<DecisionQualityPage />} />
               <Route path="/config" element={<FieldConfigPage />} />
             </Routes>
           </Suspense>
