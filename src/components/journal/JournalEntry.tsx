@@ -6,6 +6,14 @@ import { StrategyCard } from './StrategyCard';
 import { generateId } from '@/utils';
 import type { JournalDraft } from '@/types';
 
+function getTodayStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
 interface EntryState {
   entryId: string;
   openDate: string;
@@ -29,12 +37,12 @@ export const JournalEntry: React.FC = () => {
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
   const [entries, setEntries] = useState<EntryState[]>(() => {
+    const today = getTodayStr();
     const drafts = getAllDraftEntries();
     if (drafts.length > 0) return drafts.map(draftToState);
-    // 默认一条空卡片
     return [{
       entryId: `e_${generateId()}`,
-      openDate: '',
+      openDate: today,
       stockCode: '',
       stockName: '',
       stage: 'stage1_left',
@@ -74,7 +82,7 @@ export const JournalEntry: React.FC = () => {
     setEntries(prev => {
       const entry: EntryState = {
         entryId: `e_${generateId()}`,
-        openDate: '',
+        openDate: getTodayStr(),
         stockCode: '',
         stockName: '',
         stage: 'stage1_left',
