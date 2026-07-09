@@ -207,12 +207,12 @@ export const JournalDrafts: React.FC = () => {
     return { fontSize: `${fs}px` };
   };
 
-  const getRowClasses = (j: TradingJournal): string => {
-    const classes = ['border-b', 'transition-colors'];
-    if (j.isBold) classes.push('[&_td]:font-bold');
-    if (j.isRed) classes.push('bg-red-100');
-    if (j.isYellow) classes.push('bg-yellow-100');
-    return classes.join(' ');
+  const getCompactCellStyle = (j: TradingJournal, colId: string): React.CSSProperties => {
+    return {
+      ...getCellStyle(colId),
+      fontWeight: j.isBold ? 700 : undefined,
+      backgroundColor: j.isRed ? '#fee2e2' : j.isYellow ? '#fef08a' : undefined,
+    };
   };
 
   // ─── 可见列 ───────────────────────────────────────────────────
@@ -388,14 +388,14 @@ export const JournalDrafts: React.FC = () => {
 
               // 紧凑模式
               return (
-                <tr key={journal.id} className={getRowClasses(journal)}>
-                  <td className="px-3 py-2 border-r align-top" style={getCellStyle('name')}>
+                <tr key={journal.id} className="border-b transition-colors">
+                  <td className="px-3 py-2 border-r align-top" style={getCompactCellStyle(journal, 'name')}>
                     {journal.stockName || '-'}
                   </td>
                   {groupIds.map(gid => {
                     const items = grouped[gid] || [];
                     return (
-                      <td key={gid} className="px-3 py-2 border-r align-top" style={getCellStyle(gid)}>
+                      <td key={gid} className="px-3 py-2 border-r align-top" style={getCompactCellStyle(journal, gid)}>
                         {items.length > 0 ? (
                           <div className="flex flex-col gap-0.5">
                             {items.map((text, i) => (
@@ -409,7 +409,7 @@ export const JournalDrafts: React.FC = () => {
                     );
                   })}
                   {settings.showOps && (
-                    <td className="px-2 py-2 text-center" style={{ fontSize: '12px' }}>
+                    <td className="px-2 py-2 text-center" style={getCompactCellStyle(journal, 'ops')}>
                       <div className="flex items-center justify-center gap-1">
                         <button onClick={() => startEditing(journal)} className="text-xs text-blue-600 hover:bg-blue-50 px-1.5 py-1 rounded" title="编辑">
                           <Edit2 className="h-3.5 w-3.5" />
