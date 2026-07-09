@@ -152,7 +152,14 @@ export const JournalDrafts: React.FC = () => {
   const getEditState = (id: string) => editState[id] || { stage: '', strategies: [], isBold: false, isRed: false, isYellow: false };
 
   const updateEditState = (id: string, patch: Partial<typeof editState[string]>) => {
-    setEditState(prev => ({ ...prev, [id]: { ...getEditState(id), ...patch } }));
+    setEditState(prev => {
+      const prevState = prev[id] || { stage: '', strategies: [], isBold: false, isRed: false, isYellow: false };
+      const merged = { ...prevState, ...patch };
+      // 标红和标黄互斥
+      if (patch.isRed && !prevState.isRed) merged.isYellow = false;
+      if (patch.isYellow && !prevState.isYellow) merged.isRed = false;
+      return { ...prev, [id]: merged };
+    });
   };
 
   const handleToggleStrategy = (id: string, strategyId: string) => {
@@ -197,6 +204,19 @@ export const JournalDrafts: React.FC = () => {
   const handleDelete = async (journalId: string) => {
     if (!confirm('确认删除此条创建？')) return;
     await deleteJournal(journalId, datasetId);
+  };
+
+  // ─── 快速切换样式（compact 视图直接 toggle，标红/标黄互斥）─────────
+  const handleQuickToggle = async (journalId: string, field: 'isBold' | 'isRed' | 'isYellow') => {
+    const journal = journals.find(j => j.id === journalId);
+    if (!journal) return;
+    if (field === 'isRed' && !journal.isRed) {
+      await updateDraftJournal(journalId, { isRed: true, isYellow: false }, datasetId);
+    } else if (field === 'isYellow' && !journal.isYellow) {
+      await updateDraftJournal(journalId, { isYellow: true, isRed: false }, datasetId);
+    } else {
+      await updateDraftJournal(journalId, { [field]: !journal[field] }, datasetId);
+    }
   };
 
   const stageOptions = activeStages;
@@ -409,16 +429,28 @@ export const JournalDrafts: React.FC = () => {
                     );
                   })}
                   {settings.showOps && (
-                    <td className="px-2 py-2 text-center" style={getCompactCellStyle(journal, 'ops')}>
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => startEditing(journal)} className="text-xs text-blue-600 hover:bg-blue-50 px-1.5 py-1 rounded" title="编辑">
+                    <td className="px-2 py-1 text-center" style={getCompactCellStyle(journal, 'ops')}>
+                      <div className="flex items-center justify-center gap-0.5 flex-wrap">
+                        <button onClick={() => handleQuickToggle(journal.id, 'isBold')}
+                          className={`p-1 rounded ${journal.isBold ? 'bg-gray-200 text-gray-900' : 'text-gray-400 hover:bg-gray-100'}`} title="加粗">
+                          <Bold className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleQuickToggle(journal.id, 'isRed')}
+                          className={`p-1 rounded ${journal.isRed ? 'bg-red-200 text-red-700' : 'text-gray-400 hover:bg-red-50'}`} title="标红">
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleQuickToggle(journal.id, 'isYellow')}
+                          className={`p-1 rounded ${journal.isYellow ? 'bg-yellow-200 text-yellow-700' : 'text-gray-400 hover:bg-yellow-50'}`} title="标黄">
+                          <Sun className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => startEditing(journal)} className="text-xs text-blue-600 hover:bg-blue-50 p-1 rounded" title="编辑策略">
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
                         <button onClick={() => handleFinalize(journal.id)} disabled={isSubmitting}
-                          className="text-xs text-green-600 hover:bg-green-50 px-1.5 py-1 rounded disabled:opacity-50" title="提交日志">
+                          className="text-xs text-green-600 hover:bg-green-50 p-1 rounded disabled:opacity-50" title="提交日志">
                           <Send className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={() => handleDelete(journal.id)} className="text-red-400 hover:text-red-600 px-1.5 py-1 rounded" title="删除创建">
+                        <button onClick={() => handleDelete(journal.id)} className="text-red-400 hover:text-red-600 p-1 rounded" title="删除创建">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
