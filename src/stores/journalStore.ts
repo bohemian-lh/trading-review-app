@@ -6,50 +6,51 @@ import { loadJournals, saveJournals, loadSnapshots, saveSnapshots } from '@/serv
 import { generateId } from '@/utils';
 
 interface JournalState {
-  // 已提交日志
   journals: TradingJournal[];
-  // 配置快照
   snapshots: JournalConfigSnapshot[];
-  // 当前活跃的策略配置（最新快照或默认值）
   activeStages: JournalStageConfig[];
-  // 草稿（localStorage 缓存）
-  drafts: Record<string, JournalDraft>;
-  // 加载状态
   loading: boolean;
   error: string | null;
 
-  // 初始化
   init: (datasetId: string) => Promise<void>;
-  // 配置快照管理
   createSnapshot: (stages: JournalStageConfig[], datasetId: string) => Promise<JournalConfigSnapshot | null>;
-  // 日志管理
   submitJournal: (draft: JournalDraft, snapshotId: string, datasetId: string) => Promise<void>;
+  updateJournalRecordId: (journalId: string, recordId: string | undefined, datasetId: string) => Promise<void>;
   deleteJournal: (journalId: string, datasetId: string) => Promise<void>;
-  // 草稿管理
-  getDraft: (recordId: string) => JournalDraft;
-  saveDraft: (recordId: string, draft: Partial<JournalDraft>) => void;
-  clearDraft: (recordId: string) => void;
+  saveDraft: (entryId: string, draft: JournalDraft) => void;
+  getDraft: (entryId: string) => JournalDraft | null;
+  getAllDraftEntries: () => JournalDraft[];
+  clearDraft: (entryId: string) => void;
 }
 
 const DRAFT_PREFIX = 'journal_draft_';
 
-function loadDraft(recordId: string): JournalDraft {
+function loadDraft(entryId: string): JournalDraft | null {
   try {
-    const raw = localStorage.getItem(`${DRAFT_PREFIX}${recordId}`);
+    const raw = localStorage.getItem(`${DRAFT_PREFIX}${entryId}`);
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
-  return { recordId, stage: 'stage1_left', strategies: [], isBold: false, isRed: false };
+  return null;
 }
 
-function saveDraftToStorage(recordId: string, draft: JournalDraft) {
-  localStorage.setItem(`${DRAFT_PREFIX}${recordId}`, JSON.stringify(draft));
+function getAllDrafts(): JournalDraft[] {
+  const drafts: JournalDraft[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(DRAFT_PREFIX)) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) drafts.push(JSON.parse(raw));
+      } catch { /* ignore */ }
+    }
+  }
+  return drafts;
 }
 
 export const useJournalStore = create<JournalState>((set, get) => ({
   journals: [],
   snapshots: [],
   activeStages: DEFAULT_JOURNAL_STAGES,
-  drafts: {},
   loading: false,
   error: null,
 
@@ -60,11 +61,18 @@ export const useJournalStore = create<JournalState>((set, get) => ({
         loadJournals(datasetId),
         loadSnapshots(datasetId),
       ]);
-      // 取最新快照的 stages
+      // 取最新快照的 stages，兼容旧数据（无 openDate 的记录）
       const activeStages = snapshots.length > 0
         ? snapshots[snapshots.length - 1].stages
         : DEFAULT_JOURNAL_STAGES;
-      set({ journals, snapshots, activeStages, loading: false });
+      // 兼容旧数据：若无 openDate 则给默认值
+      const fixedJournals = journals.map(j => ({
+        ...j,
+        openDate: j.openDate || '',
+        stockCode: j.stockCode || '',
+        stockName: j.stockName || '',
+      }));
+      set({ journals: fixedJournals, snapshots, activeStages, loading: false });
     } catch (e: any) {
       set({ error: e.message, loading: false });
     }
@@ -75,7 +83,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     const snapshot: JournalConfigSnapshot = {
       snapshotId: `snap_${generateId()}`,
       version: snapshots.length + 1,
-      stages: JSON.parse(JSON.stringify(stages)), // deep copy
+      stages: JSON.parse(JSON.stringify(stages)),
       createdAt: new Date().toISOString(),
     };
     const newSnapshots = [...snapshots, snapshot];
@@ -91,30 +99,34 @@ export const useJournalStore = create<JournalState>((set, get) => ({
 
   submitJournal: async (draft: JournalDraft, snapshotId: string, datasetId: string) => {
     const { journals } = get();
-    // 检查是否已有同 recordId+stage 的日志，如有则覆盖
-    const existingIdx = journals.findIndex(
-      j => j.recordId === draft.recordId && j.stage === draft.stage
-    );
     const newJournal: TradingJournal = {
       id: `jrnl_${generateId()}`,
-      recordId: draft.recordId,
+      openDate: draft.openDate,
+      stockCode: draft.stockCode,
+      stockName: draft.stockName,
       stage: draft.stage,
       strategies: [...draft.strategies],
       snapshotId,
       createdAt: new Date().toISOString(),
     };
-    let newJournals: TradingJournal[];
-    if (existingIdx >= 0) {
-      newJournals = [...journals];
-      newJournals[existingIdx] = newJournal;
-    } else {
-      newJournals = [...journals, newJournal];
-    }
+    const newJournals = [...journals, newJournal];
     try {
       await saveJournals(datasetId, newJournals);
       set({ journals: newJournals });
-      // 清除草稿
-      localStorage.removeItem(`${DRAFT_PREFIX}${draft.recordId}`);
+      localStorage.removeItem(`${DRAFT_PREFIX}${draft.entryId}`);
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  updateJournalRecordId: async (journalId: string, recordId: string | undefined, datasetId: string) => {
+    const { journals } = get();
+    const newJournals = journals.map(j =>
+      j.id === journalId ? { ...j, recordId } : j
+    );
+    try {
+      await saveJournals(datasetId, newJournals);
+      set({ journals: newJournals });
     } catch (e: any) {
       set({ error: e.message });
     }
@@ -131,23 +143,19 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     }
   },
 
-  getDraft: (recordId: string) => {
-    return loadDraft(recordId);
+  saveDraft: (entryId: string, draft: JournalDraft) => {
+    localStorage.setItem(`${DRAFT_PREFIX}${entryId}`, JSON.stringify(draft));
   },
 
-  saveDraft: (recordId: string, partial: Partial<JournalDraft>) => {
-    const current = loadDraft(recordId);
-    const updated = { ...current, ...partial, recordId };
-    saveDraftToStorage(recordId, updated);
-    set(s => ({ drafts: { ...s.drafts, [recordId]: updated } }));
+  getDraft: (entryId: string) => {
+    return loadDraft(entryId);
   },
 
-  clearDraft: (recordId: string) => {
-    localStorage.removeItem(`${DRAFT_PREFIX}${recordId}`);
-    set(s => {
-      const drafts = { ...s.drafts };
-      delete drafts[recordId];
-      return { drafts };
-    });
+  getAllDraftEntries: () => {
+    return getAllDrafts();
+  },
+
+  clearDraft: (entryId: string) => {
+    localStorage.removeItem(`${DRAFT_PREFIX}${entryId}`);
   },
 }));

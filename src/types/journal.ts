@@ -33,7 +33,10 @@ export interface JournalConfigSnapshot {
 /** 已提交的单条交易日志 */
 export interface TradingJournal {
   id: string;
-  recordId: string;       // 关联 TradingRecord.id
+  recordId?: string;       // 可选关联 TradingRecord.id（在 Viewer 手动匹配）
+  openDate: string;        // 开单时间
+  stockCode: string;       // 股票代码
+  stockName: string;       // 股票名称
   stage: string;           // 阶段 ID
   strategies: string[];    // strategyId 列表
   snapshotId: string;      // 写入时的配置快照 ID
@@ -42,9 +45,12 @@ export interface TradingJournal {
 
 /** 本地草稿 */
 export interface JournalDraft {
-  recordId: string;
+  entryId: string;         // 临时 ID，区分多条草稿
+  openDate: string;
+  stockCode: string;
+  stockName: string;
   stage: string;
-  strategies: string[];    // strategyId 列表
+  strategies: string[];
   isBold: boolean;
   isRed: boolean;
 }
