@@ -389,13 +389,13 @@ export const JournalDrafts: React.FC = () => {
               // 紧凑模式
               return (
                 <tr key={journal.id} className="border-b transition-colors">
-                  <td className="px-3 py-2 border-r align-top" style={getCompactCellStyle(journal, 'name')}>
+                  <td className="px-3 py-1 border-r align-top" style={getCompactCellStyle(journal, 'name')}>
                     {journal.stockName || '-'}
                   </td>
                   {groupIds.map(gid => {
                     const items = grouped[gid] || [];
                     return (
-                      <td key={gid} className="px-3 py-2 border-r align-top" style={getCompactCellStyle(journal, gid)}>
+                      <td key={gid} className="px-3 py-1 border-r align-top" style={getCompactCellStyle(journal, gid)}>
                         {items.length > 0 ? (
                           <div className="flex flex-col gap-0.5">
                             {items.map((text, i) => (

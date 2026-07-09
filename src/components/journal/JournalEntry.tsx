@@ -171,7 +171,9 @@ export const JournalEntry: React.FC = () => {
       {entries.map(entry => {
         const stageConfig = activeStages.find(s => s.stageId === entry.stage);
         return (
-          <div key={entry.entryId} className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+          <div key={entry.entryId} className="border border-gray-200 rounded-lg overflow-hidden" style={{
+            backgroundColor: entry.isRed ? '#fee2e2' : entry.isYellow ? '#fef08a' : undefined,
+          }}>
             {/* 折叠头 */}
             <div
               className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50"
@@ -179,7 +181,7 @@ export const JournalEntry: React.FC = () => {
             >
               <div className="flex items-center gap-4">
                 {entry.expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
-                <span className="text-sm font-medium text-gray-900">
+                <span className="text-sm text-gray-900" style={{ fontWeight: entry.isBold ? 700 : undefined }}>
                   {entry.openDate || '未填写日期'} | {entry.stockCode || '未填代码'} | {entry.stockName || '未填名称'}
                 </span>
                 {entry.strategies.length > 0 && (
