@@ -40,6 +40,7 @@ export interface TradingJournal {
   stage: string;           // 阶段 ID
   strategies: string[];    // strategyId 列表
   snapshotId: string;      // 写入时的配置快照 ID
+  status: 'draft' | 'submitted';  // draft=中间态, submitted=已完成
   createdAt: string;
 }
 

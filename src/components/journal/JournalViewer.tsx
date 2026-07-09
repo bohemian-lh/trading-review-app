@@ -35,6 +35,7 @@ export const JournalViewer: React.FC = () => {
 
   const filtered = useMemo(() => {
     return journals.filter(j => {
+      if (j.status !== 'submitted') return false;
       if (filterDate && !j.openDate.includes(filterDate.replace(/-/g, ''))) return false;
       if (filterCode && !j.stockCode.includes(filterCode)) return false;
       return true;

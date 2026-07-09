@@ -4,6 +4,7 @@ import type { TradingJournal, JournalConfigSnapshot, JournalStageConfig, Journal
 import { DEFAULT_JOURNAL_STAGES } from '@/types';
 import { loadJournals, saveJournals, loadSnapshots, saveSnapshots } from '@/services/journalService';
 import { generateId } from '@/utils';
+import { useRecordsStore } from '@/stores';
 
 interface JournalState {
   journals: TradingJournal[];
@@ -14,7 +15,9 @@ interface JournalState {
 
   init: (datasetId: string) => Promise<void>;
   createSnapshot: (stages: JournalStageConfig[], datasetId: string) => Promise<JournalConfigSnapshot | null>;
-  submitJournal: (draft: JournalDraft, snapshotId: string, datasetId: string) => Promise<void>;
+  createJournal: (draft: JournalDraft, snapshotId: string, datasetId: string) => Promise<void>;
+  finalizeJournal: (journalId: string, datasetId: string) => Promise<void>;
+  updateDraftJournal: (journalId: string, partial: Partial<TradingJournal>, datasetId: string) => Promise<void>;
   updateJournalRecordId: (journalId: string, recordId: string | undefined, datasetId: string) => Promise<void>;
   deleteJournal: (journalId: string, datasetId: string) => Promise<void>;
   saveDraft: (entryId: string, draft: JournalDraft) => void;
@@ -47,6 +50,16 @@ function getAllDrafts(): JournalDraft[] {
   return drafts;
 }
 
+function migrateJournal(j: any): TradingJournal {
+  return {
+    ...j,
+    openDate: j.openDate || '',
+    stockCode: j.stockCode || '',
+    stockName: j.stockName || '',
+    status: j.status || 'submitted', // 旧数据默认为 submitted
+  };
+}
+
 export const useJournalStore = create<JournalState>((set, get) => ({
   journals: [],
   snapshots: [],
@@ -61,17 +74,14 @@ export const useJournalStore = create<JournalState>((set, get) => ({
         loadJournals(datasetId),
         loadSnapshots(datasetId),
       ]);
-      // 取最新快照的 stages，兼容旧数据（无 openDate 的记录）
-      const activeStages = snapshots.length > 0
+      let activeStages = snapshots.length > 0
         ? snapshots[snapshots.length - 1].stages
-        : DEFAULT_JOURNAL_STAGES;
-      // 兼容旧数据：若无 openDate 则给默认值
-      const fixedJournals = journals.map(j => ({
-        ...j,
-        openDate: j.openDate || '',
-        stockCode: j.stockCode || '',
-        stockName: j.stockName || '',
-      }));
+        : undefined;
+      if (!activeStages) {
+        const fc = useRecordsStore.getState().fieldConfig;
+        activeStages = fc.journalStrategyConfig?.length ? fc.journalStrategyConfig : DEFAULT_JOURNAL_STAGES;
+      }
+      const fixedJournals = journals.map(migrateJournal);
       set({ journals: fixedJournals, snapshots, activeStages, loading: false });
     } catch (e: any) {
       set({ error: e.message, loading: false });
@@ -97,7 +107,8 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     }
   },
 
-  submitJournal: async (draft: JournalDraft, snapshotId: string, datasetId: string) => {
+  // 提交创建 → status: 'draft'（中间态）
+  createJournal: async (draft: JournalDraft, snapshotId: string, datasetId: string) => {
     const { journals } = get();
     const newJournal: TradingJournal = {
       id: `jrnl_${generateId()}`,
@@ -107,6 +118,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       stage: draft.stage,
       strategies: [...draft.strategies],
       snapshotId,
+      status: 'draft',
       createdAt: new Date().toISOString(),
     };
     const newJournals = [...journals, newJournal];
@@ -114,6 +126,34 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       await saveJournals(datasetId, newJournals);
       set({ journals: newJournals });
       localStorage.removeItem(`${DRAFT_PREFIX}${draft.entryId}`);
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  // 提交日志 → status: 'submitted'（最终态）
+  finalizeJournal: async (journalId: string, datasetId: string) => {
+    const { journals } = get();
+    const newJournals = journals.map(j =>
+      j.id === journalId ? { ...j, status: 'submitted' as const } : j
+    );
+    try {
+      await saveJournals(datasetId, newJournals);
+      set({ journals: newJournals });
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  // 编辑 draft 日志
+  updateDraftJournal: async (journalId: string, partial: Partial<TradingJournal>, datasetId: string) => {
+    const { journals } = get();
+    const newJournals = journals.map(j =>
+      j.id === journalId ? { ...j, ...partial } : j
+    );
+    try {
+      await saveJournals(datasetId, newJournals);
+      set({ journals: newJournals });
     } catch (e: any) {
       set({ error: e.message });
     }

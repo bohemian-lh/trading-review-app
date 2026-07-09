@@ -25,7 +25,7 @@ function draftToState(d: JournalDraft): EntryState {
 }
 
 export const JournalEntry: React.FC = () => {
-  const { activeStages, submitJournal, createSnapshot, saveDraft, clearDraft, getAllDraftEntries } = useJournalStore();
+  const { activeStages, createJournal, createSnapshot, saveDraft, clearDraft, getAllDraftEntries } = useJournalStore();
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
   const [entries, setEntries] = useState<EntryState[]>(() => {
@@ -119,7 +119,7 @@ export const JournalEntry: React.FC = () => {
     try {
       const snapshot = await createSnapshot(activeStages, datasetId);
       if (!snapshot) throw new Error('创建快照失败');
-      await submitJournal({
+      await createJournal({
         entryId: entry.entryId,
         openDate: entry.openDate.trim(),
         stockCode: entry.stockCode.trim(),
@@ -276,7 +276,7 @@ export const JournalEntry: React.FC = () => {
                       className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
                     >
                       <Send className="h-3.5 w-3.5" />
-                      {entry.submitting ? '提交中...' : '提交日志'}
+                      {entry.submitting ? '提交中...' : '提交创建'}
                     </button>
                   </div>
                 </div>
