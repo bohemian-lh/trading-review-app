@@ -61,6 +61,7 @@ function migrateJournal(j: any): TradingJournal {
     strategyBold: j.strategyBold || [],
     strategyRed: j.strategyRed || [],
     strategyYellow: j.strategyYellow || [],
+    customStrategies: j.customStrategies || {},
   };
 }
 
@@ -124,6 +125,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       strategyBold: [],
       strategyRed: [],
       strategyYellow: [],
+      customStrategies: {},
       snapshotId,
       status: 'draft',
       createdAt: new Date().toISOString(),

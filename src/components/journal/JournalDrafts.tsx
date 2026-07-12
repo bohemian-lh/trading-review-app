@@ -36,6 +36,7 @@ function saveSettings(s: TableSettings) {
 interface StrategyItem {
   text: string;
   strategyId: string;
+  isCustom?: boolean;  // 自定义策略
 }
 
 function groupStrategies(
@@ -54,6 +55,11 @@ function groupStrategies(
       if (journal.strategies.includes(s.strategyId)) {
         result[g.groupId].push({ text: s.text, strategyId: s.strategyId });
       }
+    }
+    // 自定义策略
+    const customText = journal.customStrategies?.[g.groupId];
+    if (customText && customText.trim()) {
+      result[g.groupId].push({ text: customText.trim(), strategyId: `custom_${g.groupId}`, isCustom: true });
     }
   }
   return result;
@@ -134,7 +140,7 @@ export const JournalDrafts: React.FC = () => {
 
   // 编辑状态
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<Record<string, { stage: string; strategies: string[] }>>({});
+  const [editState, setEditState] = useState<Record<string, { stage: string; strategies: string[]; customStrategies: Record<string, string> }>>({});
   const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
 
   // Popover 状态
@@ -207,13 +213,13 @@ export const JournalDrafts: React.FC = () => {
     setEditingId(j.id);
     setEditState(prev => ({
       ...prev,
-      [j.id]: { stage: j.stage, strategies: [...j.strategies] },
+      [j.id]: { stage: j.stage, strategies: [...j.strategies], customStrategies: { ...j.customStrategies } },
     }));
   };
 
   const cancelEditing = () => setEditingId(null);
 
-  const getEditState = (id: string) => editState[id] || { stage: '', strategies: [] };
+  const getEditState = (id: string) => editState[id] || { stage: '', strategies: [], customStrategies: {} };
 
   const updateEditState = (id: string, patch: Partial<typeof editState[string]>) => {
     setEditState(prev => ({ ...prev, [id]: { ...getEditState(id), ...patch } }));
@@ -236,6 +242,7 @@ export const JournalDrafts: React.FC = () => {
     await updateDraftJournal(journalId, {
       stage: es.stage,
       strategies: es.strategies,
+      customStrategies: es.customStrategies,
       snapshotId: snapshot.snapshotId,
     }, datasetId);
     setEditingId(null);
@@ -314,8 +321,18 @@ export const JournalDrafts: React.FC = () => {
     const isBold = journal.strategyBold.includes(sid);
     const isRed = journal.strategyRed.includes(sid);
     const isYellow = journal.strategyYellow.includes(sid);
+    const isCustom = item.isCustom;
 
-    const bgClass = isRed ? 'bg-red-100 text-red-800' : isYellow ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-700';
+    let bgClass: string;
+    if (isRed) {
+      bgClass = 'bg-red-100 text-red-800';
+    } else if (isYellow) {
+      bgClass = 'bg-yellow-100 text-yellow-800';
+    } else if (isCustom) {
+      bgClass = 'bg-purple-50 text-purple-700 border border-dashed border-purple-300';
+    } else {
+      bgClass = 'bg-gray-100 text-gray-700';
+    }
     const boldClass = isBold ? 'font-bold' : '';
 
     return (
@@ -473,12 +490,33 @@ export const JournalDrafts: React.FC = () => {
                             </select>
                           </div>
                           {stageConfig && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {stageConfig.strategyGroups.map(group => (
-                                <StrategyCard key={group.groupId} group={group} selectedIds={currentStrategies}
-                                  onToggleStrategy={(sid) => handleToggleStrategy(journal.id, sid)} />
-                              ))}
-                            </div>
+                            <>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {stageConfig.strategyGroups.map(group => (
+                                  <StrategyCard key={group.groupId} group={group} selectedIds={currentStrategies}
+                                    onToggleStrategy={(sid) => handleToggleStrategy(journal.id, sid)} />
+                                ))}
+                              </div>
+                              {/* 自定义策略：每个策略组一个输入框 */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {stageConfig.strategyGroups.map(group => (
+                                  <div key={`custom_${group.groupId}`} className="border border-dashed border-purple-300 rounded-lg p-3 bg-purple-50/30">
+                                    <label className="block text-xs font-medium text-purple-600 mb-1">
+                                      自定义策略 — {group.groupName}
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={es.customStrategies[group.groupId] || ''}
+                                      onChange={(e) => updateEditState(journal.id, {
+                                        customStrategies: { ...es.customStrategies, [group.groupId]: e.target.value }
+                                      })}
+                                      placeholder="输入自定义策略描述..."
+                                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </>
                           )}
                           <div className="flex items-center justify-end pt-3 border-t">
                             <button onClick={() => handleFinalize(journal.id)} disabled={isSubmitting}

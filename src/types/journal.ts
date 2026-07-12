@@ -39,6 +39,7 @@ export interface TradingJournal {
   stockName: string;       // 股票名称
   stage: string;           // 阶段 ID
   strategies: string[];    // strategyId 列表
+  customStrategies: Record<string, string>; // groupId -> 自定义策略文本（空字符串表示无）
   strategyBold: string[];  // 加粗的策略 strategyId 列表
   strategyRed: string[];   // 标红的策略 strategyId 列表
   strategyYellow: string[];// 标黄的策略 strategyId 列表
