@@ -73,7 +73,7 @@ function migrateJournal(j: any): TradingJournal {
     strategyRed: j.strategyRed || [],
     strategyYellow: j.strategyYellow || [],
     strategyRedText: j.strategyRedText || [],
-    priceLevels: Array.isArray(j.priceLevels) && j.priceLevels.length === 5 ? j.priceLevels : ['', '', '', '', ''],
+    priceLevels: Array.isArray(j.priceLevels) && j.priceLevels.length === 5 ? j.priceLevels : ['', '', '目标位：', '压力1：', '压力2：'],
     customStrategies,
   };
 }
@@ -153,7 +153,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       strategyRed: [],
       strategyYellow: [],
       strategyRedText: [],
-      priceLevels: ['', '', '', '', ''],
+      priceLevels: ['', '', '目标位：', '压力1：', '压力2：'],
       customStrategies: {},
       snapshotId,
       status: 'draft',
