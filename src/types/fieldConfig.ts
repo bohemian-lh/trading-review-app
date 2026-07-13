@@ -1,6 +1,6 @@
 // 字段配置类型 — 驱动动态类型系统
 
-import type { JournalStageConfig } from './journal';
+import type { JournalStageConfig, JournalStrategyGroup } from './journal';
 import type { MindsetRow } from './mindset';
 import type { DecisionCheckItem } from './decision';
 
@@ -21,6 +21,8 @@ export interface FieldConfig {
   histogramConfigs?: Record<string, HistogramConfig>;  // key = tradingType
   // 交易日志策略配置（可选）
   journalStrategyConfig?: JournalStageConfig[];
+  // 共享策略组（所有阶段共用；优先级高于 journalStrategyConfig 中的 per-stage groups）
+  sharedJournalStrategyGroups?: JournalStrategyGroup[];
   // 心态管理和策略表数据（可选）
   mindsetTable?: MindsetRow[];
   // 决策质量检查清单（可选）

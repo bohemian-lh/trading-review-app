@@ -1,7 +1,7 @@
 // 交易日志 + 快照 Zustand store
 import { create } from 'zustand';
-import type { TradingJournal, CustomStrategy, JournalConfigSnapshot, JournalStageConfig, JournalDraft } from '@/types';
-import { DEFAULT_JOURNAL_STAGES } from '@/types';
+import type { TradingJournal, CustomStrategy, JournalConfigSnapshot, JournalStageConfig, JournalStrategyGroup, JournalDraft } from '@/types';
+import { DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS } from '@/types';
 import { loadJournals, saveJournals, loadSnapshots, saveSnapshots } from '@/services/journalService';
 import { generateId } from '@/utils';
 import { useRecordsStore } from '@/stores';
@@ -76,10 +76,20 @@ function migrateJournal(j: any): TradingJournal {
   };
 }
 
+function buildActiveStages(
+  stages: JournalStageConfig[],
+  sharedGroups?: JournalStrategyGroup[]
+): JournalStageConfig[] {
+  if (sharedGroups && sharedGroups.length > 0) {
+    return stages.map(s => ({ ...s, strategyGroups: sharedGroups }));
+  }
+  return stages;
+}
+
 export const useJournalStore = create<JournalState>((set, get) => ({
   journals: [],
   snapshots: [],
-  activeStages: DEFAULT_JOURNAL_STAGES,
+  activeStages: buildActiveStages(DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS),
   loading: false,
   error: null,
 
@@ -97,6 +107,10 @@ export const useJournalStore = create<JournalState>((set, get) => ({
         const fc = useRecordsStore.getState().fieldConfig;
         activeStages = fc.journalStrategyConfig?.length ? fc.journalStrategyConfig : DEFAULT_JOURNAL_STAGES;
       }
+      // 注入共享策略组
+      const fc = useRecordsStore.getState().fieldConfig;
+      const sharedGroups = fc.sharedJournalStrategyGroups ?? DEFAULT_SHARED_STRATEGY_GROUPS;
+      activeStages = buildActiveStages(activeStages, sharedGroups);
       const fixedJournals = journals.map(migrateJournal);
       set({ journals: fixedJournals, snapshots, activeStages, loading: false });
     } catch (e: any) {

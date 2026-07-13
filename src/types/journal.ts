@@ -64,46 +64,18 @@ export interface JournalDraft {
   strategies: string[];
 }
 
-/** 默认 3 阶段 + 特殊阶段 */
+/** 默认共享策略组（当 fieldConfig.sharedJournalStrategyGroups 不存在时使用） */
+export const DEFAULT_SHARED_STRATEGY_GROUPS: JournalStrategyGroup[] = [
+  { groupId: 'g1', groupName: '方向和整体策略', strategies: [], sortOrder: 1 },
+  { groupId: 'g2', groupName: '可持仓策略', strategies: [], sortOrder: 2 },
+  { groupId: 'g3', groupName: '买回策略', strategies: [], sortOrder: 3 },
+  { groupId: 'g4', groupName: '放量观察', strategies: [], sortOrder: 4 },
+];
+
+/** 默认阶段配置（不含策略组；策略组由 sharedJournalStrategyGroups 或 DEFAULT_SHARED_STRATEGY_GROUPS 提供） */
 export const DEFAULT_JOURNAL_STAGES: JournalStageConfig[] = [
-  {
-    stageId: 'stage1_left',
-    stageName: '阶段1 左侧',
-    strategyGroups: [
-      { groupId: 'g1', groupName: '方向和整体策略', strategies: [], sortOrder: 1 },
-      { groupId: 'g2', groupName: '可持仓策略', strategies: [], sortOrder: 2 },
-      { groupId: 'g3', groupName: '买回策略', strategies: [], sortOrder: 3 },
-      { groupId: 'g4', groupName: '放量观察', strategies: [], sortOrder: 4 },
-    ],
-  },
-  {
-    stageId: 'stage2_reversal',
-    stageName: '阶段2 反转',
-    strategyGroups: [
-      { groupId: 'g1', groupName: '方向和整体策略', strategies: [], sortOrder: 1 },
-      { groupId: 'g2', groupName: '可持仓策略', strategies: [], sortOrder: 2 },
-      { groupId: 'g3', groupName: '买回策略', strategies: [], sortOrder: 3 },
-      { groupId: 'g4', groupName: '放量观察', strategies: [], sortOrder: 4 },
-    ],
-  },
-  {
-    stageId: 'stage3_profit',
-    stageName: '阶段3 止盈',
-    strategyGroups: [
-      { groupId: 'g1', groupName: '方向和整体策略', strategies: [], sortOrder: 1 },
-      { groupId: 'g2', groupName: '可持仓策略', strategies: [], sortOrder: 2 },
-      { groupId: 'g3', groupName: '买回策略', strategies: [], sortOrder: 3 },
-      { groupId: 'g4', groupName: '放量观察', strategies: [], sortOrder: 4 },
-    ],
-  },
-  {
-    stageId: 'special_stop_loss',
-    stageName: '特殊阶段 止错',
-    strategyGroups: [
-      { groupId: 'g1', groupName: '方向和整体策略', strategies: [], sortOrder: 1 },
-      { groupId: 'g2', groupName: '可持仓策略', strategies: [], sortOrder: 2 },
-      { groupId: 'g3', groupName: '买回策略', strategies: [], sortOrder: 3 },
-      { groupId: 'g4', groupName: '放量观察', strategies: [], sortOrder: 4 },
-    ],
-  },
+  { stageId: 'stage1_left', stageName: '阶段1 左侧', strategyGroups: [] },
+  { stageId: 'stage2_reversal', stageName: '阶段2 反转', strategyGroups: [] },
+  { stageId: 'stage3_profit', stageName: '阶段3 止盈', strategyGroups: [] },
+  { stageId: 'special_stop_loss', stageName: '特殊阶段 止错', strategyGroups: [] },
 ];
