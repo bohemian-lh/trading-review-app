@@ -692,10 +692,12 @@ export const JournalDrafts: React.FC = () => {
                     {journal.stockName || '-'}
                     <div className="flex flex-col gap-0.5 mt-1">
                       {PRICE_LEVELS.map(pl => {
-                        const storedValue = (journal.priceLevels || [])[pl.index] || '';
-                        const defaults = ['', '', '目标位：', '压力1：', '压力2：'];
+                        const userValue = (journal.priceLevels || [])[pl.index] || '';
                         const isEditingPrice = editingPrice?.journalId === journal.id && editingPrice?.index === pl.index;
-                        const hasValue = storedValue && storedValue !== defaults[pl.index];
+                        const hasValue = !!userValue;
+                        const displayText = pl.label
+                          ? (hasValue ? pl.label + userValue : pl.label)
+                          : (hasValue ? userValue : '点击编辑');
 
                         if (isEditingPrice) {
                           return (
@@ -718,14 +720,14 @@ export const JournalDrafts: React.FC = () => {
                         return (
                           <div
                             key={pl.index}
-                            onClick={() => startEditingPrice(journal.id, pl.index, storedValue)}
+                            onClick={() => startEditingPrice(journal.id, pl.index, userValue)}
                             className={`text-xs px-1 py-0.5 rounded cursor-pointer ${
                               hasValue
                                 ? 'border border-solid border-blue-300 bg-blue-50 text-blue-800'
                                 : 'border border-dashed border-gray-300 text-gray-400 hover:border-gray-400'
                             }`}
                           >
-                            {hasValue ? storedValue : (pl.label || '点击编辑')}
+                            {displayText}
                           </div>
                         );
                       })}
