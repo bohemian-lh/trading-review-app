@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings } from 'lucide-react';
+import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings, Maximize, Minimize } from 'lucide-react';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
@@ -182,6 +182,26 @@ export const JournalDrafts: React.FC = () => {
   // UI 设置
   const [settings, setSettings] = useState<TableSettings>(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // 监听全屏变化
+  useEffect(() => {
+    const handler = () => {
+      if (!document.fullscreenElement) setIsFullscreen(false);
+    };
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else {
+      await tableContainerRef.current?.requestFullscreen();
+      setIsFullscreen(true);
+    }
+  };
 
   const drafts = journals.filter(j => j.status === 'draft');
 
@@ -447,9 +467,17 @@ export const JournalDrafts: React.FC = () => {
   return (
     <div className="space-y-3">
       {/* ─── 头部：计数 + 设置 ───────────────────────────────── */}
+      {!isFullscreen && (
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-500">{drafts.length} 条当前交易</div>
-        <div className="relative">
+        <div className="relative flex items-center gap-1">
+          <button
+            onClick={toggleFullscreen}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors text-gray-500 hover:bg-gray-100"
+            title="全屏"
+          >
+            <Maximize className="h-3.5 w-3.5" />
+          </button>
           <button
             onClick={() => setShowSettings(!showSettings)}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors ${showSettings ? 'bg-gray-200 text-gray-700' : 'text-gray-500 hover:bg-gray-100'}`}
@@ -534,10 +562,23 @@ export const JournalDrafts: React.FC = () => {
           )}
         </div>
       </div>
+      )}
 
       {/* ─── 表格式列表 ──────────────────────────────────────── */}
-      <div className="overflow-x-auto bg-gray-100 rounded-lg" style={{ padding: `${settings.rowSpacing}px` }}>
-        <table className="border-separate text-sm" style={{ tableLayout: 'fixed', borderSpacing: `0 ${settings.rowSpacing}px` }}>
+      <div ref={tableContainerRef} className={`overflow-x-auto rounded-lg ${isFullscreen ? 'h-screen flex flex-col bg-white p-4' : 'bg-gray-100'}`} style={isFullscreen ? undefined : { padding: `${settings.rowSpacing}px` }}>
+        {isFullscreen && (
+          <div className="flex items-center justify-between mb-3 shrink-0">
+            <span className="text-sm font-medium text-gray-700">{drafts.length} 条当前交易</span>
+            <button
+              onClick={toggleFullscreen}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors text-gray-500 hover:bg-gray-100"
+            >
+              <Minimize className="h-3.5 w-3.5" />
+              退出全屏
+            </button>
+          </div>
+        )}
+        <table className={`border-separate text-sm ${isFullscreen ? 'flex-1' : ''}`} style={{ tableLayout: 'fixed', borderSpacing: `0 ${settings.rowSpacing}px` }}>
           <thead>
             <tr className="bg-gray-50 relative">
               {visibleCols.map(col => {
