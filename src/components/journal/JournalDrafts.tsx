@@ -16,12 +16,14 @@ interface TableSettings {
   showOps: boolean;
   colWidths: Record<string, number>;
   fontSizes: Record<string, number>;
+  rowGaps: Record<string, number>;
 }
 
 const DEFAULT_SETTINGS: TableSettings = {
   showOps: true,
   colWidths: { name: 120, g1: 120, g2: 120, g3: 120, g4: 120, ops: 120 },
   fontSizes: { name: 13, g1: 12, g2: 12, g3: 12, g4: 12 },
+  rowGaps: { g1: 4, g2: 4, g3: 4, g4: 4 },
 };
 
 function loadSettings(): TableSettings {
@@ -91,9 +93,10 @@ const StrategyPopover: React.FC<{
   isBold: boolean;
   isRed: boolean;
   isYellow: boolean;
-  onToggle: (field: 'strategyBold' | 'strategyRed' | 'strategyYellow') => void;
+  isRedText: boolean;
+  onToggle: (field: 'strategyBold' | 'strategyRed' | 'strategyYellow' | 'strategyRedText') => void;
   onClose: () => void;
-}> = ({ x, y, isBold, isRed, isYellow, onToggle, onClose }) => {
+}> = ({ x, y, isBold, isRed, isYellow, isRedText, onToggle, onClose }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -135,6 +138,12 @@ const StrategyPopover: React.FC<{
           className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs ${isYellow ? 'bg-yellow-100 text-yellow-700' : 'text-gray-600 hover:bg-yellow-50'}`}
         >
           <Sun className="h-3.5 w-3.5" />标黄
+        </button>
+        <button
+          onClick={() => onToggle('strategyRedText')}
+          className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs ${isRedText ? 'bg-red-50 text-red-600 font-semibold' : 'text-gray-600 hover:bg-red-50'}`}
+        >
+          <span className="h-3.5 w-3.5 flex items-center justify-center text-red-500 font-bold text-sm">A</span>红字
         </button>
       </div>
     </div>
@@ -279,7 +288,7 @@ export const JournalDrafts: React.FC = () => {
   const handleStrategyToggle = async (
     journalId: string,
     strategyId: string,
-    field: 'strategyBold' | 'strategyRed' | 'strategyYellow'
+    field: 'strategyBold' | 'strategyRed' | 'strategyYellow' | 'strategyRedText'
   ) => {
     const journal = journals.find(j => j.id === journalId);
     if (!journal) return;
@@ -297,6 +306,8 @@ export const JournalDrafts: React.FC = () => {
       if (!enabled) {
         // 开启标红时关闭标黄
         patch.strategyYellow = journal.strategyYellow.filter(s => s !== strategyId);
+        // 开启标红时关闭红字（标红 ↔ 红字互斥）
+        patch.strategyRedText = journal.strategyRedText.filter(s => s !== strategyId);
       }
     } else if (field === 'strategyYellow') {
       patch.strategyYellow = enabled
@@ -304,6 +315,14 @@ export const JournalDrafts: React.FC = () => {
         : [...journal.strategyYellow, strategyId];
       if (!enabled) {
         // 开启标黄时关闭标红
+        patch.strategyRed = journal.strategyRed.filter(s => s !== strategyId);
+      }
+    } else if (field === 'strategyRedText') {
+      patch.strategyRedText = enabled
+        ? journal.strategyRedText.filter(s => s !== strategyId)
+        : [...journal.strategyRedText, strategyId];
+      if (!enabled) {
+        // 开启红字时关闭标红（红字 ↔ 标红互斥）
         patch.strategyRed = journal.strategyRed.filter(s => s !== strategyId);
       }
     }
@@ -329,24 +348,46 @@ export const JournalDrafts: React.FC = () => {
     const isBold = journal.strategyBold.includes(sid);
     const isRed = journal.strategyRed.includes(sid);
     const isYellow = journal.strategyYellow.includes(sid);
+    const isRedText = journal.strategyRedText.includes(sid);
     const isCustom = item.isCustom;
 
-    let bgClass: string;
+    // 背景
+    let bgClass = '';
     if (isRed) {
-      bgClass = 'bg-red-100 text-red-800';
+      bgClass = 'bg-red-100';
     } else if (isYellow) {
-      bgClass = 'bg-yellow-100 text-yellow-800';
+      bgClass = 'bg-yellow-100';
     } else if (isCustom) {
-      bgClass = 'bg-purple-50 text-purple-700 border border-dashed border-purple-300';
+      bgClass = 'bg-purple-50';
     } else {
-      bgClass = 'bg-gray-100 text-gray-700';
+      bgClass = 'bg-gray-100';
     }
+
+    // 边框：预设策略实体线框，自定义策略虚线框
+    const borderClass = isCustom
+      ? 'border border-dashed border-purple-300'
+      : 'border border-solid border-gray-300';
+
+    // 文字颜色
+    let textClass = '';
+    if (isRed) {
+      textClass = 'text-red-800';
+    } else if (isYellow) {
+      textClass = 'text-yellow-800';
+    } else if (isRedText) {
+      textClass = 'text-red-600';
+    } else if (isCustom) {
+      textClass = 'text-purple-700';
+    } else {
+      textClass = 'text-gray-700';
+    }
+
     const boldClass = isBold ? 'font-bold' : '';
 
     return (
       <span
         key={sid}
-        className={`px-1.5 py-0.5 rounded text-xs cursor-pointer hover:ring-1 hover:ring-blue-300 ${bgClass} ${boldClass}`}
+        className={`px-1.5 py-0.5 rounded cursor-pointer hover:ring-1 hover:ring-blue-300 ${bgClass} ${borderClass} ${textClass} ${boldClass}`}
         onClick={(e) => {
           e.stopPropagation();
           setPopover({ journalId: journal.id, strategyId: sid, x: e.clientX, y: e.clientY + 4 });
@@ -405,6 +446,24 @@ export const JournalDrafts: React.FC = () => {
                       className="text-xs border rounded px-1.5 py-0.5"
                     >
                       {FONT_SIZE_OPTIONS.map(n => (
+                        <option key={n} value={n}>{n}px</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+
+              <div className="border-t pt-2">
+                <div className="text-xs text-gray-500 mb-2">策略组行距</div>
+                {[{ id: 'g1', label: groupNames[0] }, { id: 'g2', label: groupNames[1] }, { id: 'g3', label: groupNames[2] }, { id: 'g4', label: groupNames[3] }].map(col => (
+                  <div key={col.id} className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs text-gray-500 truncate mr-2 max-w-[120px]">{col.label}</span>
+                    <select
+                      value={settings.rowGaps[col.id] || 4}
+                      onChange={(e) => updateSettings({ rowGaps: { ...settings.rowGaps, [col.id]: Number(e.target.value) } })}
+                      className="text-xs border rounded px-1.5 py-0.5"
+                    >
+                      {[0, 2, 4, 6, 8, 10, 12, 16].map(n => (
                         <option key={n} value={n}>{n}px</option>
                       ))}
                     </select>
@@ -576,16 +635,16 @@ export const JournalDrafts: React.FC = () => {
 
               // 紧凑模式
               return (
-                <tr key={journal.id} className="border-b transition-colors">
+                <tr key={journal.id} className="border-b border-gray-300 transition-colors">
                   <td className="px-3 py-1 border-r align-top" style={getCellStyle('name')}>
                     {journal.stockName || '-'}
                   </td>
                   {groupIds.map(gid => {
                     const items = grouped[gid] || [];
                     return (
-                      <td key={gid} className="px-3 py-1 border-r align-top" style={getCellStyle(gid)}>
+                      <td key={gid} className="px-3 py-1 align-top" style={getCellStyle(gid)}>
                         {items.length > 0 ? (
-                          <div className="flex flex-col gap-0.5">
+                          <div className="flex flex-col" style={{ gap: `${settings.rowGaps[gid] || 4}px` }}>
                             {items.map(item => renderStrategyCard(item, journal))}
                           </div>
                         ) : (
@@ -629,6 +688,7 @@ export const JournalDrafts: React.FC = () => {
             isBold={j.strategyBold.includes(sid)}
             isRed={j.strategyRed.includes(sid)}
             isYellow={j.strategyYellow.includes(sid)}
+            isRedText={j.strategyRedText.includes(sid)}
             onToggle={(field) => handleStrategyToggle(j.id, sid, field)}
             onClose={() => setPopover(null)}
           />

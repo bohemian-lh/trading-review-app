@@ -49,6 +49,7 @@ export interface TradingJournal {
   strategyBold: string[];  // 加粗的策略 strategyId 列表
   strategyRed: string[];   // 标红的策略 strategyId 列表
   strategyYellow: string[];// 标黄的策略 strategyId 列表
+  strategyRedText: string[];// 红色字体的策略 strategyId 列表
   snapshotId: string;      // 写入时的配置快照 ID
   status: 'draft' | 'submitted';  // draft=中间态, submitted=已完成
   createdAt: string;
