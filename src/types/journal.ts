@@ -30,6 +30,12 @@ export interface JournalConfigSnapshot {
   createdAt: string;
 }
 
+/** 自定义策略 */
+export interface CustomStrategy {
+  id: string;   // 唯一 ID，如 custom_g1_abc123
+  text: string;
+}
+
 /** 已提交的单条交易日志 */
 export interface TradingJournal {
   id: string;
@@ -39,7 +45,7 @@ export interface TradingJournal {
   stockName: string;       // 股票名称
   stage: string;           // 阶段 ID
   strategies: string[];    // strategyId 列表
-  customStrategies: Record<string, string>; // groupId -> 自定义策略文本（空字符串表示无）
+  customStrategies: Record<string, CustomStrategy[]>; // groupId -> 自定义策略列表
   strategyBold: string[];  // 加粗的策略 strategyId 列表
   strategyRed: string[];   // 标红的策略 strategyId 列表
   strategyYellow: string[];// 标黄的策略 strategyId 列表

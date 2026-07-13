@@ -1,6 +1,6 @@
 // 交易日志 + 快照 Zustand store
 import { create } from 'zustand';
-import type { TradingJournal, JournalConfigSnapshot, JournalStageConfig, JournalDraft } from '@/types';
+import type { TradingJournal, CustomStrategy, JournalConfigSnapshot, JournalStageConfig, JournalDraft } from '@/types';
 import { DEFAULT_JOURNAL_STAGES } from '@/types';
 import { loadJournals, saveJournals, loadSnapshots, saveSnapshots } from '@/services/journalService';
 import { generateId } from '@/utils';
@@ -52,16 +52,27 @@ function getAllDrafts(): JournalDraft[] {
 }
 
 function migrateJournal(j: any): TradingJournal {
+  // 迁移旧格式 customStrategies: string → CustomStrategy[]
+  let customStrategies: Record<string, CustomStrategy[]> = {};
+  if (j.customStrategies) {
+    for (const [groupId, val] of Object.entries(j.customStrategies)) {
+      if (Array.isArray(val)) {
+        customStrategies[groupId] = val as CustomStrategy[];
+      } else if (typeof val === 'string' && val.trim()) {
+        customStrategies[groupId] = [{ id: `custom_${groupId}_0`, text: val.trim() }];
+      }
+    }
+  }
   return {
     ...j,
     openDate: j.openDate || '',
     stockCode: j.stockCode || '',
     stockName: j.stockName || '',
-    status: j.status || 'submitted', // 旧数据默认为 submitted
+    status: j.status || 'submitted',
     strategyBold: j.strategyBold || [],
     strategyRed: j.strategyRed || [],
     strategyYellow: j.strategyYellow || [],
-    customStrategies: j.customStrategies || {},
+    customStrategies,
   };
 }
 

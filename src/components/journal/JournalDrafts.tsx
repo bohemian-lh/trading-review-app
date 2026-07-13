@@ -3,7 +3,11 @@ import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings } from 'luci
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
-import type { TradingJournal } from '@/types';
+import type { TradingJournal, CustomStrategy } from '@/types';
+
+// ─── 简易 ID 生成 ────────────────────────────────────────────────
+let _idCounter = 0;
+const genId = () => `cs_${Date.now().toString(36)}_${++_idCounter}`;
 
 // ─── localStorage UI 设置 ──────────────────────────────────────────
 const UI_PREFIX = 'journal_table_';
@@ -57,9 +61,13 @@ function groupStrategies(
       }
     }
     // 自定义策略
-    const customText = journal.customStrategies?.[g.groupId];
-    if (customText && customText.trim()) {
-      result[g.groupId].push({ text: customText.trim(), strategyId: `custom_${g.groupId}`, isCustom: true });
+    const customs = journal.customStrategies?.[g.groupId];
+    if (Array.isArray(customs) && customs.length > 0) {
+      for (const cs of customs) {
+        if (cs.text && cs.text.trim()) {
+          result[g.groupId].push({ text: cs.text.trim(), strategyId: cs.id, isCustom: true });
+        }
+      }
     }
   }
   return result;
@@ -140,7 +148,7 @@ export const JournalDrafts: React.FC = () => {
 
   // 编辑状态
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<Record<string, { stage: string; strategies: string[]; customStrategies: Record<string, string> }>>({});
+  const [editState, setEditState] = useState<Record<string, { stage: string; strategies: string[]; customStrategies: Record<string, CustomStrategy[]> }>>({});
   const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
 
   // Popover 状态
@@ -497,24 +505,60 @@ export const JournalDrafts: React.FC = () => {
                                     onToggleStrategy={(sid) => handleToggleStrategy(journal.id, sid)} />
                                 ))}
                               </div>
-                              {/* 自定义策略：每个策略组一个输入框 */}
+                              {/* 自定义策略：每个策略组多个输入框 */}
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {stageConfig.strategyGroups.map(group => (
-                                  <div key={`custom_${group.groupId}`} className="border border-dashed border-purple-300 rounded-lg p-3 bg-purple-50/30">
-                                    <label className="block text-xs font-medium text-purple-600 mb-1">
-                                      自定义策略 — {group.groupName}
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={es.customStrategies[group.groupId] || ''}
-                                      onChange={(e) => updateEditState(journal.id, {
-                                        customStrategies: { ...es.customStrategies, [group.groupId]: e.target.value }
-                                      })}
-                                      placeholder="输入自定义策略描述..."
-                                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-                                    />
-                                  </div>
-                                ))}
+                                {stageConfig.strategyGroups.map(group => {
+                                  const groupCustoms = es.customStrategies[group.groupId] || [];
+                                  return (
+                                    <div key={`custom_${group.groupId}`} className="border border-dashed border-purple-300 rounded-lg p-3 bg-purple-50/30">
+                                      <label className="block text-xs font-medium text-purple-600 mb-2">
+                                        自定义策略 — {group.groupName}
+                                      </label>
+                                      <div className="space-y-2">
+                                        {groupCustoms.map((cs, idx) => (
+                                          <div key={cs.id} className="flex items-center gap-1">
+                                            <input
+                                              type="text"
+                                              value={cs.text}
+                                              onChange={(e) => {
+                                                const updated = groupCustoms.map((item, i) =>
+                                                  i === idx ? { ...item, text: e.target.value } : item
+                                                );
+                                                updateEditState(journal.id, {
+                                                  customStrategies: { ...es.customStrategies, [group.groupId]: updated }
+                                                });
+                                              }}
+                                              placeholder="输入自定义策略..."
+                                              className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
+                                            />
+                                            <button
+                                              onClick={() => {
+                                                const updated = groupCustoms.filter((_, i) => i !== idx);
+                                                updateEditState(journal.id, {
+                                                  customStrategies: { ...es.customStrategies, [group.groupId]: updated }
+                                                });
+                                              }}
+                                              className="text-gray-400 hover:text-red-500 p-1"
+                                            >
+                                              <X className="h-4 w-4" />
+                                            </button>
+                                          </div>
+                                        ))}
+                                        <button
+                                          onClick={() => {
+                                            const newCs: CustomStrategy = { id: genId(), text: '' };
+                                            updateEditState(journal.id, {
+                                              customStrategies: { ...es.customStrategies, [group.groupId]: [...groupCustoms, newCs] }
+                                            });
+                                          }}
+                                          className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1"
+                                        >
+                                          ＋ 新增自定义策略
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </>
                           )}
