@@ -90,6 +90,14 @@ const FONT_SIZE_OPTIONS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 24];
 const ROW_SPACING_OPTIONS = [2, 3, 4, 5, 6, 8, 10];
 const ROW_COLORS = ['bg-green-50', 'bg-yellow-50', 'bg-blue-50'];
 
+const PRICE_LEVELS = [
+  { index: 0, label: '' },
+  { index: 1, label: '' },
+  { index: 2, label: '目标位：' },
+  { index: 3, label: '压力1：' },
+  { index: 4, label: '压力2：' },
+];
+
 // ─── Popover 组件 ──────────────────────────────────────────────────
 const StrategyPopover: React.FC<{
   x: number;
@@ -166,6 +174,10 @@ export const JournalDrafts: React.FC = () => {
 
   // Popover 状态
   const [popover, setPopover] = useState<{ journalId: string; strategyId: string; x: number; y: number } | null>(null);
+
+  // 价位卡片内联编辑状态
+  const [editingPrice, setEditingPrice] = useState<{ journalId: string; index: number } | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState('');
 
   // UI 设置
   const [settings, setSettings] = useState<TableSettings>(loadSettings);
@@ -286,6 +298,25 @@ export const JournalDrafts: React.FC = () => {
   const handleDelete = async (journalId: string) => {
     if (!confirm('确认删除此条创建？')) return;
     await deleteJournal(journalId, datasetId);
+  };
+
+  // ─── 价位卡片内联编辑 ────────────────────────────────────────
+  const startEditingPrice = (journalId: string, index: number, currentValue: string) => {
+    setEditingPrice({ journalId, index });
+    setEditingPriceValue(currentValue);
+  };
+
+  const savePriceLevel = async (journalId: string, index: number) => {
+    const journal = journals.find(j => j.id === journalId);
+    if (!journal) return;
+    const newLevels = [...journal.priceLevels];
+    newLevels[index] = editingPriceValue;
+    setEditingPrice(null);
+    await updateDraftJournal(journalId, { priceLevels: newLevels }, datasetId);
+  };
+
+  const cancelEditingPrice = () => {
+    setEditingPrice(null);
   };
 
   // ─── 策略级样式 toggle（标红/标黄互斥）─────────────────────────
@@ -659,6 +690,48 @@ export const JournalDrafts: React.FC = () => {
                 <tr key={journal.id} className={`${rowColor} transition-colors`}>
                   <td className="px-3 py-1 border border-gray-200 align-top" style={getCellStyle('name')}>
                     {journal.stockName || '-'}
+                    <div className="flex flex-col gap-0.5 mt-1">
+                      {PRICE_LEVELS.map(pl => {
+                        const rawValue = (journal.priceLevels || [])[pl.index] || '';
+                        const isEditingPrice = editingPrice?.journalId === journal.id && editingPrice?.index === pl.index;
+                        const hasValue = !!rawValue;
+                        const displayText = pl.label
+                          ? (hasValue ? pl.label + rawValue : pl.label)
+                          : (hasValue ? rawValue : '点击编辑');
+
+                        if (isEditingPrice) {
+                          return (
+                            <input
+                              key={pl.index}
+                              autoFocus
+                              value={editingPriceValue}
+                              onChange={(e) => setEditingPriceValue(e.target.value)}
+                              onBlur={() => savePriceLevel(journal.id, pl.index)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') savePriceLevel(journal.id, pl.index);
+                                if (e.key === 'Escape') cancelEditingPrice();
+                              }}
+                              className="w-full text-xs border border-blue-400 rounded px-1 py-0.5 outline-none bg-white"
+                              style={{ fontSize: `${settings.fontSizes.name || 13}px` }}
+                            />
+                          );
+                        }
+
+                        return (
+                          <div
+                            key={pl.index}
+                            onClick={() => startEditingPrice(journal.id, pl.index, rawValue)}
+                            className={`text-xs px-1 py-0.5 rounded cursor-pointer ${
+                              hasValue
+                                ? 'border border-solid border-blue-300 bg-blue-50 text-blue-800'
+                                : 'border border-dashed border-gray-300 text-gray-400 hover:border-gray-400'
+                            }`}
+                          >
+                            {displayText}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </td>
                   {groupIds.map(gid => {
                     const items = grouped[gid] || [];
