@@ -1,0 +1,168 @@
+{
+  "meta": {
+    "name": "trading-review-app",
+    "desc": "交易复盘管理系统",
+    "repo": "/Users/dp/github/trading-review-app",
+    "ver": "1.0",
+    "build": "CloudflarePages+R2+Workers(functions/api)",
+    "tech": ["React18","TS5.3","Vite5","Tailwind3","Recharts2","Zustand4","xlsx","zod","tesseract.js","@headlessui/react","lucide-react"],
+    "test": "vitest"
+  },
+  "cfg": {
+    "tsconfig": {"strict":true,"target":"ES2020","paths":{"@/*":"src/*"}},
+    "vite": {"proxy":{"/api":"http://localhost:8788"},"manualChunks":{"react-vendor":["react","react-dom","react-router-dom"],"sheetjs":["xlsx"],"recharts":["recharts"]}},
+    "env": {"VITE_API_BASE_URL":"str","VITE_R2_ACCESS_TOKEN":"str"},
+    "r2": {"bucket":"trading-review-data","paths":{"records":"trading-data/{dsId}/records.json","config":"trading-data/{dsId}/field-config.json","journals":"trading-journals/{dsId}.json","snapshots":"journal-snapshots/{dsId}.json","files":"excel-files/","datasets":"trading-data/datasets.json"}},
+    "tailwind": {"primary":"blue#2563eb->#1d4ed8","profit":"green#059669->#047857","loss":"red#dc2626->#b91c1c"}
+  },
+  "dirs": {
+    "src/": "root",
+    "src/types/": "10tp: index trading analysis cycleStats fieldConfig journal mindset decision ocr storage validation",
+    "src/stores/": "5st: recordsStore uiStore datasetStore journalStore headerKeywordsStore",
+    "src/services/": "8svc: r2Service excelService cycleStatsService journalService text-parser ocr/strategy-manager ocr/strategies/{tesseract,cloudflare-ai,mock}",
+    "src/hooks/": "7hk: useAnalysis useStoreSync useInitializeStore useChartZoomPan useChartConfig useTableZoom useImageDirectory",
+    "src/utils/": "5ut: calculations dateUtils holdDays validationUtils index",
+    "src/pages/": "5pg: Dashboard TradingJournalPage MindsetManagementPage DecisionQualityPage TheoryVsActualPage",
+    "src/components/": "cmp: common/{Button,Input,Modal,Toggle,ZoomControls,Pagination,DatasetSelector} editor/{DataEditor,TradeRecordTable,RecordModal,AnalysisPanel,MonthlyAnalysisPanel,MonthlyAnalysisModal,CycleStatsPanel,ImportModal,ImagePreviewModal} excel/{ExcelUploader} journal/{JournalEntry,JournalDrafts,JournalViewer,StrategyCard} config/{FieldConfigPage} charts/{MonthlyProfitRatioChart,MonthlyTotalProfitChart,CycleSystemChart,CycleTypeChart,CycleProfitChart,TradingTypeProfitBarChart,Theory*Chart(x4),SubsequentProfitPage} layout/{Navigation}",
+    "src/worker/": "oldWorker(已废弃,迁移到functions/api)",
+    "functions/api/": "8ep: records datasets config files file journals journal-snapshots parse-trade-image",
+    "public/": "_headers(缓存策略) _redirects(SPA+API放行)"
+  },
+  "routes": {
+    "/": "Dashboard",
+    "/subsequent-profit": "SubsequentProfitPage",
+    "/theory-vs-actual": "TheoryVsActualPage",
+    "/import": "ExcelUploader",
+    "/editor": "DataEditor",
+    "/journal": "TradingJournalPage",
+    "/mindset": "MindsetManagementPage",
+    "/decision-quality": "DecisionQualityPage",
+    "/config": "FieldConfigPage"
+  },
+  "types": {
+    "TradingRecord": {"f":["id","openDate","stockName","stockCode","tradingType","entryType","isSystem","hasMistake","profitPercent","holdDays","images","imagePrefix","preMarket","hasCycleStats","hasMonthlyStats","cycleId","subsequentProfitSpace","remark","theoreticalProfitPercent"],"r":"profitPercent req"},
+    "TradingJournal": {"f":["id","openDate","stockCode","stockName","stage","strategies[]","customStrategies:Record<str,CS[]>","strategyBold[]","strategyRed[]","strategyYellow[]","strategyRedText[]","priceLevels[5]","snapshotId","status:draft|submitted","createdAt"]},
+    "CustomStrategy": {"f":["strategyId","text","sortOrder"]},
+    "JournalStrategyGroup": {"f":["groupId","groupName","sortOrder","strategies:Strategy[]"]},
+    "JournalConfigSnapshot": {"f":["snapshotId","version","stages:JournalStageConfig[]","createdAt"]},
+    "FieldConfig": {"f":["tradingTypes[]","entryTypes[]","aggregateRules[]","histogramConfigs[]","journalStrategyConfig[]","sharedJournalStrategyGroups[]","mindsetTable[]","decisionChecklist[]"]},
+    "CycleStats": {"f":["cycleId","statType","startDate","endDate","recordCount","isComplete","profitSum","lossSum","profitRatio","recordIds[]"]},
+    "MindsetRow": {"f":["level","phenomenon","strategy","checked"]},
+    "DecisionCheckItem": {"f":["label","question","checked","colSpan"]},
+    "OcrStrategy": "enum:TESSERACT|CLOUDFLARE_AI|MOCK"
+  },
+  "stores": {
+    "recordsStore": {"data":["records:TR[]","fieldConfig:FC","customAnalysis:Record","customMonthly:Record","cycleStats:CS[]","cycleStatsGeneratedAt:num","statsNeedUpdate:bool","version:num"],"acts":["setRecords/addRecord/addRecords/updateRecord/deleteRecord/clearRecords","setFieldConfig","setCustomAnalysis/addCustomAnalysis/updateCustomAnalysis/deleteCustomAnalysis","setCycleStats","setStatsNeedUpdate"]},
+    "uiStore": {"data":["isLoading","isSaving","isInitialized","error","currentFileName"],"acts":["setLoading/setSaving/setInitialized/setError/setCurrentFileName"]},
+    "datasetStore": {"data":["datasets:DS[]","currentDatasetId:str"],"acts":["createDataset/deleteDataset","setCurrentDataset"]},
+    "journalStore": {"data":["journals:TJ[]","snapshots:Snapshot[]","activeStages:Stage[]"],"acts":["init","createSnapshot","createJournal","finalizeJournal","revertJournal","updateDraftJournal","deleteJournal","saveDraft/getDraft/clearDraft(localStorage)","buildActiveStages(merge sharedStrGroups)"]},
+    "headerKeywordsStore": {"data":["keywords:Record"],"persist":"LW"}
+  },
+  "services": {
+    "r2Service": {"cls":"R2StorageService","acts":["listFiles","uploadFile","downloadFile","deleteFile","getDatasets","createDataset","deleteDataset","getRecords","saveRecords","getConfig","saveConfig"]},
+    "excelService": {"acts":["parseExcelFile(表1/2/3)","exportAllToExcel","exportTable[1-4]ToExcel","generateTestExcel","createEmptyWorkbook","TEST_IMPORT_STRING"]},
+    "cycleStatsService": {"acts":["buildStatTypes(dynamic)","calculateProfitRatio","calculateTheoProfitRatio","matchesStatType","generateCycleStats(每30条1周期)","recalculateSingleCycle","removeRecordFromCycle"]},
+    "journalService": {"acts":["loadJournals","saveJournals","loadSnapshots","saveSnapshots"],"api":"/api/journals|journal-snapshots?dataset={id}"},
+    "text-parser": {"acts":["parseTradeText(CSV/TSV)","tryParseDate/StockCode/StockName/Amount"],"cfg":"headerKeywordsStore"}
+  },
+  "hooks": {
+    "useStoreSync": {"acts":["initializeFromR2","switchDataset","loadDatasetData","saveNow(防抖1s)","updateCycleStats","saveFieldConfigToR2"],"flow":"init->loadDatasetData->getRecords+getConfig+R2->Zustand->autoSave(1s debounce)"},
+    "useAnalysis": {"acts":["useAnalysisResult","useMonthlyAnalysis"],"dep":"records+fieldConfig->calculations"},
+    "useInitializeStore": {"acts":["call initializeFromR2 on mount"]},
+    "useChartZoomPan": {"acts":["Ctrl+wheel zoom","drag pan","dblclick reset"]},
+    "useImageDirectory": {"acts":["selectDirectory","saveImagesFromClipboard","deleteImages","getImageBlobUrl"],"storage":"FileSystemAPI+IDB"}
+  },
+  "apis": {
+    "GET/api/records?dataset={id}": "R2:trading-data/{id}/records.json",
+    "POST/api/records?dataset={id}": "body:{records:TR[]+lastEdited+version}|saveR2",
+    "GET/api/datasets": "R2:trading-data/datasets.json",
+    "POST/api/datasets": "body:{name}|create+save",
+    "DELETE/api/datasets?name={n}": "级联删除所有数据",
+    "GET/api/config?dataset={id}": "R2:trading-data/{id}/field-config.json",
+    "PUT/api/config?dataset={id}": "body:FC|saveR2",
+    "GET/api/files": "list R2 excel-files/",
+    "POST/api/files": "upload multipart->excel-files/",
+    "GET/api/file?key|filename={x}": "download single",
+    "DELETE/api/file?key|filename={x}": "delete single",
+    "GET/api/journals?dataset={id}": "R2:trading-journals/{id}.json",
+    "POST/api/journals?dataset={id}": "body:journals[]|saveR2",
+    "GET/api/journal-snapshots?dataset={id}": "R2:journal-snapshots/{id}.json",
+    "POST/api/journal-snapshots?dataset={id}": "body:snapshots[]|saveR2",
+    "POST/api/parse-trade-image": "body:FormData{image}|CF-AI@cf/meta/llama-3.2-11b-vision-instruct|Mock切换"
+  },
+  "pages": {
+    "Dashboard": {"path":"/","data":"records+analysis->charts","charts":{"monthlyProfitRatio":"MonthlyProfitRatioChart","monthlyTotalProfit":"MonthlyTotalProfitChart(含累计线)","cycleSystem":"CycleSystemChart","cycleType":"CycleTypeChart","cycleProfit":"CycleProfitChart","tradingTypeBar":"TradingTypeProfitBarChart"},"stats":["totalTrades","profitCount/LossCount/FlatCount","profitRatio","avgProfitRatio","totalProfit","avgHoldDays","winRate"]},
+    "TradingJournalPage": {"path":"/journal","tabs":["entry(JournalEntry)","drafts(JournalDrafts)","view(JournalViewer)"],"flow":"填写提交->创建草稿->编辑策略标记->提交->存储日志->关联TR"},
+    "DataEditor": {"path":"/editor","tabs":["表1交易记录(TradeRecordTable)","表2总数据(AnalysisPanel)","表3月度(MonthlyAnalysisPanel)","表4周期(CycleStatsPanel)"],"acts":["筛选/排序/分页","编辑TR(RecordModal)","导入(ImportModal:OCR+文本解析)","图片预览","导出Excel"]},
+    "ExcelUploader": {"path":"/import","acts":["上传Excel","导出表1-4","合并模式","R2文件管理","连接测试"]},
+    "FieldConfigPage": {"path":"/config","sections":["交易类型/切入类型","聚合规则","直方图档位","日志策略组(含共享策略组)","心态表格","决策清单"]},
+    "MindsetManagementPage": {"path":"/mindset","data":"fieldConfig.mindsetTable","act":"勾选checked=bool"},
+    "DecisionQualityPage": {"path":"/decision-quality","data":"fieldConfig.decisionChecklist","act":"勾选checked=bool"}
+  },
+  "components": {
+    "JournalDrafts(key)": {"path":"src/components/journal/JournalDrafts.tsx","features":["compactTable+editMode","strategyMark:bold/red/yellow/redText(popover)","priceLevels[5]:inlineEdit","rowSpacing(setting:2-10px)","colorCycle:green50/yellow50/blue50","border-separate+gap","fullscreen(FullscreenAPI)","colResize+fontSize+rowGaps","customStrategies"]},
+    "JournalEntry": {"features":["stockSelect+date","stageTab","strategyGroupCard+click","customStrategy add/del/edit","draft LW save/load"]},
+    "JournalViewer": {"features":["submittedList","filter:stock/stage","delete+revert","link TR to journal"]},
+    "StrategyCard": {"acts":["render strategy btns in groups"]},
+    "TradeRecordTable": {"features":["sort(click th)","filter(header input)","pagination(每页20)","remark inlineEdit","imagePreview modal"]},
+    "RecordModal": {"features":["all fields edit","image paste(ClipboardAPI)","form validation"]},
+    "SubsequentProfitPage": {"path":"/subsequent-profit","charts":["scatter(散点图)","histogram(直方图)","statsTable"]},
+    "TheoryVsActualPage": {"path":"/theory-vs-actual","charts":["systemRatio","systemTotal","typeRatio","typeTotal"]}
+  },
+  "journal_drafts_latest": {
+    "desc": "JournalDrafts近期迭代累计功能",
+    "features": [
+      "红字标记(strategyRedText[]) ↔ 标红互斥",
+      "策略卡片实体线框(preset:solid gray-300|custom:dashed purple-300)",
+      "rowGaps(策略组内卡片间距 0-16px)",
+      "rowSpacing(表行间距 2-10px via border-separate)",
+      "三色循环行底色(green50/yellow50/blue50)",
+      "全屏模式(FullscreenAPI on tableContainer, ESC退出)",
+      "priceLevels[5]: 2空白+目标位/压力1/压力2, 内联编辑, 标签前缀仅显示不存储",
+      "fontSize从td继承(去text-xs)",
+      "editingPrice state: click->input, Enter/blur=save, ESC=cancel",
+      "updateDraftJournal保存priceLevels变更",
+      "migrateJournal默认priceLevels:['','','','','']"
+    ],
+    "state": {
+      "editingId": "str|null",
+      "editState": "Record<id,{stage,strategies,customStrategies}>",
+      "submittingIds": "Set<str>",
+      "popover": "{journalId,strategyId,x,y}|null",
+      "editingPrice": "{journalId,index}|null",
+      "editingPriceValue": "str",
+      "isFullscreen": "bool"
+    },
+    "settings": {
+      "TableSettings": ["showOps","colWidths","fontSizes","rowGaps","rowSpacing"],
+      "DEFAULTS": {"showOps":true,"colWidths":{"name":120,"g1-4":120,"ops":120},"fontSizes":{"name":13,"g1-4":12},"rowGaps":{"g1-4":4},"rowSpacing":4},
+      "persist": "LW:UI_PREFIX+'settings'"
+    }
+  },
+  "calculations": {
+    "key_fns": ["calculateProfitRatio","calculateAvgProfitRatio","calculateTotalProfit","calculateAverageHoldDays","calculateProfitRatioByType","calculateProfitRatioByEntryType","calculateTradingTypeRatios","calculateEntryTypeRatios","calculateAggregateRatios","calculateTheoreticalSystemProfitRatio","calculateSubsequentProfitAnalysis"],
+    "cycleStats": "每30条TR=1周期, buildStatTypes动态维度, matchesStatType匹配, calculateProfitRatio+theoRatio"
+  },
+  "dataflow": {
+    "main": "R2<->FunctionsAPI<->r2Service<->ZustandStores<->ReactPages/Components",
+    "init": "useInitializeStore->useStoreSync.initializeFromR2->loadDatasetData->getRecords+getConfig->setStore->autoSave(1s debounce)",
+    "dataset_switch": "switchDataset->saveNow(旧)->loadDatasetData(新)->re-init",
+    "journal": "journalStore.init->loadJournals+loadSnapshots->buildActiveStages(merge sharedStrGroups)->JournalDrafts/Entry/Viewer"
+  },
+  "deploy": {
+    "platform": "CloudflarePages",
+    "build": "npm run build->dist/",
+    "functions": "functions/api/*.ts->CF Workers",
+    "r2_binding": "TRADING_DATA (bucket:trading-review-data)",
+    "ai_binding": "AI (vision model)"
+  },
+  "quality": {
+    "lint": "ESLint",
+    "test": "vitest (excelService.test.ts, cycleStatsService.test.ts, calculations.test.ts, validationUtils.test.ts)",
+    "validation": "zod schemas (TradingRecordSchema, SaveRecordsRequestSchema)"
+  },
+  "legacy": {
+    "src/worker/": "已废弃, 功能已迁移到functions/api/",
+    "skill/": {"bug":"空","feature":"4条功能指令记录"}
+  }
+}
