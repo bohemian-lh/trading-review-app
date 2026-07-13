@@ -17,6 +17,7 @@ interface TableSettings {
   colWidths: Record<string, number>;
   fontSizes: Record<string, number>;
   rowGaps: Record<string, number>;
+  rowSpacing: number;
 }
 
 const DEFAULT_SETTINGS: TableSettings = {
@@ -24,6 +25,7 @@ const DEFAULT_SETTINGS: TableSettings = {
   colWidths: { name: 120, g1: 120, g2: 120, g3: 120, g4: 120, ops: 120 },
   fontSizes: { name: 13, g1: 12, g2: 12, g3: 12, g4: 12 },
   rowGaps: { g1: 4, g2: 4, g3: 4, g4: 4 },
+  rowSpacing: 4,
 };
 
 function loadSettings(): TableSettings {
@@ -85,6 +87,8 @@ const COLUMNS = [
 ] as const;
 
 const FONT_SIZE_OPTIONS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 24];
+const ROW_SPACING_OPTIONS = [2, 3, 4, 5, 6, 8, 10];
+const ROW_COLORS = ['bg-green-50', 'bg-yellow-50', 'bg-blue-50'];
 
 // ─── Popover 组件 ──────────────────────────────────────────────────
 const StrategyPopover: React.FC<{
@@ -471,6 +475,22 @@ export const JournalDrafts: React.FC = () => {
                 ))}
               </div>
 
+              <div className="border-t pt-2">
+                <div className="text-xs text-gray-500 mb-2">行间距</div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">行与行间距</span>
+                  <select
+                    value={settings.rowSpacing}
+                    onChange={(e) => updateSettings({ rowSpacing: Number(e.target.value) })}
+                    className="text-xs border rounded px-1.5 py-0.5"
+                  >
+                    {ROW_SPACING_OPTIONS.map(n => (
+                      <option key={n} value={n}>{n}px</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <button
                 onClick={() => {
                   updateSettings(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)));
@@ -485,8 +505,8 @@ export const JournalDrafts: React.FC = () => {
       </div>
 
       {/* ─── 表格式列表 ──────────────────────────────────────── */}
-      <div className="overflow-x-auto">
-        <table className="border border-gray-200 rounded-lg overflow-hidden text-sm" style={{ tableLayout: 'fixed' }}>
+      <div className="overflow-x-auto bg-gray-100 rounded-lg" style={{ padding: `${settings.rowSpacing}px` }}>
+        <table className="border-separate text-sm" style={{ tableLayout: 'fixed', borderSpacing: `0 ${settings.rowSpacing}px` }}>
           <thead>
             <tr className="bg-gray-50 relative">
               {visibleCols.map(col => {
@@ -495,7 +515,7 @@ export const JournalDrafts: React.FC = () => {
                 return (
                   <th
                     key={col.id}
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-r relative"
+                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 border border-gray-200 bg-gray-50 relative"
                     style={{ width: `${width}px`, minWidth: `${width}px` }}
                   >
                     <span className="truncate block">{colName}</span>
@@ -509,7 +529,7 @@ export const JournalDrafts: React.FC = () => {
               })}
               {settings.showOps && (
                 <th
-                  className="px-3 py-2 text-center text-xs font-medium text-gray-500 relative"
+                  className="px-3 py-2 text-center text-xs font-medium text-gray-500 border border-gray-200 bg-gray-50 relative"
                   style={{ width: `${settings.colWidths.ops || 120}px`, minWidth: `${settings.colWidths.ops || 120}px` }}
                 >
                   操作
@@ -522,7 +542,7 @@ export const JournalDrafts: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {drafts.map(journal => {
+            {drafts.map((journal, idx) => {
               const grouped = groupStrategies(journal, activeStages, snapshots);
               const isSubmitting = submittingIds.has(journal.id);
               const isEditing = editingId === journal.id;
@@ -530,13 +550,14 @@ export const JournalDrafts: React.FC = () => {
               const currentStage = isEditing ? es.stage : journal.stage;
               const currentStrategies = isEditing ? es.strategies : journal.strategies;
               const stageConfig = activeStages.find(s => s.stageId === currentStage);
+              const rowColor = ROW_COLORS[idx % ROW_COLORS.length];
 
               // 编辑模式
               if (isEditing) {
                 return (
                   <React.Fragment key={journal.id}>
-                    <tr className="bg-blue-50">
-                      <td className="px-3 py-2 border-r text-gray-900 font-medium" colSpan={visibleCols.length + (settings.showOps ? 1 : 0)}>
+                    <tr className={rowColor}>
+                      <td className="px-3 py-2 border border-gray-200 text-gray-900 font-medium" colSpan={visibleCols.length + (settings.showOps ? 1 : 0)}>
                         <div className="flex items-center justify-between">
                           <span>编辑: {journal.stockName || '-'} ({journal.stockCode || '-'}) - {journal.openDate}</span>
                           <div className="flex items-center gap-2">
@@ -546,8 +567,8 @@ export const JournalDrafts: React.FC = () => {
                         </div>
                       </td>
                     </tr>
-                    <tr className="bg-blue-50">
-                      <td className="px-3 py-3" colSpan={visibleCols.length + (settings.showOps ? 1 : 0)}>
+                    <tr className={rowColor}>
+                      <td className="px-3 py-3 border border-gray-200" colSpan={visibleCols.length + (settings.showOps ? 1 : 0)}>
                         <div className="space-y-4">
                           <div>
                             <label className="block text-xs font-medium text-gray-600 mb-1">阶段</label>
@@ -635,14 +656,14 @@ export const JournalDrafts: React.FC = () => {
 
               // 紧凑模式
               return (
-                <tr key={journal.id} className="border-b border-gray-300 transition-colors">
-                  <td className="px-3 py-1 border-r align-top" style={getCellStyle('name')}>
+                <tr key={journal.id} className={`${rowColor} transition-colors`}>
+                  <td className="px-3 py-1 border border-gray-200 align-top" style={getCellStyle('name')}>
                     {journal.stockName || '-'}
                   </td>
                   {groupIds.map(gid => {
                     const items = grouped[gid] || [];
                     return (
-                      <td key={gid} className="px-3 py-1 border-r align-top" style={getCellStyle(gid)}>
+                      <td key={gid} className="px-3 py-1 border border-gray-200 align-top" style={getCellStyle(gid)}>
                         {items.length > 0 ? (
                           <div className="flex flex-col" style={{ gap: `${settings.rowGaps[gid] || 4}px` }}>
                             {items.map(item => renderStrategyCard(item, journal))}
@@ -654,7 +675,7 @@ export const JournalDrafts: React.FC = () => {
                     );
                   })}
                   {settings.showOps && (
-                    <td className="px-2 py-1 text-center" style={getCellStyle('ops')}>
+                    <td className="px-2 py-1 text-center border border-gray-200" style={getCellStyle('ops')}>
                       <div className="flex items-center justify-center gap-1 flex-wrap">
                         <button onClick={() => startEditing(journal)} className="text-xs text-blue-600 hover:bg-blue-50 p-1 rounded" title="编辑策略">
                           <Edit2 className="h-3.5 w-3.5" />
