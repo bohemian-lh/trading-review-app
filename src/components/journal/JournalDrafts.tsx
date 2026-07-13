@@ -642,7 +642,7 @@ export const JournalDrafts: React.FC = () => {
                   {groupIds.map(gid => {
                     const items = grouped[gid] || [];
                     return (
-                      <td key={gid} className="px-3 py-1 align-top" style={getCellStyle(gid)}>
+                      <td key={gid} className="px-3 py-1 border-r align-top" style={getCellStyle(gid)}>
                         {items.length > 0 ? (
                           <div className="flex flex-col" style={{ gap: `${settings.rowGaps[gid] || 4}px` }}>
                             {items.map(item => renderStrategyCard(item, journal))}
