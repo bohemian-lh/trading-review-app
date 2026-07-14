@@ -669,13 +669,7 @@ export const JournalDrafts: React.FC = () => {
                   <React.Fragment key={journal.id}>
                     <tr className={rowColor}>
                       <td className="px-3 py-2 border border-gray-200 text-gray-900 font-medium" colSpan={visibleCols.length + (settings.showOps ? 1 : 0)}>
-                        <div className="flex items-center justify-between">
-                          <span>编辑: {journal.stockName || '-'} ({journal.stockCode || '-'}) - {journal.openDate}</span>
-                          <div className="flex items-center gap-2">
-                            <button onClick={cancelEditing} className="text-xs text-gray-500 hover:text-gray-700"><X className="h-3 w-3 inline mr-0.5" />取消</button>
-                            <button onClick={() => handleSaveEdit(journal.id)} className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">保存编辑</button>
-                          </div>
-                        </div>
+                        <span>编辑: {journal.stockName || '-'} ({journal.stockCode || '-'}) - {journal.openDate}</span>
                       </td>
                     </tr>
                     <tr className={rowColor}>
@@ -753,10 +747,18 @@ export const JournalDrafts: React.FC = () => {
                               </div>
                             </>
                           )}
-                          <div className="flex items-center justify-end pt-3 border-t">
-                            <button onClick={() => handleFinalize(journal.id)} disabled={isSubmitting}
-                              className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium">
-                              <Send className="h-3.5 w-3.5" />{isSubmitting ? '...' : '提交日志'}</button>
+                          <div className="flex items-center justify-between pt-3 border-t">
+                            <button onClick={cancelEditing} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50">
+                              取消
+                            </button>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => handleSaveEdit(journal.id)} className="text-xs bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700">
+                                保存编辑
+                              </button>
+                              <button onClick={() => handleFinalize(journal.id)} disabled={isSubmitting}
+                                className="flex items-center gap-1.5 px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 text-xs font-medium">
+                                <Send className="h-3.5 w-3.5" />{isSubmitting ? '...' : '提交日志'}</button>
+                            </div>
                           </div>
                         </div>
                       </td>
