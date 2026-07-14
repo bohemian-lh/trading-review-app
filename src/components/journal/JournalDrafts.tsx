@@ -747,18 +747,16 @@ export const JournalDrafts: React.FC = () => {
                               </div>
                             </>
                           )}
-                          <div className="flex items-center justify-between pt-3 border-t">
+                          <div className="flex items-center justify-end pt-3 border-t gap-2">
                             <button onClick={cancelEditing} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50">
                               取消
                             </button>
-                            <div className="flex items-center gap-2">
-                              <button onClick={() => handleSaveEdit(journal.id)} className="text-xs bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700">
-                                保存编辑
-                              </button>
-                              <button onClick={() => handleFinalize(journal.id)} disabled={isSubmitting}
-                                className="flex items-center gap-1.5 px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 text-xs font-medium">
-                                <Send className="h-3.5 w-3.5" />{isSubmitting ? '...' : '提交日志'}</button>
-                            </div>
+                            <button onClick={() => handleSaveEdit(journal.id)} className="text-xs bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700">
+                              保存编辑
+                            </button>
+                            <button onClick={() => handleFinalize(journal.id)} disabled={isSubmitting}
+                              className="flex items-center gap-1.5 px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 text-xs font-medium">
+                              <Send className="h-3.5 w-3.5" />{isSubmitting ? '...' : '提交日志'}</button>
                           </div>
                         </div>
                       </td>
