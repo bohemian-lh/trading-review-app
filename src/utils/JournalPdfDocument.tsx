@@ -1,6 +1,22 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
 import type { TradingJournal } from '@/types';
+
+// ─── 注册中文字体 ──────────────────────────────────────────────────
+// Helvetica 不支持中文，需注册 Noto Sans SC
+Font.register({
+  family: 'Noto Sans SC',
+  fonts: [
+    {
+      src: 'https://cdn.jsdelivr.net/npm/@canvas-fonts/notosanssc@1.0.0/files/noto-sans-sc-400-normal.woff',
+      fontWeight: 400,
+    },
+    {
+      src: 'https://cdn.jsdelivr.net/npm/@canvas-fonts/notosanssc@1.0.0/files/noto-sans-sc-700-normal.woff',
+      fontWeight: 700,
+    },
+  ],
+});
 
 // ─── 辅助类型 ──────────────────────────────────────────────────────
 export interface StrategyItem {
@@ -29,7 +45,7 @@ const ROWS_PER_PAGE = 25;
 const s = StyleSheet.create({
   page: {
     padding: '20pt 30pt',
-    fontFamily: 'Helvetica',
+    fontFamily: 'Noto Sans SC',
     fontSize: 8,
   },
   title: {
