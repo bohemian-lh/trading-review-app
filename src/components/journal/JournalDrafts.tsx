@@ -1,8 +1,10 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings, Maximize, Minimize } from 'lucide-react';
+import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings, Maximize, Minimize, Download } from 'lucide-react';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
+import { exportJournalPdf } from '@/utils/exportJournalPdf';
+import { JournalRow } from '@/utils/JournalPdfDocument';
 import type { TradingJournal, CustomStrategy } from '@/types';
 
 // ─── 简易 ID 生成 ────────────────────────────────────────────────
@@ -183,6 +185,7 @@ export const JournalDrafts: React.FC = () => {
   const [settings, setSettings] = useState<TableSettings>(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // 监听全屏变化
@@ -471,6 +474,26 @@ export const JournalDrafts: React.FC = () => {
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-500">{drafts.length} 条当前交易</div>
         <div className="relative flex items-center gap-1">
+          <button
+            onClick={async () => {
+              setExporting(true);
+              try {
+                const rows: JournalRow[] = drafts.map(j => ({
+                  journal: j,
+                  grouped: groupStrategies(j, activeStages, snapshots),
+                }));
+                await exportJournalPdf(rows, groupIds, groupNames);
+              } finally {
+                setExporting(false);
+              }
+            }}
+            disabled={exporting}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+            title="导出PDF"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {exporting ? '导出中...' : 'PDF'}
+          </button>
           <button
             onClick={toggleFullscreen}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors text-gray-500 hover:bg-gray-100"
