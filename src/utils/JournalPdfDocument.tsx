@@ -2,17 +2,17 @@ import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
 import type { TradingJournal } from '@/types';
 
-// ─── 注册中文字体 ──────────────────────────────────────────────────
-// Helvetica 不支持中文，需注册 Noto Sans SC
+// ─── 注册中文字体（本地文件，不依赖 CDN）─────────────────────────
+// Helvetica 不支持中文，注册 Noto Sans SC（public/fonts/ 目录）
 Font.register({
   family: 'Noto Sans SC',
   fonts: [
     {
-      src: 'https://cdn.jsdelivr.net/npm/@canvas-fonts/notosanssc@1.0.0/files/noto-sans-sc-400-normal.woff',
+      src: '/fonts/noto-sans-sc-regular.ttf',
       fontWeight: 400,
     },
     {
-      src: 'https://cdn.jsdelivr.net/npm/@canvas-fonts/notosanssc@1.0.0/files/noto-sans-sc-700-normal.woff',
+      src: '/fonts/noto-sans-sc-bold.ttf',
       fontWeight: 700,
     },
   ],

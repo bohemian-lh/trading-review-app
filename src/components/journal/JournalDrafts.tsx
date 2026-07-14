@@ -186,6 +186,7 @@ export const JournalDrafts: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // 监听全屏变化
@@ -477,12 +478,16 @@ export const JournalDrafts: React.FC = () => {
           <button
             onClick={async () => {
               setExporting(true);
+              setExportError(null);
               try {
                 const rows: JournalRow[] = drafts.map(j => ({
                   journal: j,
                   grouped: groupStrategies(j, activeStages, snapshots),
                 }));
                 await exportJournalPdf(rows, groupIds, groupNames);
+              } catch (e: any) {
+                console.error('PDF export failed:', e);
+                setExportError(e?.message || '导出失败，请重试');
               } finally {
                 setExporting(false);
               }
@@ -585,6 +590,17 @@ export const JournalDrafts: React.FC = () => {
           )}
         </div>
       </div>
+      )}
+
+      {/* 导出错误提示 */}
+      {exportError && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>{exportError}</span>
+          <button onClick={() => setExportError(null)} className="ml-auto text-red-400 hover:text-red-600">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
 
       {/* ─── 表格式列表 ──────────────────────────────────────── */}
