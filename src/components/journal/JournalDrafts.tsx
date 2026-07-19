@@ -5,6 +5,7 @@ import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
 import { exportJournalPdf } from '@/utils/exportJournalPdf';
 import { JournalRow } from '@/utils/JournalPdfDocument';
+import { groupStrategies, type StrategyItem } from '@/utils/journalHelpers';
 import type { TradingJournal, CustomStrategy } from '@/types';
 
 // ─── 简易 ID 生成 ────────────────────────────────────────────────
@@ -42,43 +43,6 @@ function saveSettings(s: TableSettings) {
   localStorage.setItem(UI_PREFIX + 'settings', JSON.stringify(s));
 }
 
-// ─── 策略分组 helper（返回 text + strategyId）──────────────────────
-interface StrategyItem {
-  text: string;
-  strategyId: string;
-  isCustom?: boolean;  // 自定义策略
-}
-
-function groupStrategies(
-  journal: TradingJournal,
-  stages: any[],
-  snapshots: any[]
-): Record<string, StrategyItem[]> {
-  const snapshot = snapshots.find((s: any) => s.snapshotId === journal.snapshotId);
-  const stageConfigs = snapshot?.stages || stages;
-  const stage = stageConfigs.find((s: any) => s.stageId === journal.stage);
-  if (!stage) return {};
-  const result: Record<string, StrategyItem[]> = {};
-  for (const g of stage.strategyGroups) {
-    result[g.groupId] = [];
-    for (const s of g.strategies) {
-      if (journal.strategies.includes(s.strategyId)) {
-        result[g.groupId].push({ text: s.text, strategyId: s.strategyId });
-      }
-    }
-    // 自定义策略
-    const customs = journal.customStrategies?.[g.groupId];
-    if (Array.isArray(customs) && customs.length > 0) {
-      for (const cs of customs) {
-        if (cs.text && cs.text.trim()) {
-          result[g.groupId].push({ text: cs.text.trim(), strategyId: cs.id, isCustom: true });
-        }
-      }
-    }
-  }
-  return result;
-}
-
 // ─── 列配置 ────────────────────────────────────────────────────────
 const COLUMNS = [
   { id: 'name', label: '股票名称' },
@@ -96,8 +60,9 @@ const PRICE_LEVELS = [
   { index: 0, label: '' },
   { index: 1, label: '' },
   { index: 2, label: '目标位：' },
-  { index: 3, label: '压力1：' },
-  { index: 4, label: '压力2：' },
+  { index: 3, label: '固定目标位：' },
+  { index: 4, label: '压力1：' },
+  { index: 5, label: '压力2：' },
 ];
 
 // ─── Popover 组件 ──────────────────────────────────────────────────

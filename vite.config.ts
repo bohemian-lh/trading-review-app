@@ -39,10 +39,22 @@ export default defineConfig({
         chunkFileNames: 'assets/[name]-[hash].js',
         entryFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]',
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'sheetjs': ['xlsx'],
-          'recharts': ['recharts'],
+        manualChunks(id) {
+          if (id.includes('node_modules/@react-pdf')) {
+            return 'react-pdf';
+          }
+          if (id.includes('node_modules/react') || id.includes('node_modules/scheduler')) {
+            return 'react-vendor';
+          }
+          if (id.includes('node_modules/react-router')) {
+            return 'react-vendor';
+          }
+          if (id.includes('node_modules/xlsx')) {
+            return 'sheetjs';
+          }
+          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3')) {
+            return 'recharts';
+          }
         },
       },
     },
