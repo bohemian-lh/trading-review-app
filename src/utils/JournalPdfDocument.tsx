@@ -37,7 +37,7 @@ interface Props {
 }
 
 // ─── 固定配置 ──────────────────────────────────────────────────────
-const PRICE_LABELS = ['', '', '目标位：', '固定目标位：', '压力1：', '压力2：'];
+const PRICE_LABELS = ['', '', '目标位：', '固定目标位：', '压力1：', '压力2：', '趋势最低点：'];
 const ROW_COLORS = ['#f0fdf4', '#fefce8', '#eff6ff']; // green50/yellow50/blue50
 const ROWS_PER_PAGE = 25;
 

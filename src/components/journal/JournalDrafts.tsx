@@ -63,6 +63,7 @@ const PRICE_LEVELS = [
   { index: 3, label: '固定目标位：' },
   { index: 4, label: '压力1：' },
   { index: 5, label: '压力2：' },
+  { index: 6, label: '趋势最低点：' },
 ];
 
 // ─── Popover 组件 ──────────────────────────────────────────────────
@@ -300,6 +301,17 @@ export const JournalDrafts: React.FC = () => {
     if (!journal) return;
     const newLevels = [...journal.priceLevels];
     newLevels[index] = editingPriceValue;
+
+    // 趋势最低点（index 6）变更时，自动计算固定目标位（index 3）
+    if (index === 6 && editingPriceValue) {
+      const trendVal = parseFloat(editingPriceValue);
+      if (!isNaN(trendVal) && trendVal > 0) {
+        const lower = trendVal * 1.08;
+        const upper = trendVal * 1.10;
+        newLevels[3] = `${lower.toFixed(2)} -- ${upper.toFixed(2)}`;
+      }
+    }
+
     setEditingPrice(null);
     await updateDraftJournal(journalId, { priceLevels: newLevels }, datasetId);
   };

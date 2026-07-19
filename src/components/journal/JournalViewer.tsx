@@ -14,6 +14,7 @@ const PRICE_LEVELS = [
   { index: 3, label: '固定目标位：' },
   { index: 4, label: '压力1：' },
   { index: 5, label: '压力2：' },
+  { index: 6, label: '趋势最低点：' },
 ];
 
 const ROW_COLORS = ['bg-green-50', 'bg-yellow-50', 'bg-blue-50'];
