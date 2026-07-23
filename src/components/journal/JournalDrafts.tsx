@@ -5,7 +5,7 @@ import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
 import { exportJournalPdf } from '@/utils/exportJournalPdf';
 import { JournalRow } from '@/utils/JournalPdfDocument';
-import { groupStrategies, type StrategyItem } from '@/utils/journalHelpers';
+import { groupStrategies, type StrategyItem, applySort } from '@/utils/journalHelpers';
 import type { TradingJournal, CustomStrategy } from '@/types';
 
 // ─── 简易 ID 生成 ────────────────────────────────────────────────
@@ -142,6 +142,14 @@ export const JournalDrafts: React.FC = () => {
 
   // Popover 状态
   const [popover, setPopover] = useState<{ journalId: string; strategyId: string; x: number; y: number } | null>(null);
+
+  // ─── 拖拽排序 ─────────────────────────────────────────────────
+  const [dragState, setDragState] = useState<{
+    journalId: string;
+    groupId: string;
+    strategyId: string;
+    overId: string | null;
+  } | null>(null);
 
   // 价位卡片内联编辑状态
   const [editingPrice, setEditingPrice] = useState<{ journalId: string; index: number } | null>(null);
@@ -379,6 +387,7 @@ export const JournalDrafts: React.FC = () => {
   const renderStrategyCard = (
     item: StrategyItem,
     journal: TradingJournal,
+    gid: string,
   ) => {
     const sid = item.strategyId;
     const isBold = journal.strategyBold.includes(sid);
@@ -420,13 +429,63 @@ export const JournalDrafts: React.FC = () => {
 
     const boldClass = isBold ? 'font-bold' : '';
 
+    // 拖拽状态
+    const isDragging = dragState?.strategyId === sid && dragState?.journalId === journal.id;
+    const isDragOver = dragState?.overId === sid && dragState?.journalId === journal.id && dragState?.groupId === gid;
+
     return (
       <span
         key={sid}
-        className={`px-1.5 py-0.5 rounded cursor-pointer hover:ring-1 hover:ring-blue-300 ${bgClass} ${borderClass} ${textClass} ${boldClass}`}
+        draggable
+        className={`px-1.5 py-0.5 rounded cursor-pointer hover:ring-1 hover:ring-blue-300 ${bgClass} ${borderClass} ${textClass} ${boldClass} ${
+          isDragging ? 'opacity-30' : ''
+        } ${isDragOver ? 'ring-2 ring-blue-400' : ''}`}
         onClick={(e) => {
           e.stopPropagation();
           setPopover({ journalId: journal.id, strategyId: sid, x: e.clientX, y: e.clientY + 4 });
+        }}
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', sid);
+          setDragState({ journalId: journal.id, groupId: gid, strategyId: sid, overId: null });
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (dragState?.journalId === journal.id && dragState?.groupId === gid && dragState?.strategyId !== sid) {
+            setDragState(prev => prev ? { ...prev, overId: sid } : null);
+          }
+        }}
+        onDragLeave={() => {
+          setDragState(prev => prev && prev.overId === sid ? { ...prev, overId: null } : prev);
+        }}
+        onDrop={async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!dragState || dragState.journalId !== journal.id || dragState.groupId !== gid || dragState.strategyId === sid) {
+            setDragState(null);
+            return;
+          }
+          // 重新排序
+          const currentOrder = journal.strategyOrder[gid] || [];
+          // 从全量策略列表构建当前顺序
+          const allInGroup = groupStrategies(journal, activeStages, snapshots)[gid] || [];
+          const allIds = allInGroup.map(i => i.strategyId);
+          // 合并自定义顺序
+          let ordered = currentOrder.length > 0
+            ? [...currentOrder.filter(id => allIds.includes(id)), ...allIds.filter(id => !currentOrder.includes(id))]
+            : allIds;
+          // 移除被拖拽项
+          ordered = ordered.filter(id => id !== dragState.strategyId);
+          // 插入到 over 位置
+          const overIdx = ordered.indexOf(sid);
+          ordered.splice(overIdx >= 0 ? overIdx : ordered.length, 0, dragState.strategyId);
+          const newOrder = { ...journal.strategyOrder, [gid]: ordered };
+          setDragState(null);
+          await updateDraftJournal(journal.id, { strategyOrder: newOrder }, datasetId);
+        }}
+        onDragEnd={() => {
+          setDragState(null);
         }}
       >
         {item.text}
@@ -457,10 +516,15 @@ export const JournalDrafts: React.FC = () => {
               setExporting(true);
               setExportError(null);
               try {
-                const rows: JournalRow[] = drafts.map(j => ({
-                  journal: j,
-                  grouped: groupStrategies(j, activeStages, snapshots),
-                }));
+                const rows: JournalRow[] = drafts.map(j => {
+                  const grp = groupStrategies(j, activeStages, snapshots);
+                  // 应用自定义排序到每个组
+                  const sorted = { ...grp };
+                  for (const gid of groupIds) {
+                    sorted[gid] = applySort(grp[gid] || [], j.strategyOrder[gid]);
+                  }
+                  return { journal: j, grouped: sorted };
+                });
                 await exportJournalPdf(rows, groupIds, groupNames);
               } catch (e: any) {
                 console.error('PDF export failed:', e);
@@ -791,12 +855,12 @@ export const JournalDrafts: React.FC = () => {
                     </div>
                   </td>
                   {groupIds.map(gid => {
-                    const items = grouped[gid] || [];
+                    const items = applySort(grouped[gid] || [], journal.strategyOrder[gid]);
                     return (
                       <td key={gid} className="px-3 py-1 border border-gray-200 align-top" style={getCellStyle(gid)}>
                         {items.length > 0 ? (
                           <div className="flex flex-col" style={{ gap: `${settings.rowGaps[gid] || 4}px` }}>
-                            {items.map(item => renderStrategyCard(item, journal))}
+                            {items.map(item => renderStrategyCard(item, journal, gid))}
                           </div>
                         ) : (
                           <span className="text-gray-300">-</span>

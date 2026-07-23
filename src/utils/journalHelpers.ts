@@ -37,3 +37,18 @@ export function groupStrategies(
   }
   return result;
 }
+
+/** 按自定义顺序排序策略项，无 order 时保持原序 */
+export function applySort(items: StrategyItem[], order?: string[]): StrategyItem[] {
+  if (!order || order.length === 0) return items;
+  const idIndex = new Map<string, number>();
+  order.forEach((id, i) => idIndex.set(id, i));
+  return [...items].sort((a, b) => {
+    const ai = idIndex.get(a.strategyId);
+    const bi = idIndex.get(b.strategyId);
+    if (ai === undefined && bi === undefined) return 0;
+    if (ai === undefined) return 1;
+    if (bi === undefined) return -1;
+    return ai - bi;
+  });
+}

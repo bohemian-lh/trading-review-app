@@ -51,6 +51,7 @@ export interface TradingJournal {
   strategyYellow: string[];// 标黄的策略 strategyId 列表
   strategyRedText: string[];// 红色字体的策略 strategyId 列表
   priceLevels: string[];    // 固定7个价位卡片的用户输入值（不含标签），默认 ['', '', '', '', '', '', '']
+  strategyOrder: Record<string, string[]>; // groupId -> strategyId[] 自定义策略排序，为空时按配置默认顺序
   snapshotId: string;      // 写入时的配置快照 ID
   status: 'draft' | 'submitted';  // draft=中间态, submitted=已完成
   createdAt: string;

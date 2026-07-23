@@ -3,7 +3,7 @@ import { Trash2, Link, Undo2, ArrowUpDown } from 'lucide-react';
 import { useRecordsStore } from '@/stores';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
-import { groupStrategies } from '@/utils/journalHelpers';
+import { groupStrategies, applySort } from '@/utils/journalHelpers';
 import type { TradingJournal } from '@/types';
 
 // ─── 价位标签 ──────────────────────────────────────────────────────
@@ -450,7 +450,7 @@ export const JournalViewer: React.FC = () => {
                     </div>
                   </td>
                   {groupIds.map(gid => {
-                    const items = grouped[gid] || [];
+                    const items = applySort(grouped[gid] || [], journal.strategyOrder[gid]);
                     return (
                       <td key={gid} className="px-3 py-1 border border-gray-200 align-top text-xs">
                         {items.length > 0 ? (

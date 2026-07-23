@@ -81,6 +81,7 @@ function migrateJournal(j: any): TradingJournal {
           : [...j.priceLevels, ...Array(7 - j.priceLevels.length).fill('')]
       : ['', '', '', '', '', '', ''],
     customStrategies,
+    strategyOrder: j.strategyOrder || {},
   };
 }
 
@@ -161,6 +162,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       strategyRedText: [],
       priceLevels: ['', '', '', '', '', '', ''],
       customStrategies: {},
+      strategyOrder: {},
       snapshotId,
       status: 'draft',
       createdAt: new Date().toISOString(),
