@@ -63,19 +63,23 @@ export function validateTradingRecord(
     });
   }
 
-  // 交易切入类型验证 — 从 fieldConfig 动态获取
-  if (!record.entryType) {
+  // 交易切入类型验证 — 从 fieldConfig 动态获取（多值数组）
+  if (!Array.isArray(record.entryType) || record.entryType.length === 0) {
     errors.push({
       field: 'entryType',
       message: '交易切入类型不能为空',
       row: rowIndex,
     });
-  } else if (!fieldConfig.entryTypes.includes(record.entryType)) {
-    errors.push({
-      field: 'entryType',
-      message: `交易切入类型无效，应为以下之一：${fieldConfig.entryTypes.join('、')}`,
-      row: rowIndex,
-    });
+  } else {
+    for (const et of record.entryType) {
+      if (!fieldConfig.entryTypes.includes(et)) {
+        errors.push({
+          field: 'entryType',
+          message: `交易切入类型"${et}"无效，应为以下之一：${fieldConfig.entryTypes.join('、')}`,
+          row: rowIndex,
+        });
+      }
+    }
   }
 
   // 系统符合验证

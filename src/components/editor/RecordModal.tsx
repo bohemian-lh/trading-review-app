@@ -3,7 +3,7 @@ import { Save, Clipboard, AlertCircle, Loader2, X } from 'lucide-react';
 import { Button, Input, Select, Modal } from '@/components/common';
 import { ImagePreviewModal } from '@/components/editor/ImagePreviewModal';
 import { useRecordsStore } from '@/stores';
-import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus, EntryType } from '@/types';
+import type { TradingRecord, TradingRecordInput, TradingType, MistakeStatus } from '@/types';
 
 const YES_NO_OPTIONS = [
   { value: '是', label: '是' },
@@ -217,11 +217,26 @@ export const RecordModal: React.FC<RecordModalProps> = ({
               <label className="block text-base font-medium text-gray-700 mb-2">
                 交易切入类型
               </label>
-              <Select
-                value={formData.entryType}
-                onChange={(e) => onFormChange({ ...formData, entryType: e.target.value as EntryType })}
-                options={entryTypeOptions}
-              />
+              <div className="flex flex-wrap gap-3">
+                {entryTypeOptions.map(opt => (
+                  <label key={opt.value} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.entryType.includes(opt.value)}
+                      onChange={() => {
+                        const current = formData.entryType;
+                        const next = current.includes(opt.value)
+                          ? current.filter(v => v !== opt.value)
+                          : [...current, opt.value];
+                        // 如果全部取消，默认回退为 ['未知']
+                        onFormChange({ ...formData, entryType: next.length > 0 ? next : ['未知'] });
+                      }}
+                      className="rounded"
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
             </div>
             {/* 存在重大失误 */}
             <div>

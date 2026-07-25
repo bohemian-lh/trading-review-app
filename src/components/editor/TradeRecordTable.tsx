@@ -284,7 +284,7 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                       <td className="px-4 py-3 text-sm text-gray-900">{record.stockName}</td>
                       <td className="px-4 py-3 text-sm text-gray-900">{record.stockCode}</td>
                       <td className="px-4 py-3 text-sm text-gray-900">{record.tradingType}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{record.entryType}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900">{record.entryType.join(', ')}</td>
                       <td className="px-4 py-3 text-sm">
                         <span className={`inline-flex px-2 py-1 text-xs rounded ${
                           record.isSystem === '是' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'

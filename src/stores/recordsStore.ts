@@ -58,7 +58,14 @@ export const useRecordsStore = create<RecordsState>((set, get) => ({
   version: null,
 
   setRecords: (records) => {
-    const normalized = records.map(r => ({ ...r, hasCycleStats: r.hasCycleStats ?? false, hasMonthlyStats: r.hasMonthlyStats ?? false }));
+    const normalized = records.map(r => ({
+      ...r,
+      entryType: typeof r.entryType === 'string'
+        ? [r.entryType]
+        : (Array.isArray(r.entryType) && r.entryType.length > 0 ? r.entryType : ['未知']),
+      hasCycleStats: r.hasCycleStats ?? false,
+      hasMonthlyStats: r.hasMonthlyStats ?? false
+    }));
     set({ records: normalized });
   },
 
@@ -68,7 +75,15 @@ export const useRecordsStore = create<RecordsState>((set, get) => ({
   },
 
   addRecords: (recordsData) => {
-    const newRecords: TradingRecord[] = recordsData.map(r => ({ ...r, id: r.id || generateId(), hasCycleStats: r.hasCycleStats ?? false, hasMonthlyStats: r.hasMonthlyStats ?? false }));
+    const newRecords: TradingRecord[] = recordsData.map(r => ({
+      ...r,
+      id: r.id || generateId(),
+      entryType: typeof r.entryType === 'string'
+        ? [r.entryType]
+        : (Array.isArray(r.entryType) && r.entryType.length > 0 ? r.entryType : ['未知']),
+      hasCycleStats: r.hasCycleStats ?? false,
+      hasMonthlyStats: r.hasMonthlyStats ?? false
+    }));
     set((s) => ({ records: [...s.records, ...newRecords], statsNeedUpdate: true }));
   },
 

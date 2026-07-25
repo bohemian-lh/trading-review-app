@@ -22,7 +22,7 @@ const emptyRecord: TradingRecordInput = {
   stockName: '',
   stockCode: '',
   tradingType: '齐飞水底',
-  entryType: '未知',
+  entryType: ['未知'],
   isSystem: '是',
   hasMistake: '否',
   profitPercent: null,
@@ -111,7 +111,7 @@ export const DataEditor: React.FC = () => {
     let result = records.filter(record => {
       if (filters.month && !record.openDate.startsWith(filters.month)) return false;
       if (filters.tradingType && record.tradingType !== filters.tradingType) return false;
-      if (filters.entryType && record.entryType !== filters.entryType) return false;
+      if (filters.entryType && !record.entryType.includes(filters.entryType)) return false;
       if (filters.isSystem && record.isSystem !== filters.isSystem) return false;
       return true;
     });

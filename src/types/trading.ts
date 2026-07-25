@@ -4,7 +4,7 @@ export interface TradingRecord {
   stockName: string;
   stockCode: string;
   tradingType: TradingType;
-  entryType: EntryType;
+  entryType: string[];
   isSystem: YesNo;
   hasMistake: MistakeStatus;
   profitPercent: number;
@@ -39,7 +39,7 @@ export interface TradingRecordInput {
   stockName: string;
   stockCode: string;
   tradingType: TradingType;
-  entryType: EntryType;
+  entryType: string[];
   isSystem: YesNo;
   hasMistake: MistakeStatus;
   profitPercent: number | null;

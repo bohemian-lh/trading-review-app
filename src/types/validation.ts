@@ -58,7 +58,7 @@ export const TradingRecordSchema = z.object({
   stockName: z.string().min(1, '股票名称不能为空'),
   stockCode: z.string().min(1, '股票代码不能为空'),
   tradingType: TradingTypeSchema,
-  entryType: z.string().default('未知'),
+  entryType: z.array(z.string()).default(['未知']),
   isSystem: YesNoSchema,
   hasMistake: MistakeStatusSchema,
   profitPercent: z.number().min(-100, '盈亏不能小于-100%').max(1000, '盈亏不能大于1000%'),

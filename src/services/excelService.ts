@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType, EntryType, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType } from '@/types';
+import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType } from '@/types';
 import { generateId } from '@/utils';
 
 export const SHEET_NAME_1 = '表1-交易复盘数据';
@@ -266,8 +266,12 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
 
   const tradingType = (String(row['交易类型'] || '').trim() || '未知') as TradingType;
 
-  // 解析交易切入类型
-  const entryType = (String(row['交易切入类型'] || '').trim() || '未知') as EntryType;
+  // 解析交易切入类型（逗号分隔多值）
+  const rawEntryType = String(row['交易切入类型'] || '').trim();
+  const entryType = rawEntryType
+    ? rawEntryType.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+  if (entryType.length === 0) entryType.push('未知');
 
   // 解析盈亏情况，可能带有 %
   const profitStr = String(row['盈亏情况'] || '').trim().replace('%', '');
@@ -313,7 +317,7 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string):
       record.stockName,
       record.stockCode,
       record.tradingType,
-      record.entryType,
+      record.entryType.join(','),
       record.isSystem,
       record.hasMistake,
       record.profitPercent,
@@ -472,7 +476,7 @@ export function exportAllToExcel(
       record.stockName,
       record.stockCode,
       record.tradingType,
-      record.entryType,
+      record.entryType.join(','),
       record.isSystem,
       record.hasMistake,
       record.profitPercent,

@@ -162,7 +162,7 @@ export const FieldConfigPage: React.FC = () => {
       setMessage({ type: 'error', text: '「未知」类型不可删除' });
       return;
     }
-    const count = records.filter(r => r.entryType === type).length;
+    const count = records.filter(r => r.entryType.includes(type)).length;
     if (!confirm(`确定删除交易切入类型「${type}」？\n${count} 条记录将被标记为「未知」`)) return;
     setPending(p => ({ ...p, entryTypes: p.entryTypes.filter(e => e !== type) }));
     setMessage(null);
@@ -223,7 +223,11 @@ export const FieldConfigPage: React.FC = () => {
             let tradingType = r.tradingType;
             let entryType = r.entryType;
             if (deletedTradingTypes.includes(r.tradingType)) { tradingType = '未知'; changed = true; }
-            if (deletedEntryTypes.includes(r.entryType)) { entryType = '未知'; changed = true; }
+            if (deletedEntryTypes.some(dt => r.entryType.includes(dt))) {
+              entryType = r.entryType.filter(et => !deletedEntryTypes.includes(et));
+              if (entryType.length === 0) entryType = ['未知'];
+              changed = true;
+            }
             return changed ? { ...r, tradingType, entryType, hasCycleStats: false, cycleId: undefined } : r;
           })
         );

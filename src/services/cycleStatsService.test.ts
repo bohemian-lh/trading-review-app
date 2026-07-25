@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildStatTypes, matchesStatType } from './cycleStatsService';
-import type { FieldConfig, TradingRecord, EntryType } from '@/types';
+import type { FieldConfig, TradingRecord } from '@/types';
 
 const DEFAULT_CONFIG: FieldConfig = {
   tradingTypes: ['齐飞水底', '齐飞水底三等量', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统', '未知'],
@@ -14,7 +14,7 @@ const DEFAULT_CONFIG: FieldConfig = {
 function makeRecord(overrides: Partial<TradingRecord> = {}): TradingRecord {
   return {
     id: 'test-1', openDate: '20240101', stockName: '测试', stockCode: '000001',
-    tradingType: '齐飞水底', entryType: '未知' as EntryType, isSystem: '是', hasMistake: '否',
+    tradingType: '齐飞水底', entryType: ['未知'], isSystem: '是', hasMistake: '否',
     profitPercent: 0, holdDays: 1, preMarket: '否',
     hasCycleStats: false, hasMonthlyStats: false,
     ...overrides,
@@ -95,7 +95,7 @@ describe('matchesStatType', () => {
   });
 
   it('交易切入类型维度匹配', () => {
-    const r = makeRecord({ entryType: 'p2前' as EntryType });
+    const r = makeRecord({ entryType: ['p2前'] });
     expect(matchesStatType(r, 'p2前', DEFAULT_CONFIG)).toBe(true);
   });
 

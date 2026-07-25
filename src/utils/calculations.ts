@@ -185,7 +185,7 @@ export function calculateProfitRatioByMultipleTypes(records: TradingRecord[], tr
 }
 
 export function calculateProfitRatioByEntryType(records: TradingRecord[], entryType: string): number {
-  const typeRecords = records.filter(r => r.entryType === entryType);
+  const typeRecords = records.filter(r => r.entryType.includes(entryType));
 
   let profitSum = 0;
   let lossSum = 0;

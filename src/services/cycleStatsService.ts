@@ -140,7 +140,7 @@ export function matchesStatType(record: TradingRecord, statType: string, config:
   if (config.tradingTypes.includes(actualType)) return record.tradingType === actualType;
 
   // 交易切入类型维度
-  if (config.entryTypes.includes(actualType)) return record.entryType === actualType;
+  if (config.entryTypes.includes(actualType)) return record.entryType.includes(actualType);
 
   // 聚合规则维度
   const rule = config.aggregateRules.find(r => r.name === actualType);
