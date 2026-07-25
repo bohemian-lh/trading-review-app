@@ -5,6 +5,19 @@ import { useDatasetStore } from '@/stores/datasetStore';
 import { useUIStore } from '@/stores/uiStore';
 import { DEFAULT_FIELD_CONFIG } from '@/types';
 import { generateCycleStats } from '@/services/cycleStatsService';
+import type { TradingRecord } from '@/types';
+
+/** 迁移旧数据：entryType 从 string 转为 string[] */
+function migrateRecord(r: any): TradingRecord {
+  return {
+    ...r,
+    entryType: typeof r.entryType === 'string'
+      ? [r.entryType]
+      : (Array.isArray(r.entryType) && r.entryType.length > 0 ? r.entryType : ['未知']),
+    hasCycleStats: r.hasCycleStats ?? false,
+    hasMonthlyStats: r.hasMonthlyStats ?? false,
+  };
+}
 
 /**
  * R2 数据同步 Hook
@@ -43,11 +56,9 @@ export function useStoreSync() {
           useRecordsStore.getState().setVersion(result.version ?? null);
           useUIStore.getState().setError(null);
         } else if (result.conflict) {
-          const normalized = (result.records || []).map((r: any) => ({
-            ...r, hasCycleStats: r.hasCycleStats ?? false, hasMonthlyStats: r.hasMonthlyStats ?? false,
-          }));
+          const migrated = (result.records || []).map(migrateRecord);
           useRecordsStore.setState({
-            records: normalized,
+            records: migrated,
             customAnalysis: result.customAnalysis || { useCustom: false, data: {} as any },
             customMonthly: result.customMonthly || { useCustom: false, data: [] },
             cycleStats: result.cycleStats || {},
@@ -119,11 +130,9 @@ async function loadDatasetData(datasetId: string): Promise<void> {
       : { ...DEFAULT_FIELD_CONFIG };
 
     if (result.success) {
-      const normalized = (result.records || []).map((r: any) => ({
-        ...r, hasCycleStats: r.hasCycleStats ?? false, hasMonthlyStats: r.hasMonthlyStats ?? false,
-      }));
+      const migrated = (result.records || []).map(migrateRecord);
       useRecordsStore.setState({
-        records: normalized,
+        records: migrated,
         fieldConfig,
         customAnalysis: result.customAnalysis || { useCustom: false, data: {} as any },
         customMonthly: result.customMonthly || { useCustom: false, data: [] },
@@ -175,11 +184,9 @@ export async function saveNow(): Promise<void> {
       useRecordsStore.getState().setVersion(result.version ?? null);
       useUIStore.getState().setError(null);
     } else if (result.conflict) {
-      const normalized = (result.records || []).map((r: any) => ({
-        ...r, hasCycleStats: r.hasCycleStats ?? false, hasMonthlyStats: r.hasMonthlyStats ?? false,
-      }));
+      const migrated = (result.records || []).map(migrateRecord);
       useRecordsStore.setState({
-        records: normalized,
+        records: migrated,
         customAnalysis: result.customAnalysis || { useCustom: false, data: {} as any },
         customMonthly: result.customMonthly || { useCustom: false, data: [] },
         cycleStats: result.cycleStats || {},
