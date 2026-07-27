@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, BellOff, FileText, ListFilter, ClipboardList } from 'lucide-react';
+import { Bell, BellOff, FileText, ListFilter, ClipboardList, Settings } from 'lucide-react';
 import { JournalEntry } from '@/components/journal/JournalEntry';
 import { JournalDrafts } from '@/components/journal/JournalDrafts';
 import { JournalViewer } from '@/components/journal/JournalViewer';
+import { ReminderSettings } from '@/components/common/ReminderSettings';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
-import { ReminderTimer, isReminderEnabled, setReminderEnabled } from '@/utils/reminderTimer';
+import { ReminderTimer, getReminderConfig, setReminderConfig } from '@/utils/reminderTimer';
+import type { ReminderConfig } from '@/utils/reminderTimer';
 
 type Tab = 'entry' | 'drafts' | 'view';
 
@@ -15,26 +17,39 @@ const TradingJournalPage: React.FC = () => {
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
   // ─── 定时提醒 ──────────────────────────────────────────────────
-  const [reminderOn, setReminderOn] = useState(isReminderEnabled);
+  const [config, setConfig] = useState<ReminderConfig>(getReminderConfig);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const timerRef = useRef<ReminderTimer | null>(null);
 
   const toggleReminder = useCallback(() => {
-    setReminderOn(prev => {
-      const next = !prev;
-      setReminderEnabled(next);
+    setConfig(prev => {
+      const next = { ...prev, enabled: !prev.enabled };
+      setReminderConfig(next);
       return next;
     });
   }, []);
 
+  const handleSaveConfig = useCallback((newConfig: ReminderConfig) => {
+    setReminderConfig(newConfig);
+    setConfig(newConfig);
+    // 重启 timer 以应用新时间点/间隔
+    if (newConfig.enabled) {
+      if (!timerRef.current) timerRef.current = new ReminderTimer(newConfig);
+      else timerRef.current.updateConfig(newConfig);
+      timerRef.current.start();
+    }
+  }, []);
+
   useEffect(() => {
-    if (reminderOn) {
-      if (!timerRef.current) timerRef.current = new ReminderTimer();
+    if (config.enabled) {
+      if (!timerRef.current) timerRef.current = new ReminderTimer(config);
+      else timerRef.current.updateConfig(config);
       timerRef.current.start();
     } else {
       timerRef.current?.stop();
     }
     return () => { timerRef.current?.stop(); };
-  }, [reminderOn]);
+  }, [config.enabled]);
 
   useEffect(() => {
     init(datasetId);
@@ -69,18 +84,27 @@ const TradingJournalPage: React.FC = () => {
           ))}
         </div>
         {/* 定时提醒开关 */}
-        <button
-          onClick={toggleReminder}
-          title={reminderOn ? '关闭定时提醒' : '开启定时提醒'}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            reminderOn
-              ? 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100'
-              : 'bg-white text-gray-400 border border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          {reminderOn ? <Bell className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
-          定时提醒
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={toggleReminder}
+            title={config.enabled ? '关闭定时提醒' : '开启定时提醒'}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              config.enabled
+                ? 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100'
+                : 'bg-white text-gray-400 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {config.enabled ? <Bell className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
+            定时提醒
+          </button>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            title="提醒设置"
+            className="flex items-center justify-center w-7 h-7 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       {loading && (
@@ -94,6 +118,13 @@ const TradingJournalPage: React.FC = () => {
         tab === 'drafts' ? <JournalDrafts /> :
         <JournalViewer />
       )}
+
+      <ReminderSettings
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        config={config}
+        onSave={handleSaveConfig}
+      />
     </div>
   );
 };
