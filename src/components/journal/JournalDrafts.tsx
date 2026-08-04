@@ -543,7 +543,7 @@ export const JournalDrafts: React.FC = () => {
                     sorted[gid] = applySort(grp[gid] || [], j.strategyOrder[gid]);
                   }
                   return { journal: j, grouped: sorted };
-                });
+                }).filter(row => groupIds.some(gid => (row.grouped[gid] || []).length > 0));
                 await exportJournalPdf(rows, groupIds, groupNames);
               } catch (e: any) {
                 console.error('PDF export failed:', e);

@@ -1,4 +1,4 @@
-import type { TradingJournal, CustomStrategy } from '@/types';
+import type { CustomStrategy } from '@/types';
 
 /** 策略项 */
 export interface StrategyItem {
