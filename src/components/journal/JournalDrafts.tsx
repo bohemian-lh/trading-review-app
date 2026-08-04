@@ -323,6 +323,27 @@ export const JournalDrafts: React.FC = () => {
     setEditingPriceValue(currentValue);
   };
 
+  /** 从字符串中提取所有数字（纯字符遍历，无正则开销） */
+  const extractNumbers = (s: string): number[] => {
+    const nums: number[] = [];
+    let cur = '';
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if ((ch >= '0' && ch <= '9') || ch === '.') {
+        cur += ch;
+      } else if (cur) {
+        const n = parseFloat(cur);
+        if (!isNaN(n)) nums.push(n);
+        cur = '';
+      }
+    }
+    if (cur) {
+      const n = parseFloat(cur);
+      if (!isNaN(n)) nums.push(n);
+    }
+    return nums;
+  };
+
   const savePriceLevel = async (journalId: string, index: number) => {
     const journal = journals.find(j => j.id === journalId);
     if (!journal) return;
@@ -331,12 +352,22 @@ export const JournalDrafts: React.FC = () => {
 
     // 趋势最低点（index 6）变更时，自动计算固定目标位（index 3）
     if (index === 6 && editingPriceValue) {
-      const trendVal = parseFloat(editingPriceValue);
-      if (!isNaN(trendVal) && trendVal > 0) {
-        const lower = trendVal * 1.08;
-        const upper = trendVal * 1.10;
+      const numbers = extractNumbers(editingPriceValue);
+      if (numbers.length === 1) {
+        // 单值：默认系数 1.08 / 1.10
+        const lower = numbers[0] * 1.08;
+        const upper = numbers[0] * 1.10;
+        newLevels[3] = `${lower.toFixed(2)} -- ${upper.toFixed(2)}`;
+      } else if (numbers.length === 3) {
+        // 三值：第一个为基准价，后两个为系数百分比（如 10→1.10, 15→1.15）
+        const trendLow = numbers[0];
+        const coefLower = 1 + numbers[1] / 100;
+        const coefUpper = 1 + numbers[2] / 100;
+        const lower = trendLow * coefLower;
+        const upper = trendLow * coefUpper;
         newLevels[3] = `${lower.toFixed(2)} -- ${upper.toFixed(2)}`;
       }
+      // 其他情况回退默认，不修改 index 3
     }
 
     setEditingPrice(null);
