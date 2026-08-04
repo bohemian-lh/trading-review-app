@@ -1,4 +1,4 @@
-import type { TradingJournal } from '@/types';
+import type { TradingJournal, CustomStrategy } from '@/types';
 
 /** 策略项 */
 export interface StrategyItem {
@@ -9,24 +9,30 @@ export interface StrategyItem {
 
 /** 按 strategyGroup 分组已命中的策略 */
 export function groupStrategies(
-  journal: TradingJournal,
+  journal: { stage: string; strategies: string[]; stageStrategies?: Record<string, string[]>; customStrategies?: Record<string, CustomStrategy[]>; stageCustomStrategies?: Record<string, Record<string, CustomStrategy[]>> },
   stages: any[],
-  snapshots: any[]
+  snapshots: any[],
+  stageOverride?: string,  // 可选：指定阶段（用于编辑时预览非当前阶段）
 ): Record<string, StrategyItem[]> {
-  const snapshot = snapshots.find((s: any) => s.snapshotId === journal.snapshotId);
+  const stageId = stageOverride ?? journal.stage;
+  // 优先从 stageStrategies 读取，兼容旧数据 fallback 到 strategies
+  const strategyIds: string[] = journal.stageStrategies?.[stageId] ?? (stageId === journal.stage ? journal.strategies : []);
+  const customMap: Record<string, CustomStrategy[]> = journal.stageCustomStrategies?.[stageId] ?? (stageId === journal.stage && journal.customStrategies ? journal.customStrategies : {});
+
+  const snapshot = snapshots.find((s: any) => s.snapshotId === (journal as any).snapshotId);
   const stageConfigs = snapshot?.stages || stages;
-  const stage = stageConfigs.find((s: any) => s.stageId === journal.stage);
+  const stage = stageConfigs.find((s: any) => s.stageId === stageId);
   if (!stage) return {};
   const result: Record<string, StrategyItem[]> = {};
   for (const g of stage.strategyGroups) {
     result[g.groupId] = [];
     for (const s of g.strategies) {
-      if (journal.strategies.includes(s.strategyId)) {
+      if (strategyIds.includes(s.strategyId)) {
         result[g.groupId].push({ text: s.text, strategyId: s.strategyId });
       }
     }
     // 自定义策略
-    const customs = journal.customStrategies?.[g.groupId];
+    const customs = customMap?.[g.groupId];
     if (Array.isArray(customs) && customs.length > 0) {
       for (const cs of customs) {
         if (cs.text && cs.text.trim()) {

@@ -63,6 +63,15 @@ function migrateJournal(j: any): TradingJournal {
       }
     }
   }
+  // 迁移旧数据：无 stageStrategies 时从 strategies + stage 构建
+  let stageStrategies: Record<string, string[]> = j.stageStrategies || {};
+  let stageCustomStrategies: Record<string, Record<string, CustomStrategy[]>> = j.stageCustomStrategies || {};
+  if (!j.stageStrategies && j.stage && Array.isArray(j.strategies)) {
+    stageStrategies = { [j.stage]: [...j.strategies] };
+    if (Object.keys(customStrategies).length > 0) {
+      stageCustomStrategies = { [j.stage]: { ...customStrategies } };
+    }
+  }
   return {
     ...j,
     openDate: j.openDate || '',
@@ -80,7 +89,10 @@ function migrateJournal(j: any): TradingJournal {
           ? [...j.priceLevels.slice(0, 3), '', ...j.priceLevels.slice(3), '']
           : [...j.priceLevels, ...Array(7 - j.priceLevels.length).fill('')]
       : ['', '', '', '', '', '', ''],
+    strategies: Array.isArray(j.strategies) ? j.strategies : [],
     customStrategies,
+    stageStrategies,
+    stageCustomStrategies,
     strategyOrder: j.strategyOrder || {},
   };
 }
@@ -109,17 +121,11 @@ export const useJournalStore = create<JournalState>((set, get) => ({
         loadJournals(datasetId),
         loadSnapshots(datasetId),
       ]);
-      let activeStages = snapshots.length > 0
-        ? snapshots[snapshots.length - 1].stages
-        : undefined;
-      if (!activeStages) {
-        const fc = useRecordsStore.getState().fieldConfig;
-        activeStages = fc.journalStrategyConfig?.length ? fc.journalStrategyConfig : DEFAULT_JOURNAL_STAGES;
-      }
-      // 注入共享策略组
+      // 阶段名称始终从 fieldConfig 取，快照仅用于历史日志渲染
       const fc = useRecordsStore.getState().fieldConfig;
+      const stageNames = fc.journalStrategyConfig?.length ? fc.journalStrategyConfig : DEFAULT_JOURNAL_STAGES;
       const sharedGroups = fc.sharedJournalStrategyGroups ?? DEFAULT_SHARED_STRATEGY_GROUPS;
-      activeStages = buildActiveStages(activeStages, sharedGroups);
+      const activeStages = buildActiveStages(stageNames, sharedGroups);
       const fixedJournals = journals.map(migrateJournal);
       set({ journals: fixedJournals, snapshots, activeStages, loading: false });
     } catch (e: any) {
@@ -156,12 +162,14 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       stockName: draft.stockName,
       stage: draft.stage,
       strategies: [...draft.strategies],
+      stageStrategies: { [draft.stage]: [...draft.strategies] },
+      customStrategies: {},
+      stageCustomStrategies: {},
       strategyBold: [],
       strategyRed: [],
       strategyYellow: [],
       strategyRedText: [],
       priceLevels: ['', '', '', '', '', '', ''],
-      customStrategies: {},
       strategyOrder: {},
       snapshotId,
       status: 'draft',

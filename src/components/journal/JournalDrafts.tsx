@@ -137,7 +137,14 @@ export const JournalDrafts: React.FC = () => {
 
   // 编辑状态
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<Record<string, { stage: string; strategies: string[]; customStrategies: Record<string, CustomStrategy[]> }>>({});
+  type EditStateEntry = {
+    stage: string;
+    strategies: string[];
+    customStrategies: Record<string, CustomStrategy[]>;
+    stageStrategies: Record<string, string[]>;
+    stageCustomStrategies: Record<string, Record<string, CustomStrategy[]>>;
+  };
+  const [editState, setEditState] = useState<Record<string, EditStateEntry>>({});
   const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
 
   // Popover 状态
@@ -244,15 +251,22 @@ export const JournalDrafts: React.FC = () => {
     setEditingId(j.id);
     setEditState(prev => ({
       ...prev,
-      [j.id]: { stage: j.stage, strategies: [...j.strategies], customStrategies: { ...j.customStrategies } },
+      [j.id]: {
+        stage: j.stage,
+        strategies: [...j.strategies],
+        customStrategies: { ...j.customStrategies },
+        stageStrategies: { ...j.stageStrategies, [j.stage]: [...j.strategies] },
+        stageCustomStrategies: { ...j.stageCustomStrategies },
+      },
     }));
   };
 
   const cancelEditing = () => setEditingId(null);
 
-  const getEditState = (id: string) => editState[id] || { stage: '', strategies: [], customStrategies: {} };
+  const getEditState = (id: string): EditStateEntry =>
+    editState[id] || { stage: '', strategies: [], customStrategies: {}, stageStrategies: {}, stageCustomStrategies: {} };
 
-  const updateEditState = (id: string, patch: Partial<typeof editState[string]>) => {
+  const updateEditState = (id: string, patch: Partial<EditStateEntry>) => {
     setEditState(prev => ({ ...prev, [id]: { ...getEditState(id), ...patch } }));
   };
 
@@ -268,12 +282,17 @@ export const JournalDrafts: React.FC = () => {
   const handleSaveEdit = async (journalId: string) => {
     const es = editState[journalId];
     if (!es) return;
+    // 保存当前阶段的策略到 stageStrategies
+    const finalStageStrategies = { ...es.stageStrategies, [es.stage]: [...es.strategies] };
+    const finalStageCustoms = { ...es.stageCustomStrategies, [es.stage]: { ...es.customStrategies } };
     const snapshot = await createSnapshot(activeStages, datasetId);
     if (!snapshot) return;
     await updateDraftJournal(journalId, {
       stage: es.stage,
       strategies: es.strategies,
       customStrategies: es.customStrategies,
+      stageStrategies: finalStageStrategies,
+      stageCustomStrategies: finalStageCustoms,
       snapshotId: snapshot.snapshotId,
     }, datasetId);
     setEditingId(null);
@@ -718,8 +737,22 @@ export const JournalDrafts: React.FC = () => {
                         <div className="space-y-4">
                           <div>
                             <label className="block text-xs font-medium text-gray-600 mb-1">阶段</label>
-                            <select value={es.stage} onChange={(e) => updateEditState(journal.id, { stage: e.target.value })}
-                              className="w-full rounded border border-gray-300 px-3 py-2 text-sm">
+                            <select value={es.stage} onChange={(e) => {
+                              const newStage = e.target.value;
+                              const oldStage = es.stage;
+                              // 保存当前阶段的策略
+                              const newStageStrategies = { ...es.stageStrategies, [oldStage]: [...es.strategies] };
+                              const newStageCustoms = { ...es.stageCustomStrategies, [oldStage]: { ...es.customStrategies } };
+                              // 切换到新阶段：恢复该阶段之前保存的策略
+                              updateEditState(journal.id, {
+                                stage: newStage,
+                                strategies: [...(newStageStrategies[newStage] || [])],
+                                customStrategies: { ...(newStageCustoms[newStage] || {}) },
+                                stageStrategies: newStageStrategies,
+                                stageCustomStrategies: newStageCustoms,
+                              });
+                            }}
+                              className="w-full rounded border border-gray-300 px-3 py-2 text-sm">{/* stageOptions remains below */}
                               {stageOptions.map(s => <option key={s.stageId} value={s.stageId}>{s.stageName}</option>)}
                             </select>
                           </div>

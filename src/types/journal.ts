@@ -43,9 +43,11 @@ export interface TradingJournal {
   openDate: string;        // 开单时间
   stockCode: string;       // 股票代码
   stockName: string;       // 股票名称
-  stage: string;           // 阶段 ID
-  strategies: string[];    // strategyId 列表
-  customStrategies: Record<string, CustomStrategy[]>; // groupId -> 自定义策略列表
+  stage: string;           // 当前活跃阶段 ID
+  strategies: string[];    // 兼容旧数据：当前阶段策略 ID 列表
+  stageStrategies: Record<string, string[]>;  // 新增：stageId → strategyIds
+  customStrategies: Record<string, CustomStrategy[]>; // 兼容旧数据
+  stageCustomStrategies: Record<string, Record<string, CustomStrategy[]>>; // 新增：stageId → groupId → customs
   strategyBold: string[];  // 加粗的策略 strategyId 列表
   strategyRed: string[];   // 标红的策略 strategyId 列表
   strategyYellow: string[];// 标黄的策略 strategyId 列表

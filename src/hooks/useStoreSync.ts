@@ -157,10 +157,16 @@ async function loadDatasetData(datasetId: string): Promise<void> {
 /**
  * 保存 fieldConfig 到 R2
  */
-export async function saveFieldConfigToR2(config: any): Promise<void> {
+export async function saveFieldConfigToR2(config: any): Promise<{ success: boolean; error?: string }> {
   const datasetId = useDatasetStore.getState().currentDatasetId;
-  if (datasetId) {
+  if (!datasetId) {
+    return { success: false, error: '未选择数据集' };
+  }
+  try {
     await r2StorageService.saveConfig(datasetId, config);
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || '保存失败' };
   }
 }
 

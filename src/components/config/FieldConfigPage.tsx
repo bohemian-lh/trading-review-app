@@ -245,8 +245,12 @@ export const FieldConfigPage: React.FC = () => {
         decisionChecklist: pending.decisionChecklist,
       };
       setFieldConfig(newConfig);
-      await saveFieldConfigToR2(newConfig);
-      setMessage({ type: 'success', text: '配置已保存' });
+      const saveResult = await saveFieldConfigToR2(newConfig);
+      if (saveResult.success) {
+        setMessage({ type: 'success', text: '配置已保存' });
+      } else {
+        setMessage({ type: 'error', text: saveResult.error || '保存失败，请重试' });
+      }
     } catch {
       setMessage({ type: 'error', text: '保存失败，请重试' });
     } finally {
