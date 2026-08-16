@@ -350,9 +350,13 @@ export const JournalDrafts: React.FC = () => {
     const newLevels = [...journal.priceLevels];
     newLevels[index] = editingPriceValue;
 
-    // 趋势最低点（index 6）变更时，自动计算固定目标位（index 3）
+    // 趋势最低点（index 6）变更时，自动计算固定目标位（index 3）和第一硬止损位（index 1）
     if (index === 6 && editingPriceValue) {
       const numbers = extractNumbers(editingPriceValue);
+      if (numbers.length >= 1) {
+        // 第一硬止损位 = a * 0.98
+        newLevels[1] = (numbers[0] * 0.98).toFixed(2);
+      }
       if (numbers.length === 1) {
         // 单值：默认系数 1.08 / 1.10
         const lower = numbers[0] * 1.08;
