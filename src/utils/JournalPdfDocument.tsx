@@ -1,23 +1,10 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { TradingJournal } from '@/types';
-import { GAIN_PRICE_INDEXES, getClosePrice, computeGainText } from '@/utils/journalHelpers';
+import { GAIN_PRICE_INDEXES, getClosePrice, computeGainPricedText } from '@/utils/journalHelpers';
 
-// ─── 注册中文字体（本地文件，不依赖 CDN）─────────────────────────
-// Helvetica 不支持中文，注册 Noto Sans SC（public/fonts/ 目录）
-Font.register({
-  family: 'Noto Sans SC',
-  fonts: [
-    {
-      src: '/fonts/noto-sans-sc-regular.ttf',
-      fontWeight: 400,
-    },
-    {
-      src: '/fonts/noto-sans-sc-bold.ttf',
-      fontWeight: 700,
-    },
-  ],
-});
+// 中文字体注册已移至 utils/pdfFonts.ts，由 generateJournalPdfBlob 调用
+// ensurePdfFontsRegistered 统一注册并预加载。
 
 // ─── 辅助类型 ──────────────────────────────────────────────────────
 export interface StrategyItem {
@@ -182,8 +169,8 @@ const PriceLevelsPdf: React.FC<{ journal: TradingJournal }> = ({ journal }) => {
     <>
       {PRICE_LABELS.map((label, i) => {
         const val = levels[i] || '';
-        const gain = GAIN_PRICE_INDEXES.includes(i) ? computeGainText(val, closePrice) : null;
-        const text = label + val + (gain ? '|' + gain : '');
+        const gainText = GAIN_PRICE_INDEXES.includes(i) ? computeGainPricedText(val, closePrice) : null;
+        const text = label + (gainText ?? val);
         return (
           <Text key={i} style={val ? s.priceLineVal : s.priceLine}>
             {text || (label ? label : '')}

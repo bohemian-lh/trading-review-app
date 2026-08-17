@@ -37,12 +37,35 @@ export function getClosePrice(priceLevels: string[]): number | null {
   return nums.length >= 4 ? nums[3] : null;
 }
 
-/** 计算单个价位相对收盘价的涨幅字符串（如 "12%--16%"）；无收盘价或无值时返回 null */
-export function computeGainText(value: string, closePrice: number | null): string | null {
+/** 计算价位相对收盘价的涨幅，返回 "数值(涨幅%)" 格式（保留原始数字与分隔符，如 "19.44(12%) -- 19.80(16%)"）；无收盘价或无值时返回 null */
+export function computeGainPricedText(value: string, closePrice: number | null): string | null {
   if (!value || !closePrice) return null;
-  const nums = extractNumbers(value);
-  if (nums.length === 0) return null;
-  return nums.map(n => `${Math.round(((n - closePrice) / closePrice) * 100)}%`).join('--');
+  let result = '';
+  let cur = '';
+  let hasNumber = false;
+  const flush = () => {
+    if (cur) {
+      const n = parseFloat(cur);
+      if (!isNaN(n)) {
+        result += `${cur}(${Math.round(((n - closePrice) / closePrice) * 100)}%)`;
+        hasNumber = true;
+      } else {
+        result += cur;
+      }
+      cur = '';
+    }
+  };
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if ((ch >= '0' && ch <= '9') || ch === '.') {
+      cur += ch;
+    } else {
+      flush();
+      result += ch;
+    }
+  }
+  flush();
+  return hasNumber ? result : null;
 }
 
 /** 按 strategyGroup 分组已命中的策略 */

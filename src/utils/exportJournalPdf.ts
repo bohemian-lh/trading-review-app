@@ -1,6 +1,7 @@
 import React from 'react';
 import { pdf } from '@react-pdf/renderer';
 import { JournalPdfDocument } from './JournalPdfDocument';
+import { ensurePdfFontsRegistered } from './pdfFonts';
 import type { JournalRow } from './JournalPdfDocument';
 
 export async function generateJournalPdfBlob(
@@ -10,6 +11,7 @@ export async function generateJournalPdfBlob(
   colWidths?: number[],
   rowSpacing?: number,
 ): Promise<Blob> {
+  await ensurePdfFontsRegistered();
   const doc = React.createElement(JournalPdfDocument, { rows, groupIds, groupNames, colWidths, rowSpacing });
   // pdf() expects <Document> element; JournalPdfDocument renders one at runtime
   return await pdf(doc as React.ReactElement).toBlob();

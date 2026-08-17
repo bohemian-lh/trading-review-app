@@ -5,7 +5,8 @@ import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
 import { JournalRow } from '@/utils/JournalPdfDocument';
 import PdfPreviewModal from './PdfPreviewModal';
-import { groupStrategies, type StrategyItem, applySort, extractNumbers, getClosePrice, computeGainText, GAIN_PRICE_INDEXES } from '@/utils/journalHelpers';
+import { groupStrategies, type StrategyItem, applySort, extractNumbers, getClosePrice, computeGainPricedText, GAIN_PRICE_INDEXES } from '@/utils/journalHelpers';
+import { ensurePdfFontsRegistered } from '@/utils/pdfFonts';
 import type { TradingJournal, CustomStrategy } from '@/types';
 
 // ─── 简易 ID 生成 ────────────────────────────────────────────────
@@ -177,6 +178,11 @@ export const JournalDrafts: React.FC = () => {
     };
     document.addEventListener('fullscreenchange', handler);
     return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  // 预热 PDF 中文字体（后台下载/解析，点开预览时即时出结果）
+  useEffect(() => {
+    ensurePdfFontsRegistered().catch(() => { /* 预热失败不影响预览兜底 */ });
   }, []);
 
   const toggleFullscreen = async () => {
@@ -875,10 +881,10 @@ export const JournalDrafts: React.FC = () => {
                         const isEditingPrice = editingPrice?.journalId === journal.id && editingPrice?.index === pl.index;
                         const hasValue = !!userValue;
                         const closePrice = getClosePrice(journal.priceLevels || []);
-                        const gain = GAIN_PRICE_INDEXES.includes(pl.index) ? computeGainText(userValue, closePrice) : null;
+                        const gainText = GAIN_PRICE_INDEXES.includes(pl.index) ? computeGainPricedText(userValue, closePrice) : null;
                         const displayText = pl.label
-                          ? (hasValue ? pl.label + userValue + (gain ? '|' + gain : '') : pl.label)
-                          : (hasValue ? userValue + (gain ? '|' + gain : '') : '点击编辑');
+                          ? (hasValue ? pl.label + (gainText ?? userValue) : pl.label)
+                          : (hasValue ? (gainText ?? userValue) : '点击编辑');
 
                         if (isEditingPrice) {
                           return (
