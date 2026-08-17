@@ -342,28 +342,44 @@ export const JournalDrafts: React.FC = () => {
     newLevels[index] = editingPriceValue;
 
     // 趋势最低点（index 6）变更时，自动计算固定目标位（index 3）和第一硬止损位（index 1）
-    if (index === 6 && editingPriceValue) {
-      const numbers = extractNumbers(editingPriceValue);
-      if (numbers.length >= 1) {
-        // 第一硬止损位 = a * 0.98
-        newLevels[1] = (numbers[0] * 0.98).toFixed(2);
+    if (index === 6) {
+      const oldNums = extractNumbers(journal.priceLevels?.[6] || '');
+      const newNums = extractNumbers(editingPriceValue);
+
+      if (newNums.length === 0) {
+        // 清空趋势最低价：同步清理自动计算的 index 1 / index 3
+        newLevels[1] = '';
+        newLevels[3] = '';
+      } else {
+        // 仅当 a/b/c（前三个数字）变化时才重算，避免补/改今日收盘价 d 时覆盖手调值
+        const abcChanged =
+          oldNums[0] !== newNums[0] ||
+          oldNums[1] !== newNums[1] ||
+          oldNums[2] !== newNums[2];
+
+        if (abcChanged) {
+          if (newNums.length >= 1) {
+            // 第一硬止损位 = a * 0.98
+            newLevels[1] = (newNums[0] * 0.98).toFixed(2);
+          }
+          if (newNums.length === 1) {
+            // 单值：默认系数 1.08 / 1.10
+            const lower = newNums[0] * 1.08;
+            const upper = newNums[0] * 1.10;
+            newLevels[3] = `${lower.toFixed(2)} -- ${upper.toFixed(2)}`;
+          } else if (newNums.length >= 3) {
+            // 三值及以上：第一个为基准价，后两个为系数百分比（如 10→1.10, 15→1.15）
+            // 四值 (a,b,c,d) 时 d 为今日收盘价，仅用于涨幅计算，不参与系数
+            const trendLow = newNums[0];
+            const coefLower = 1 + newNums[1] / 100;
+            const coefUpper = 1 + newNums[2] / 100;
+            const lower = trendLow * coefLower;
+            const upper = trendLow * coefUpper;
+            newLevels[3] = `${lower.toFixed(2)} -- ${upper.toFixed(2)}`;
+          }
+          // 其他情况回退默认，不修改 index 3
+        }
       }
-      if (numbers.length === 1) {
-        // 单值：默认系数 1.08 / 1.10
-        const lower = numbers[0] * 1.08;
-        const upper = numbers[0] * 1.10;
-        newLevels[3] = `${lower.toFixed(2)} -- ${upper.toFixed(2)}`;
-      } else if (numbers.length >= 3) {
-        // 三值及以上：第一个为基准价，后两个为系数百分比（如 10→1.10, 15→1.15）
-        // 四值 (a,b,c,d) 时 d 为今日收盘价，仅用于涨幅计算，不参与系数
-        const trendLow = numbers[0];
-        const coefLower = 1 + numbers[1] / 100;
-        const coefUpper = 1 + numbers[2] / 100;
-        const lower = trendLow * coefLower;
-        const upper = trendLow * coefUpper;
-        newLevels[3] = `${lower.toFixed(2)} -- ${upper.toFixed(2)}`;
-      }
-      // 其他情况回退默认，不修改 index 3
     }
 
     setEditingPrice(null);
