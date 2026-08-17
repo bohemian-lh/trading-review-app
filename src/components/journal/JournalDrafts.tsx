@@ -883,6 +883,7 @@ export const JournalDrafts: React.FC = () => {
                         const closePrice = getClosePrice(journal.priceLevels || []);
                         const gainSegments = GAIN_PRICE_INDEXES.includes(pl.index) ? computeGainSegments(userValue, closePrice) : null;
                         const segments = gainSegments ?? (hasValue ? [{ text: userValue, isGain: false }] : null);
+                        const label = pl.index === 1 && hasValue ? '硬止损：' : pl.label;
 
                         if (isEditingPrice) {
                           return (
@@ -912,14 +913,14 @@ export const JournalDrafts: React.FC = () => {
                                 : 'border border-dashed border-gray-300 text-gray-400 hover:border-gray-400'
                             }`}
                           >
-                            {pl.label}
+                            {label}
                             {segments
                               ? segments.map((seg, i) =>
                                   seg.isGain
                                     ? <span key={i} className="text-red-600">{seg.text}</span>
                                     : <span key={i}>{seg.text}</span>
                                 )
-                              : (pl.label ? null : '点击编辑')}
+                              : (label ? null : '点击编辑')}
                           </div>
                         );
                       })}

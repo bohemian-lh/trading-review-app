@@ -174,9 +174,10 @@ const PriceLevelsPdf: React.FC<{ journal: TradingJournal }> = ({ journal }) => {
         const val = levels[i] || '';
         const gainSegments = GAIN_PRICE_INDEXES.includes(i) ? computeGainSegments(val, closePrice) : null;
         const segments = gainSegments ?? (val ? [{ text: val, isGain: false }] : null);
+        const effectiveLabel = i === 1 && val ? '硬止损：' : label;
         return (
           <Text key={i} style={val ? s.priceLineVal : s.priceLine}>
-            {label}
+            {effectiveLabel}
             {segments?.map((seg, j) =>
               seg.isGain
                 ? <Text key={j} style={s.gainText}>{seg.text}</Text>

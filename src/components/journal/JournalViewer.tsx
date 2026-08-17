@@ -428,8 +428,9 @@ export const JournalViewer: React.FC = () => {
                       {PRICE_LEVELS.map(pl => {
                         const userValue = (journal.priceLevels || [])[pl.index] || '';
                         const hasValue = !!userValue;
-                        const displayText = pl.label
-                          ? (hasValue ? pl.label + userValue : pl.label)
+                        const label = pl.index === 1 && hasValue ? '硬止损：' : pl.label;
+                        const displayText = label
+                          ? (hasValue ? label + userValue : label)
                           : (hasValue ? userValue : null);
 
                         if (!displayText) return null;
