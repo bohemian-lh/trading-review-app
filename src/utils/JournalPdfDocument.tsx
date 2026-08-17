@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { TradingJournal } from '@/types';
-import { GAIN_PRICE_INDEXES, getClosePrice, computeGainPricedText } from '@/utils/journalHelpers';
+import { GAIN_PRICE_INDEXES, getClosePrice, computeGainSegments } from '@/utils/journalHelpers';
 
 // 中文字体注册已移至 utils/pdfFonts.ts，由 generateJournalPdfBlob 调用
 // ensurePdfFontsRegistered 统一注册并预加载。
@@ -102,6 +102,9 @@ const s = StyleSheet.create({
     color: '#1d4ed8',
     marginBottom: 1,
   },
+  gainText: {
+    color: '#dc2626',
+  },
   cardBase: {
     padding: '1 3',
     borderRadius: 2,
@@ -169,11 +172,16 @@ const PriceLevelsPdf: React.FC<{ journal: TradingJournal }> = ({ journal }) => {
     <>
       {PRICE_LABELS.map((label, i) => {
         const val = levels[i] || '';
-        const gainText = GAIN_PRICE_INDEXES.includes(i) ? computeGainPricedText(val, closePrice) : null;
-        const text = label + (gainText ?? val);
+        const gainSegments = GAIN_PRICE_INDEXES.includes(i) ? computeGainSegments(val, closePrice) : null;
+        const segments = gainSegments ?? (val ? [{ text: val, isGain: false }] : null);
         return (
           <Text key={i} style={val ? s.priceLineVal : s.priceLine}>
-            {text || (label ? label : '')}
+            {label}
+            {segments?.map((seg, j) =>
+              seg.isGain
+                ? <Text key={j} style={s.gainText}>{seg.text}</Text>
+                : <Text key={j}>{seg.text}</Text>
+            )}
           </Text>
         );
       })}

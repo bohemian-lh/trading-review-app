@@ -5,7 +5,7 @@ import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
 import { JournalRow } from '@/utils/JournalPdfDocument';
 import PdfPreviewModal from './PdfPreviewModal';
-import { groupStrategies, type StrategyItem, applySort, extractNumbers, getClosePrice, computeGainPricedText, GAIN_PRICE_INDEXES } from '@/utils/journalHelpers';
+import { groupStrategies, type StrategyItem, applySort, extractNumbers, getClosePrice, computeGainSegments, GAIN_PRICE_INDEXES } from '@/utils/journalHelpers';
 import { ensurePdfFontsRegistered } from '@/utils/pdfFonts';
 import type { TradingJournal, CustomStrategy } from '@/types';
 
@@ -881,10 +881,8 @@ export const JournalDrafts: React.FC = () => {
                         const isEditingPrice = editingPrice?.journalId === journal.id && editingPrice?.index === pl.index;
                         const hasValue = !!userValue;
                         const closePrice = getClosePrice(journal.priceLevels || []);
-                        const gainText = GAIN_PRICE_INDEXES.includes(pl.index) ? computeGainPricedText(userValue, closePrice) : null;
-                        const displayText = pl.label
-                          ? (hasValue ? pl.label + (gainText ?? userValue) : pl.label)
-                          : (hasValue ? (gainText ?? userValue) : '点击编辑');
+                        const gainSegments = GAIN_PRICE_INDEXES.includes(pl.index) ? computeGainSegments(userValue, closePrice) : null;
+                        const segments = gainSegments ?? (hasValue ? [{ text: userValue, isGain: false }] : null);
 
                         if (isEditingPrice) {
                           return (
@@ -914,7 +912,14 @@ export const JournalDrafts: React.FC = () => {
                                 : 'border border-dashed border-gray-300 text-gray-400 hover:border-gray-400'
                             }`}
                           >
-                            {displayText}
+                            {pl.label}
+                            {segments
+                              ? segments.map((seg, i) =>
+                                  seg.isGain
+                                    ? <span key={i} className="text-red-600">{seg.text}</span>
+                                    : <span key={i}>{seg.text}</span>
+                                )
+                              : (pl.label ? null : '点击编辑')}
                           </div>
                         );
                       })}

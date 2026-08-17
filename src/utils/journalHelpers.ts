@@ -37,35 +37,51 @@ export function getClosePrice(priceLevels: string[]): number | null {
   return nums.length >= 4 ? nums[3] : null;
 }
 
-/** 计算价位相对收盘价的涨幅，返回 "数值(涨幅%)" 格式（保留原始数字与分隔符，如 "19.44(12%) -- 19.80(16%)"）；无收盘价或无值时返回 null */
-export function computeGainPricedText(value: string, closePrice: number | null): string | null {
+/** 涨幅展示片段：isGain 为 true 的片段为涨幅百分比，需红色渲染 */
+export interface GainSegment {
+  text: string;
+  isGain: boolean;
+}
+
+/** 计算价位相对收盘价的涨幅，返回片段数组（数字段与涨幅段分离，保留原始数字与分隔符）；无收盘价或无值时返回 null */
+export function computeGainSegments(value: string, closePrice: number | null): GainSegment[] | null {
   if (!value || !closePrice) return null;
-  let result = '';
-  let cur = '';
+  const segments: GainSegment[] = [];
+  let cur = ''; // 数字缓冲区
+  let sep = ''; // 分隔符缓冲区
   let hasNumber = false;
-  const flush = () => {
+
+  const flushNum = () => {
     if (cur) {
       const n = parseFloat(cur);
       if (!isNaN(n)) {
-        result += `${cur}(${Math.round(((n - closePrice) / closePrice) * 100)}%)`;
+        segments.push({ text: cur, isGain: false });
+        segments.push({ text: `(${Math.round(((n - closePrice) / closePrice) * 100)}%)`, isGain: true });
         hasNumber = true;
       } else {
-        result += cur;
+        segments.push({ text: cur, isGain: false });
       }
       cur = '';
     }
   };
+  const flushSep = () => {
+    if (sep) { segments.push({ text: sep, isGain: false }); sep = ''; }
+  };
+
   for (let i = 0; i < value.length; i++) {
     const ch = value[i];
     if ((ch >= '0' && ch <= '9') || ch === '.') {
+      flushSep();
       cur += ch;
     } else {
-      flush();
-      result += ch;
+      flushNum();
+      sep += ch;
     }
   }
-  flush();
-  return hasNumber ? result : null;
+  flushNum();
+  flushSep();
+
+  return hasNumber ? segments : null;
 }
 
 /** 按 strategyGroup 分组已命中的策略 */
