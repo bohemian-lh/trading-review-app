@@ -3,9 +3,9 @@ import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings, Maximize, M
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { StrategyCard } from './StrategyCard';
-import { exportJournalPdf } from '@/utils/exportJournalPdf';
 import { JournalRow } from '@/utils/JournalPdfDocument';
-import { groupStrategies, type StrategyItem, applySort } from '@/utils/journalHelpers';
+import PdfPreviewModal from './PdfPreviewModal';
+import { groupStrategies, type StrategyItem, applySort, extractNumbers, getClosePrice, computeGainText, GAIN_PRICE_INDEXES } from '@/utils/journalHelpers';
 import type { TradingJournal, CustomStrategy } from '@/types';
 
 // ─── 简易 ID 生成 ────────────────────────────────────────────────
@@ -166,8 +166,8 @@ export const JournalDrafts: React.FC = () => {
   const [settings, setSettings] = useState<TableSettings>(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // 监听全屏变化
@@ -197,6 +197,18 @@ export const JournalDrafts: React.FC = () => {
     if (!stage) return ['策略组1', '策略组2', '策略组3', '策略组4'];
     return stage.strategyGroups.map(g => g.groupName);
   }, [activeStages]);
+
+  // 导出/预览用的行数据（过滤无策略内容的行）
+  const exportRows = useMemo<JournalRow[]>(() => {
+    return drafts.map(j => {
+      const grp = groupStrategies(j, activeStages, snapshots);
+      const sorted = { ...grp };
+      for (const gid of groupIds) {
+        sorted[gid] = applySort(grp[gid] || [], j.strategyOrder[gid]);
+      }
+      return { journal: j, grouped: sorted };
+    }).filter(row => groupIds.some(gid => (row.grouped[gid] || []).length > 0));
+  }, [drafts, activeStages, snapshots, groupIds]);
 
   // 持久化设置变更
   const updateSettings = useCallback((patch: Partial<TableSettings>) => {
@@ -323,27 +335,6 @@ export const JournalDrafts: React.FC = () => {
     setEditingPriceValue(currentValue);
   };
 
-  /** 从字符串中提取所有数字（纯字符遍历，无正则开销） */
-  const extractNumbers = (s: string): number[] => {
-    const nums: number[] = [];
-    let cur = '';
-    for (let i = 0; i < s.length; i++) {
-      const ch = s[i];
-      if ((ch >= '0' && ch <= '9') || ch === '.') {
-        cur += ch;
-      } else if (cur) {
-        const n = parseFloat(cur);
-        if (!isNaN(n)) nums.push(n);
-        cur = '';
-      }
-    }
-    if (cur) {
-      const n = parseFloat(cur);
-      if (!isNaN(n)) nums.push(n);
-    }
-    return nums;
-  };
-
   const savePriceLevel = async (journalId: string, index: number) => {
     const journal = journals.find(j => j.id === journalId);
     if (!journal) return;
@@ -362,8 +353,9 @@ export const JournalDrafts: React.FC = () => {
         const lower = numbers[0] * 1.08;
         const upper = numbers[0] * 1.10;
         newLevels[3] = `${lower.toFixed(2)} -- ${upper.toFixed(2)}`;
-      } else if (numbers.length === 3) {
-        // 三值：第一个为基准价，后两个为系数百分比（如 10→1.10, 15→1.15）
+      } else if (numbers.length >= 3) {
+        // 三值及以上：第一个为基准价，后两个为系数百分比（如 10→1.10, 15→1.15）
+        // 四值 (a,b,c,d) 时 d 为今日收盘价，仅用于涨幅计算，不参与系数
         const trendLow = numbers[0];
         const coefLower = 1 + numbers[1] / 100;
         const coefUpper = 1 + numbers[2] / 100;
@@ -566,33 +558,15 @@ export const JournalDrafts: React.FC = () => {
         <div className="text-sm text-gray-500">{drafts.length} 条当前交易</div>
         <div className="relative flex items-center gap-1">
           <button
-            onClick={async () => {
-              setExporting(true);
+            onClick={() => {
               setExportError(null);
-              try {
-                const rows: JournalRow[] = drafts.map(j => {
-                  const grp = groupStrategies(j, activeStages, snapshots);
-                  // 应用自定义排序到每个组
-                  const sorted = { ...grp };
-                  for (const gid of groupIds) {
-                    sorted[gid] = applySort(grp[gid] || [], j.strategyOrder[gid]);
-                  }
-                  return { journal: j, grouped: sorted };
-                }).filter(row => groupIds.some(gid => (row.grouped[gid] || []).length > 0));
-                await exportJournalPdf(rows, groupIds, groupNames);
-              } catch (e: any) {
-                console.error('PDF export failed:', e);
-                setExportError(e?.message || '导出失败，请重试');
-              } finally {
-                setExporting(false);
-              }
+              setShowPdfPreview(true);
             }}
-            disabled={exporting}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors text-gray-500 hover:bg-gray-100 disabled:opacity-50"
-            title="导出PDF"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors text-gray-500 hover:bg-gray-100"
+            title="预览/导出PDF"
           >
             <Download className="h-3.5 w-3.5" />
-            {exporting ? '导出中...' : 'PDF'}
+            PDF
           </button>
           <button
             onClick={toggleFullscreen}
@@ -884,9 +858,11 @@ export const JournalDrafts: React.FC = () => {
                         const userValue = (journal.priceLevels || [])[pl.index] || '';
                         const isEditingPrice = editingPrice?.journalId === journal.id && editingPrice?.index === pl.index;
                         const hasValue = !!userValue;
+                        const closePrice = getClosePrice(journal.priceLevels || []);
+                        const gain = GAIN_PRICE_INDEXES.includes(pl.index) ? computeGainText(userValue, closePrice) : null;
                         const displayText = pl.label
-                          ? (hasValue ? pl.label + userValue : pl.label)
-                          : (hasValue ? userValue : '点击编辑');
+                          ? (hasValue ? pl.label + userValue + (gain ? '|' + gain : '') : pl.label)
+                          : (hasValue ? userValue + (gain ? '|' + gain : '') : '点击编辑');
 
                         if (isEditingPrice) {
                           return (
@@ -981,6 +957,16 @@ export const JournalDrafts: React.FC = () => {
       {/* 点击空白处关闭设置面板 */}
       {showSettings && (
         <div className="fixed inset-0 z-10" onClick={() => setShowSettings(false)} />
+      )}
+
+      {/* PDF 预览弹窗 */}
+      {showPdfPreview && (
+        <PdfPreviewModal
+          rows={exportRows}
+          groupIds={groupIds}
+          groupNames={groupNames}
+          onClose={() => setShowPdfPreview(false)}
+        />
       )}
     </div>
   );

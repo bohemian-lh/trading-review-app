@@ -7,6 +7,44 @@ export interface StrategyItem {
   isCustom?: boolean;
 }
 
+/** 参与收盘价涨幅计算的价位索引（第一硬止损位/目标位/固定目标位/压力1/压力2） */
+export const GAIN_PRICE_INDEXES = [1, 2, 3, 4, 5];
+
+/** 从字符串提取所有数字（纯字符遍历，无正则开销） */
+export function extractNumbers(s: string): number[] {
+  const nums: number[] = [];
+  let cur = '';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if ((ch >= '0' && ch <= '9') || ch === '.') {
+      cur += ch;
+    } else if (cur) {
+      const n = parseFloat(cur);
+      if (!isNaN(n)) nums.push(n);
+      cur = '';
+    }
+  }
+  if (cur) {
+    const n = parseFloat(cur);
+    if (!isNaN(n)) nums.push(n);
+  }
+  return nums;
+}
+
+/** 从 priceLevels 提取今日收盘价（趋势最低点 index 6 的第 4 个数字） */
+export function getClosePrice(priceLevels: string[]): number | null {
+  const nums = extractNumbers(priceLevels?.[6] || '');
+  return nums.length >= 4 ? nums[3] : null;
+}
+
+/** 计算单个价位相对收盘价的涨幅字符串（如 "12%--16%"）；无收盘价或无值时返回 null */
+export function computeGainText(value: string, closePrice: number | null): string | null {
+  if (!value || !closePrice) return null;
+  const nums = extractNumbers(value);
+  if (nums.length === 0) return null;
+  return nums.map(n => `${Math.round(((n - closePrice) / closePrice) * 100)}%`).join('--');
+}
+
 /** 按 strategyGroup 分组已命中的策略 */
 export function groupStrategies(
   journal: { stage: string; strategies: string[]; stageStrategies?: Record<string, string[]>; customStrategies?: Record<string, CustomStrategy[]>; stageCustomStrategies?: Record<string, Record<string, CustomStrategy[]>> },

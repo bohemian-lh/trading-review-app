@@ -1,6 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
 import type { TradingJournal } from '@/types';
+import { GAIN_PRICE_INDEXES, getClosePrice, computeGainText } from '@/utils/journalHelpers';
 
 // ─── 注册中文字体（本地文件，不依赖 CDN）─────────────────────────
 // Helvetica 不支持中文，注册 Noto Sans SC（public/fonts/ 目录）
@@ -34,6 +35,8 @@ interface Props {
   rows: JournalRow[];
   groupIds: string[];
   groupNames: string[];
+  colWidths?: number[];  // 每股一列宽度（pt），索引 0 = 名称列，1..N = 策略组列
+  rowSpacing?: number;   // 策略卡片间距（pt）
 }
 
 // ─── 固定配置 ──────────────────────────────────────────────────────
@@ -141,7 +144,8 @@ const s = StyleSheet.create({
 const StrategyCardPdf: React.FC<{
   item: StrategyItem;
   journal: TradingJournal;
-}> = ({ item, journal }) => {
+  spacing?: number;
+}> = ({ item, journal, spacing }) => {
   const sid = item.strategyId;
   const isBold = journal.strategyBold.includes(sid);
   const isRed = journal.strategyRed.includes(sid);
@@ -150,6 +154,7 @@ const StrategyCardPdf: React.FC<{
   const cardStyle: any[] = [s.cardBase];
   if (isRed) cardStyle.push(s.cardRedBg);
   if (item.isCustom) cardStyle.push(s.cardCustom);
+  if (spacing != null) cardStyle.push({ marginBottom: spacing });
 
   let color = '#374151'; // gray-700
   if (isRed) color = '#991b1b'; // red-800
@@ -172,13 +177,16 @@ const StrategyCardPdf: React.FC<{
 // ─── 价格上涨 ──────────────────────────────────────────────────────
 const PriceLevelsPdf: React.FC<{ journal: TradingJournal }> = ({ journal }) => {
   const levels = journal.priceLevels || [];
+  const closePrice = getClosePrice(levels);
   return (
     <>
       {PRICE_LABELS.map((label, i) => {
         const val = levels[i] || '';
+        const gain = GAIN_PRICE_INDEXES.includes(i) ? computeGainText(val, closePrice) : null;
+        const text = label + val + (gain ? '|' + gain : '');
         return (
           <Text key={i} style={val ? s.priceLineVal : s.priceLine}>
-            {label}{val || (label ? label : '')}
+            {text || (label ? label : '')}
           </Text>
         );
       })}
@@ -187,19 +195,35 @@ const PriceLevelsPdf: React.FC<{ journal: TradingJournal }> = ({ journal }) => {
 };
 
 // ─── 表头行 ────────────────────────────────────────────────────────
-const TableHeader: React.FC<{ groupNames: string[] }> = ({ groupNames }) => (
+const TableHeader: React.FC<{ groupNames: string[]; colWidths?: number[] }> = ({ groupNames, colWidths }) => (
   <View style={s.thead} fixed>
-    <View style={s.th}>
+    <View style={headerCellStyle(0, groupNames.length, colWidths)}>
       <Text style={s.thText}>股票名称</Text>
     </View>
     {groupNames.map((name, i) => (
-      <View key={i} style={i === groupNames.length - 1 ? s.thLast : s.th}>
+      <View key={i} style={headerCellStyle(i + 1, groupNames.length, colWidths)}>
         <Text style={s.thText}>{name}</Text>
       </View>
     ))}
   </View>
 );
 TableHeader.displayName = 'TableHeader';
+
+// 列宽：提供 colWidths 时使用固定 pt 宽度，否则等分
+function colWidthStyle(colIdx: number, colWidths?: number[]) {
+  if (colWidths && colWidths[colIdx] != null) {
+    return { flexGrow: 0, flexShrink: 0, flexBasis: colWidths[colIdx] };
+  }
+  return { flex: 1 };
+}
+
+function headerCellStyle(colIdx: number, groupCount: number, colWidths?: number[]) {
+  return [colIdx === groupCount ? s.thLast : s.th, colWidthStyle(colIdx, colWidths)];
+}
+
+function bodyCellStyle(colIdx: number, groupCount: number, colWidths?: number[]) {
+  return [colIdx === groupCount ? s.tdLast : s.td, colWidthStyle(colIdx, colWidths)];
+}
 
 // ─── 分页逻辑 ──────────────────────────────────────────────────────
 // 复用表头组件避免嵌套 Page 的问题
@@ -209,6 +233,8 @@ export const JournalPdfDocument: React.FC<Props> = ({
   rows,
   groupIds,
   groupNames,
+  colWidths,
+  rowSpacing,
 }) => {
   const totalRows = rows.length;
   const totalPages = Math.ceil(totalRows / ROWS_PER_PAGE);
@@ -221,13 +247,15 @@ export const JournalPdfDocument: React.FC<Props> = ({
           <Text style={s.title}>当前交易导出</Text>
           <Text style={s.subtitle}>{today}  共{totalRows}条  第1/1页</Text>
           <View style={s.table}>
-            <TableHeader groupNames={groupNames} />
+            <TableHeader groupNames={groupNames} colWidths={colWidths} />
             {rows.map((row, idx) => (
               <DataRow
                 key={row.journal.id}
                 row={row}
                 groupIds={groupIds}
                 rowIdx={idx}
+                colWidths={colWidths}
+                rowSpacing={rowSpacing}
               />
             ))}
           </View>
@@ -254,13 +282,15 @@ export const JournalPdfDocument: React.FC<Props> = ({
               {today}  共{totalRows}条  第{pageIdx + 1}/{totalPages}页
             </Text>
             <View style={s.table}>
-              <TableHeader groupNames={groupNames} />
+              <TableHeader groupNames={groupNames} colWidths={colWidths} />
               {pageRows.map((row, idx) => (
                 <DataRow
                   key={row.journal.id}
                   row={row}
                   groupIds={groupIds}
                   rowIdx={start + idx}
+                  colWidths={colWidths}
+                  rowSpacing={rowSpacing}
                 />
               ))}
             </View>
@@ -276,14 +306,16 @@ const DataRow: React.FC<{
   row: JournalRow;
   groupIds: string[];
   rowIdx: number;
-}> = ({ row, groupIds, rowIdx }) => {
+  colWidths?: number[];
+  rowSpacing?: number;
+}> = ({ row, groupIds, rowIdx, colWidths, rowSpacing }) => {
   const { journal, grouped } = row;
   const bgColor = ROW_COLORS[rowIdx % ROW_COLORS.length];
 
   return (
     <View style={[s.row, { backgroundColor: bgColor }]} wrap={false}>
       {/* 名称列 */}
-      <View style={s.td}>
+      <View style={bodyCellStyle(0, groupIds.length, colWidths)}>
         <Text style={s.stockName}>{journal.stockName || '-'}</Text>
         <PriceLevelsPdf journal={journal} />
       </View>
@@ -291,12 +323,13 @@ const DataRow: React.FC<{
       {groupIds.map((gid, i) => {
         const items = grouped[gid] || [];
         return (
-          <View key={gid} style={i === groupIds.length - 1 ? s.tdLast : s.td}>
+          <View key={gid} style={bodyCellStyle(i + 1, groupIds.length, colWidths)}>
             {items.map(item => (
               <StrategyCardPdf
                 key={item.strategyId}
                 item={item}
                 journal={journal}
+                spacing={rowSpacing}
               />
             ))}
           </View>

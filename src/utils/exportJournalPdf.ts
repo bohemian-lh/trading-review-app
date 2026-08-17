@@ -3,14 +3,26 @@ import { pdf } from '@react-pdf/renderer';
 import { JournalPdfDocument } from './JournalPdfDocument';
 import type { JournalRow } from './JournalPdfDocument';
 
+export async function generateJournalPdfBlob(
+  rows: JournalRow[],
+  groupIds: string[],
+  groupNames: string[],
+  colWidths?: number[],
+  rowSpacing?: number,
+): Promise<Blob> {
+  const doc = React.createElement(JournalPdfDocument, { rows, groupIds, groupNames, colWidths, rowSpacing });
+  // pdf() expects <Document> element; JournalPdfDocument renders one at runtime
+  return await pdf(doc as React.ReactElement).toBlob();
+}
+
 export async function exportJournalPdf(
   rows: JournalRow[],
   groupIds: string[],
   groupNames: string[],
+  colWidths?: number[],
+  rowSpacing?: number,
 ): Promise<void> {
-  const doc = React.createElement(JournalPdfDocument, { rows, groupIds, groupNames });
-  // pdf() expects <Document> element; JournalPdfDocument renders one at runtime
-  const blob = await pdf(doc as React.ReactElement).toBlob();
+  const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, colWidths, rowSpacing);
 
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
