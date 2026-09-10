@@ -3,7 +3,7 @@ import { Trash2, Link, Undo2, ArrowUpDown } from 'lucide-react';
 import { useRecordsStore } from '@/stores';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
-import { groupStrategies, applySort, resolvePriceCodes } from '@/utils/journalHelpers';
+import { groupStrategies, applySort, resolvePriceCodeSegments } from '@/utils/journalHelpers';
 import type { TradingJournal } from '@/types';
 
 // ─── 价位标签 ──────────────────────────────────────────────────────
@@ -301,7 +301,9 @@ export const JournalViewer: React.FC = () => {
         key={strategyId}
         className={`px-1.5 py-0.5 rounded text-xs ${bgClass} ${borderClass} ${textClass} ${isBold ? 'font-bold' : ''}`}
       >
-        {resolvePriceCodes(text, journal.priceLevels, priceLevelCodes)}
+        {resolvePriceCodeSegments(text, journal.priceLevels, priceLevelCodes).map((seg, i) =>
+          seg.isHardStop ? <span key={i} className="text-red-600">{seg.text}</span> : <React.Fragment key={i}>{seg.text}</React.Fragment>
+        )}
       </span>
     );
   };
@@ -430,6 +432,7 @@ export const JournalViewer: React.FC = () => {
                         const userValue = (journal.priceLevels || [])[pl.index] || '';
                         const hasValue = !!userValue;
                         const label = pl.index === 1 && hasValue ? '硬止损：' : pl.label;
+                        const isHardStop = pl.index === 1 && hasValue;
                         const displayText = label
                           ? (hasValue ? label + userValue : label)
                           : (hasValue ? userValue : null);
@@ -445,7 +448,8 @@ export const JournalViewer: React.FC = () => {
                                 : 'border border-dashed border-gray-200 text-gray-400'
                             }`}
                           >
-                            {displayText}
+                            {label}
+                            {hasValue ? (isHardStop ? <span className="text-red-600">{userValue}</span> : userValue) : null}
                           </div>
                         );
                       })}

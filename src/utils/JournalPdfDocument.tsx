@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { TradingJournal } from '@/types';
-import { GAIN_PRICE_INDEXES, getClosePrice, computeGainSegments, resolvePriceCodes } from '@/utils/journalHelpers';
+import { GAIN_PRICE_INDEXES, getClosePrice, computeGainSegments, resolvePriceCodeSegments } from '@/utils/journalHelpers';
 
 // 中文字体注册已移至 utils/pdfFonts.ts，由 generateJournalPdfBlob 调用
 // ensurePdfFontsRegistered 统一注册并预加载。
@@ -95,6 +95,9 @@ const s = StyleSheet.create({
   gainText: {
     color: '#dc2626',
   },
+  hardStopText: {
+    color: '#dc2626',
+  },
   cardBase: {
     padding: '1 3',
     borderRadius: 2,
@@ -149,7 +152,9 @@ const StrategyCardPdf: React.FC<{
         fontWeight: isBold ? 'bold' as const : 'normal' as const,
         color,
       }}>
-        {resolvePriceCodes(item.text, journal.priceLevels, priceLevelCodes)}
+        {resolvePriceCodeSegments(item.text, journal.priceLevels, priceLevelCodes).map((seg, i) => (
+          <Text key={i} style={seg.isHardStop ? { color: '#dc2626' } : {}}>{seg.text}</Text>
+        ))}
       </Text>
     </View>
   );
@@ -166,13 +171,14 @@ const PriceLevelsPdf: React.FC<{ journal: TradingJournal }> = ({ journal }) => {
         const gainSegments = GAIN_PRICE_INDEXES.includes(i) ? computeGainSegments(val, closePrice) : null;
         const segments = gainSegments ?? (val ? [{ text: val, isGain: false }] : null);
         const effectiveLabel = i === 1 && val ? '硬止损：' : label;
+        const isHardStop = i === 1 && !!val;
         return (
           <Text key={i} style={val ? s.priceLineVal : s.priceLine}>
             {effectiveLabel}
             {segments?.map((seg, j) =>
               seg.isGain
                 ? <Text key={j} style={s.gainText}>{seg.text}</Text>
-                : <Text key={j}>{seg.text}</Text>
+                : <Text key={j} style={isHardStop ? s.hardStopText : {}}>{seg.text}</Text>
             )}
           </Text>
         );

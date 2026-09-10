@@ -138,60 +138,90 @@ const COMPUTED_PRICE_CODES: Record<string, (levels: string[]) => string | null> 
   },
 };
 
-/** 将策略文本中的 /代码 替换为该日志对应价位的数值；价位未填写时保留 /代码 原文 */
-export function resolvePriceCodes(
+/** 策略文本 /代码 替换后的片段：isHardStop 表示该片段来自硬止损位（index 1） */
+export interface PriceCodeSegment {
+  text: string;
+  isHardStop: boolean;
+}
+
+/** 将策略文本中的 /代码 替换为数值并按来源拆分片段；硬止损位（index 1）标记为红色 */
+export function resolvePriceCodeSegments(
   text: string,
   priceLevels: string[],
   codeMap: Record<number, string> | undefined,
-): string {
-  if (!text) return text;
+): PriceCodeSegment[] {
+  if (!text) return [];
 
   const closePrice = getClosePrice(priceLevels);
 
-  // code -> 取值函数；按 code 长度降序匹配，避免前缀代码抢先命中
-  const resolvers = new Map<string, (levels: string[]) => string | null>();
+  // code -> 取值函数 + 是否硬止损；按 code 长度降序匹配，避免前缀代码抢先命中
+  const resolvers = new Map<string, { resolve: (levels: string[]) => string | null; isHardStop: boolean }>();
   for (const [code, fn] of Object.entries(COMPUTED_PRICE_CODES)) {
-    resolvers.set(code, fn);
+    resolvers.set(code, { resolve: fn, isHardStop: false });
   }
   if (codeMap) {
     for (const [k, v] of Object.entries(codeMap)) {
       const code = (v || '').trim();
       if (!code) continue;
       const idx = Number(k);
-      resolvers.set(code, (levels) => {
-        const raw = (levels?.[idx] || '').trim();
-        return raw ? formatValueWithGain(raw, closePrice) : null;
+      resolvers.set(code, {
+        resolve: (levels) => {
+          const raw = (levels?.[idx] || '').trim();
+          return raw ? formatValueWithGain(raw, closePrice) : null;
+        },
+        isHardStop: idx === 1,
       });
     }
   }
-  if (resolvers.size === 0) return text;
+
+  if (resolvers.size === 0) return [{ text, isHardStop: false }];
   const codes = [...resolvers.keys()].sort((a, b) => b.length - a.length);
 
-  let result = '';
+  const segments: PriceCodeSegment[] = [];
+  let buf = '';
+  const flush = () => {
+    if (buf) {
+      segments.push({ text: buf, isHardStop: false });
+      buf = '';
+    }
+  };
+
   let i = 0;
   while (i < text.length) {
     if (text[i] === '/') {
       let matched = false;
       for (const code of codes) {
         if (text.startsWith(code, i + 1)) {
-          const value = resolvers.get(code)!(priceLevels);
+          flush();
+          const entry = resolvers.get(code)!;
+          const value = entry.resolve(priceLevels);
           // 有值则代入，无值保留 /代码 原文
-          result += value || `/${code}`;
+          segments.push({ text: value || `/${code}`, isHardStop: entry.isHardStop });
           i += 1 + code.length;
           matched = true;
           break;
         }
       }
       if (!matched) {
-        result += text[i];
+        buf += text[i];
         i++;
       }
     } else {
-      result += text[i];
+      buf += text[i];
       i++;
     }
   }
-  return result;
+  flush();
+  return segments;
+}
+
+/** 将策略文本中的 /代码 替换为该日志对应价位的数值；价位未填写时保留 /代码 原文 */
+export function resolvePriceCodes(
+  text: string,
+  priceLevels: string[],
+  codeMap: Record<number, string> | undefined,
+): string {
+  return resolvePriceCodeSegments(text, priceLevels, codeMap).map((s) => s.text).join('');
 }
 
 /** 按自定义顺序排序策略项，无 order 时保持原序 */
