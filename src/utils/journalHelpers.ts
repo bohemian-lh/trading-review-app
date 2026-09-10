@@ -121,22 +121,39 @@ export function groupStrategies(
   return result;
 }
 
+// 计算型价位代码：不占用存储价位，渲染时按公式从 priceLevels 计算
+const COMPUTED_PRICE_CODES: Record<string, (levels: string[]) => string | null> = {
+  // 毛刺 = 收盘价 * 0.01 / 3.66（收盘价 = 趋势最低点第 4 项）
+  maoci: (levels) => {
+    const close = getClosePrice(levels);
+    if (close == null) return null;
+    return ((close * 0.01) / 3.66).toFixed(2);
+  },
+};
+
 /** 将策略文本中的 /代码 替换为该日志对应价位的数值；价位未填写时保留 /代码 原文 */
 export function resolvePriceCodes(
   text: string,
   priceLevels: string[],
   codeMap: Record<number, string> | undefined,
 ): string {
-  if (!text || !codeMap) return text;
+  if (!text) return text;
 
-  // code -> 价位索引，按 code 长度降序匹配，避免前缀代码抢先命中
-  const codeToIndex = new Map<string, number>();
-  for (const [k, v] of Object.entries(codeMap)) {
-    const code = (v || '').trim();
-    if (code) codeToIndex.set(code, Number(k));
+  // code -> 取值函数；按 code 长度降序匹配，避免前缀代码抢先命中
+  const resolvers = new Map<string, (levels: string[]) => string | null>();
+  for (const [code, fn] of Object.entries(COMPUTED_PRICE_CODES)) {
+    resolvers.set(code, fn);
   }
-  if (codeToIndex.size === 0) return text;
-  const codes = [...codeToIndex.keys()].sort((a, b) => b.length - a.length);
+  if (codeMap) {
+    for (const [k, v] of Object.entries(codeMap)) {
+      const code = (v || '').trim();
+      if (!code) continue;
+      const idx = Number(k);
+      resolvers.set(code, (levels) => (levels?.[idx] || '').trim() || null);
+    }
+  }
+  if (resolvers.size === 0) return text;
+  const codes = [...resolvers.keys()].sort((a, b) => b.length - a.length);
 
   let result = '';
   let i = 0;
@@ -145,7 +162,7 @@ export function resolvePriceCodes(
       let matched = false;
       for (const code of codes) {
         if (text.startsWith(code, i + 1)) {
-          const value = (priceLevels?.[codeToIndex.get(code)!] || '').trim();
+          const value = resolvers.get(code)!(priceLevels);
           // 有值则代入，无值保留 /代码 原文
           result += value || `/${code}`;
           i += 1 + code.length;
