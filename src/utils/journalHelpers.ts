@@ -56,7 +56,7 @@ export function computeGainSegments(value: string, closePrice: number | null): G
       const n = parseFloat(cur);
       if (!isNaN(n)) {
         segments.push({ text: cur, isGain: false });
-        segments.push({ text: `(${Math.round(((n - closePrice) / closePrice) * 100)}%)`, isGain: true });
+        segments.push({ text: `(${(((n - closePrice) / closePrice) * 100).toFixed(1)}%)`, isGain: true });
         hasNumber = true;
       } else {
         segments.push({ text: cur, isGain: false });
@@ -121,6 +121,13 @@ export function groupStrategies(
   return result;
 }
 
+/** 将价格数值附带其相对收盘价的涨幅（如 36.60(5.2%)），无收盘价时原样返回 */
+function formatValueWithGain(value: string, closePrice: number | null): string {
+  const segments = computeGainSegments(value, closePrice);
+  if (!segments) return value;
+  return segments.map((s) => s.text).join('');
+}
+
 // 计算型价位代码：不占用存储价位，渲染时按公式从 priceLevels 计算
 const COMPUTED_PRICE_CODES: Record<string, (levels: string[]) => string | null> = {
   // 毛刺 = 收盘价 * 0.01 / 3.66（收盘价 = 趋势最低点第 4 项）
@@ -139,6 +146,8 @@ export function resolvePriceCodes(
 ): string {
   if (!text) return text;
 
+  const closePrice = getClosePrice(priceLevels);
+
   // code -> 取值函数；按 code 长度降序匹配，避免前缀代码抢先命中
   const resolvers = new Map<string, (levels: string[]) => string | null>();
   for (const [code, fn] of Object.entries(COMPUTED_PRICE_CODES)) {
@@ -149,7 +158,10 @@ export function resolvePriceCodes(
       const code = (v || '').trim();
       if (!code) continue;
       const idx = Number(k);
-      resolvers.set(code, (levels) => (levels?.[idx] || '').trim() || null);
+      resolvers.set(code, (levels) => {
+        const raw = (levels?.[idx] || '').trim();
+        return raw ? formatValueWithGain(raw, closePrice) : null;
+      });
     }
   }
   if (resolvers.size === 0) return text;
