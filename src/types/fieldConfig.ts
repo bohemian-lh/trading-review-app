@@ -27,6 +27,8 @@ export interface FieldConfig {
   mindsetTable?: MindsetRow[];
   // 决策质量检查清单（可选）
   decisionChecklist?: DecisionCheckItem[];
+  // 价位代码（key = 价位索引 0..6，value = 代码；策略文本中可用 /代码 引用，渲染时替换为对应日志数值）
+  priceLevelCodes?: Record<number, string>;
 }
 
 // 默认直方图 9 切分点
@@ -74,4 +76,14 @@ export const DEFAULT_FIELD_CONFIG: FieldConfig = {
       includedTypes: ['风险释放平台转一致', '双阳平台转一致'],
     },
   ],
+  // 7 个价位对应的代码（策略文本可用 /代码 引用）
+  priceLevelCodes: {
+    0: 'entry',
+    1: 'stop',
+    2: 'target',
+    3: 'fixTarget',
+    4: 'res1',
+    5: 'res2',
+    6: 'low',
+  },
 };

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { TradingJournal } from '@/types';
-import { GAIN_PRICE_INDEXES, getClosePrice, computeGainSegments } from '@/utils/journalHelpers';
+import { GAIN_PRICE_INDEXES, getClosePrice, computeGainSegments, resolvePriceCodes } from '@/utils/journalHelpers';
 
 // 中文字体注册已移至 utils/pdfFonts.ts，由 generateJournalPdfBlob 调用
 // ensurePdfFontsRegistered 统一注册并预加载。
@@ -24,6 +24,7 @@ interface Props {
   groupNames: string[];
   colWidths?: number[];  // 每股一列宽度（pt），索引 0 = 名称列，1..N = 策略组列
   rowSpacing?: number;   // 策略卡片间距（pt）
+  priceLevelCodes?: Record<number, string>;  // 价位代码映射，用于策略文本 /代码 替换
 }
 
 // ─── 固定配置 ──────────────────────────────────────────────────────
@@ -135,7 +136,8 @@ const StrategyCardPdf: React.FC<{
   item: StrategyItem;
   journal: TradingJournal;
   spacing?: number;
-}> = ({ item, journal, spacing }) => {
+  priceLevelCodes?: Record<number, string>;
+}> = ({ item, journal, spacing, priceLevelCodes }) => {
   const sid = item.strategyId;
   const isBold = journal.strategyBold.includes(sid);
   const isRed = journal.strategyRed.includes(sid);
@@ -158,7 +160,7 @@ const StrategyCardPdf: React.FC<{
         fontWeight: isBold ? 'bold' as const : 'normal' as const,
         color,
       }}>
-        {item.text}
+        {resolvePriceCodes(item.text, journal.priceLevels, priceLevelCodes)}
       </Text>
     </View>
   );
@@ -231,6 +233,7 @@ export const JournalPdfDocument: React.FC<Props> = ({
   groupNames,
   colWidths,
   rowSpacing,
+  priceLevelCodes,
 }) => {
   const totalRows = rows.length;
   const totalPages = Math.ceil(totalRows / ROWS_PER_PAGE);
@@ -252,6 +255,7 @@ export const JournalPdfDocument: React.FC<Props> = ({
                 rowIdx={idx}
                 colWidths={colWidths}
                 rowSpacing={rowSpacing}
+                priceLevelCodes={priceLevelCodes}
               />
             ))}
           </View>
@@ -287,6 +291,7 @@ export const JournalPdfDocument: React.FC<Props> = ({
                   rowIdx={start + idx}
                   colWidths={colWidths}
                   rowSpacing={rowSpacing}
+                  priceLevelCodes={priceLevelCodes}
                 />
               ))}
             </View>
@@ -304,7 +309,8 @@ const DataRow: React.FC<{
   rowIdx: number;
   colWidths?: number[];
   rowSpacing?: number;
-}> = ({ row, groupIds, rowIdx, colWidths, rowSpacing }) => {
+  priceLevelCodes?: Record<number, string>;
+}> = ({ row, groupIds, rowIdx, colWidths, rowSpacing, priceLevelCodes }) => {
   const { journal, grouped } = row;
   const bgColor = ROW_COLORS[rowIdx % ROW_COLORS.length];
 
@@ -326,6 +332,7 @@ const DataRow: React.FC<{
                 item={item}
                 journal={journal}
                 spacing={rowSpacing}
+                priceLevelCodes={priceLevelCodes}
               />
             ))}
           </View>

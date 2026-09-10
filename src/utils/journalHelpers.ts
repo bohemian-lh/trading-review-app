@@ -121,6 +121,50 @@ export function groupStrategies(
   return result;
 }
 
+/** 将策略文本中的 /代码 替换为该日志对应价位的数值；价位未填写时保留 /代码 原文 */
+export function resolvePriceCodes(
+  text: string,
+  priceLevels: string[],
+  codeMap: Record<number, string> | undefined,
+): string {
+  if (!text || !codeMap) return text;
+
+  // code -> 价位索引，按 code 长度降序匹配，避免前缀代码抢先命中
+  const codeToIndex = new Map<string, number>();
+  for (const [k, v] of Object.entries(codeMap)) {
+    const code = (v || '').trim();
+    if (code) codeToIndex.set(code, Number(k));
+  }
+  if (codeToIndex.size === 0) return text;
+  const codes = [...codeToIndex.keys()].sort((a, b) => b.length - a.length);
+
+  let result = '';
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '/') {
+      let matched = false;
+      for (const code of codes) {
+        if (text.startsWith(code, i + 1)) {
+          const value = (priceLevels?.[codeToIndex.get(code)!] || '').trim();
+          // 有值则代入，无值保留 /代码 原文
+          result += value || `/${code}`;
+          i += 1 + code.length;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        result += text[i];
+        i++;
+      }
+    } else {
+      result += text[i];
+      i++;
+    }
+  }
+  return result;
+}
+
 /** 按自定义顺序排序策略项，无 order 时保持原序 */
 export function applySort(items: StrategyItem[], order?: string[]): StrategyItem[] {
   if (!order || order.length === 0) return items;

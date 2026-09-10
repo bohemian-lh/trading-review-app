@@ -33,10 +33,11 @@ interface Props {
   rows: JournalRow[];
   groupIds: string[];
   groupNames: string[];
+  priceLevelCodes?: Record<number, string>;
   onClose: () => void;
 }
 
-const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, onClose }) => {
+const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLevelCodes, onClose }) => {
   const groupCount = groupIds.length;
   const [settings, setSettings] = useState<PdfSettings>(() => loadSettings(groupCount));
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -51,7 +52,7 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, onClose 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, settings.colWidths, settings.rowSpacing);
+        const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, settings.colWidths, settings.rowSpacing, priceLevelCodes);
         setBlobUrl(prev => {
           if (prev) URL.revokeObjectURL(prev);
           return URL.createObjectURL(blob);
@@ -96,7 +97,7 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, onClose 
 
   const handleDownload = async () => {
     try {
-      const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, settings.colWidths, settings.rowSpacing);
+      const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, settings.colWidths, settings.rowSpacing, priceLevelCodes);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

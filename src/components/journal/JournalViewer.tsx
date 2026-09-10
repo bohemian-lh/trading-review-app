@@ -3,7 +3,7 @@ import { Trash2, Link, Undo2, ArrowUpDown } from 'lucide-react';
 import { useRecordsStore } from '@/stores';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
-import { groupStrategies, applySort } from '@/utils/journalHelpers';
+import { groupStrategies, applySort, resolvePriceCodes } from '@/utils/journalHelpers';
 import type { TradingJournal } from '@/types';
 
 // ─── 价位标签 ──────────────────────────────────────────────────────
@@ -155,6 +155,7 @@ const MatchPopover: React.FC<{
 // ─── 组件 ──────────────────────────────────────────────────────────
 export const JournalViewer: React.FC = () => {
   const records = useRecordsStore(s => s.records);
+  const priceLevelCodes = useRecordsStore(s => s.fieldConfig.priceLevelCodes);
   const { journals, snapshots, activeStages, deleteJournal, updateJournalRecordId, revertJournal } = useJournalStore();
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
@@ -300,7 +301,7 @@ export const JournalViewer: React.FC = () => {
         key={strategyId}
         className={`px-1.5 py-0.5 rounded text-xs ${bgClass} ${borderClass} ${textClass} ${isBold ? 'font-bold' : ''}`}
       >
-        {text}
+        {resolvePriceCodes(text, journal.priceLevels, priceLevelCodes)}
       </span>
     );
   };

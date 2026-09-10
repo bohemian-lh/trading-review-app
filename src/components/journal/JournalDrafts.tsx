@@ -2,10 +2,11 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings, Maximize, Minimize, Download } from 'lucide-react';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
+import { useRecordsStore } from '@/stores';
 import { StrategyCard } from './StrategyCard';
 import { JournalRow } from '@/utils/JournalPdfDocument';
 import PdfPreviewModal from './PdfPreviewModal';
-import { groupStrategies, type StrategyItem, applySort, extractNumbers, getClosePrice, computeGainSegments, GAIN_PRICE_INDEXES } from '@/utils/journalHelpers';
+import { groupStrategies, type StrategyItem, applySort, extractNumbers, getClosePrice, computeGainSegments, GAIN_PRICE_INDEXES, resolvePriceCodes } from '@/utils/journalHelpers';
 import { ensurePdfFontsRegistered } from '@/utils/pdfFonts';
 import type { TradingJournal, CustomStrategy } from '@/types';
 
@@ -135,6 +136,7 @@ const StrategyPopover: React.FC<{
 export const JournalDrafts: React.FC = () => {
   const { journals, snapshots, activeStages, createSnapshot, finalizeJournal, updateDraftJournal, deleteJournal } = useJournalStore();
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
+  const priceLevelCodes = useRecordsStore(s => s.fieldConfig.priceLevelCodes);
 
   // 编辑状态
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -365,8 +367,10 @@ export const JournalDrafts: React.FC = () => {
 
         if (abcChanged) {
           if (newNums.length >= 1) {
-            // 第一硬止损位 = a * 0.98
-            newLevels[1] = (newNums[0] * 0.98).toFixed(2);
+            // 第一硬止损位 = a * 0.98 -- a * 0.97
+            const stopLower = newNums[0] * 0.98;
+            const stopUpper = newNums[0] * 0.97;
+            newLevels[1] = `${stopLower.toFixed(2)} -- ${stopUpper.toFixed(2)}`;
           }
           if (newNums.length === 1) {
             // 单值：默认系数 1.08 / 1.10
@@ -556,7 +560,7 @@ export const JournalDrafts: React.FC = () => {
           setDragState(null);
         }}
       >
-        {item.text}
+        {resolvePriceCodes(item.text, journal.priceLevels, priceLevelCodes)}
       </span>
     );
   };
@@ -993,6 +997,7 @@ export const JournalDrafts: React.FC = () => {
           rows={exportRows}
           groupIds={groupIds}
           groupNames={groupNames}
+          priceLevelCodes={priceLevelCodes}
           onClose={() => setShowPdfPreview(false)}
         />
       )}

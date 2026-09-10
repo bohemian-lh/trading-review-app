@@ -3,7 +3,10 @@ import { Settings, Plus, Trash2, Save, X } from 'lucide-react';
 import { useRecordsStore } from '@/stores';
 import { saveFieldConfigToR2 } from '@/hooks/useStoreSync';
 import type { FieldConfig, AggregateRule, HistogramConfig, JournalStageConfig, JournalStrategyGroup, MindsetRow, DecisionCheckItem } from '@/types';
-import { DEFAULT_HISTOGRAM_CUTS, DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS, DEFAULT_MINDSET_ROWS } from '@/types';
+import { DEFAULT_HISTOGRAM_CUTS, DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS, DEFAULT_MINDSET_ROWS, DEFAULT_FIELD_CONFIG } from '@/types';
+
+// 7 个价位的语义标签（用于字段配置中编辑代码）
+const PRICE_LEVEL_LABELS = ['建仓价', '第一硬止损位', '目标位', '固定目标位', '压力1', '压力2', '趋势最低点'];
 
 type PendingConfig = {
   tradingTypes: string[];
@@ -14,6 +17,7 @@ type PendingConfig = {
   sharedStrategyGroups: JournalStrategyGroup[];
   mindsetTable: MindsetRow[];
   decisionChecklist: DecisionCheckItem[];
+  priceLevelCodes: Record<number, string>;
 };
 
 export const FieldConfigPage: React.FC = () => {
@@ -38,6 +42,7 @@ export const FieldConfigPage: React.FC = () => {
     decisionChecklist: fieldConfig.decisionChecklist
       ? fieldConfig.decisionChecklist.map(i => ({ ...i }))
       : [],
+    priceLevelCodes: { ...(fieldConfig.priceLevelCodes || DEFAULT_FIELD_CONFIG.priceLevelCodes || {}) },
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -63,6 +68,7 @@ export const FieldConfigPage: React.FC = () => {
       decisionChecklist: fieldConfig.decisionChecklist
         ? fieldConfig.decisionChecklist.map(i => ({ ...i }))
         : [],
+      priceLevelCodes: { ...(fieldConfig.priceLevelCodes || DEFAULT_FIELD_CONFIG.priceLevelCodes || {}) },
     });
     setMessage(null);
   }, [fieldConfig]);
@@ -76,6 +82,7 @@ export const FieldConfigPage: React.FC = () => {
     sharedStrategyGroups: fieldConfig.sharedJournalStrategyGroups || DEFAULT_SHARED_STRATEGY_GROUPS,
     mindsetTable: fieldConfig.mindsetTable || DEFAULT_MINDSET_ROWS,
     decisionChecklist: fieldConfig.decisionChecklist || [],
+    priceLevelCodes: fieldConfig.priceLevelCodes || DEFAULT_FIELD_CONFIG.priceLevelCodes || {},
   });
 
   // ---------- tradingType ----------
@@ -139,6 +146,7 @@ export const FieldConfigPage: React.FC = () => {
         sharedStrategyGroups: p.sharedStrategyGroups,
         mindsetTable: p.mindsetTable,
         decisionChecklist: p.decisionChecklist,
+        priceLevelCodes: p.priceLevelCodes,
       };
     });
     setMessage(null);
@@ -243,6 +251,7 @@ export const FieldConfigPage: React.FC = () => {
         sharedJournalStrategyGroups: pending.sharedStrategyGroups.map(g => ({ ...g, strategies: [...g.strategies] })),
         mindsetTable: pending.mindsetTable,
         decisionChecklist: pending.decisionChecklist,
+        priceLevelCodes: { ...pending.priceLevelCodes },
       };
       setFieldConfig(newConfig);
       const saveResult = await saveFieldConfigToR2(newConfig);
@@ -496,6 +505,29 @@ export const FieldConfigPage: React.FC = () => {
       <div className="border rounded-lg p-5 space-y-4">
         <h3 className="text-lg font-semibold text-gray-900">交易日志 - 策略配置</h3>
         <p className="text-xs text-gray-400">配置共享策略组和阶段名称。所有阶段共用同一套策略组。</p>
+
+        {/* 价位代码 */}
+        <div className="border-t pt-4">
+          <h4 className="text-sm font-medium text-gray-700 mb-1">价位代码</h4>
+          <p className="text-xs text-gray-400 mb-3">为 7 个价位设定代码，在策略文本中用 <code className="text-blue-600">/代码</code> 引用，渲染时自动代入该日志对应的数值（未填写时保留代码原文）。</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {PRICE_LEVEL_LABELS.map((label, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 w-20 truncate">{label}</span>
+                <input
+                  type="text"
+                  value={pending.priceLevelCodes[idx] ?? ''}
+                  onChange={(e) => setPending(p => ({
+                    ...p,
+                    priceLevelCodes: { ...p.priceLevelCodes, [idx]: e.target.value },
+                  }))}
+                  placeholder={`/${idx}`}
+                  className="flex-1 text-xs border rounded px-2 py-1"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* 策略组配置（共享） */}
         <div className="border-t pt-4">
