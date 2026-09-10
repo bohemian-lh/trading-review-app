@@ -39,17 +39,6 @@ const s = StyleSheet.create({
     fontFamily: 'Noto Sans SC',
     fontSize: 8,
   },
-  title: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 4,
-    color: '#111827',
-  },
-  subtitle: {
-    fontSize: 8,
-    color: '#6b7280',
-    marginBottom: 12,
-  },
   table: {
     width: '100%',
   },
@@ -193,10 +182,10 @@ const PriceLevelsPdf: React.FC<{ journal: TradingJournal }> = ({ journal }) => {
 };
 
 // ─── 表头行 ────────────────────────────────────────────────────────
-const TableHeader: React.FC<{ groupNames: string[]; colWidths?: number[] }> = ({ groupNames, colWidths }) => (
+const TableHeader: React.FC<{ groupNames: string[]; colWidths?: number[]; date?: string }> = ({ groupNames, colWidths, date }) => (
   <View style={s.thead} fixed>
     <View style={headerCellStyle(0, groupNames.length, colWidths)}>
-      <Text style={s.thText}>股票名称</Text>
+      <Text style={s.thText}>股票名称 {date}</Text>
     </View>
     {groupNames.map((name, i) => (
       <View key={i} style={headerCellStyle(i + 1, groupNames.length, colWidths)}>
@@ -243,10 +232,8 @@ export const JournalPdfDocument: React.FC<Props> = ({
     return (
       <Document title={`当前交易_${today}`}>
         <Page size="A4" orientation="landscape" style={s.page}>
-          <Text style={s.title}>当前交易导出</Text>
-          <Text style={s.subtitle}>{today}  共{totalRows}条  第1/1页</Text>
           <View style={s.table}>
-            <TableHeader groupNames={groupNames} colWidths={colWidths} />
+            <TableHeader groupNames={groupNames} colWidths={colWidths} date={today} />
             {rows.map((row, idx) => (
               <DataRow
                 key={row.journal.id}
@@ -277,12 +264,8 @@ export const JournalPdfDocument: React.FC<Props> = ({
             orientation="landscape"
             style={s.page}
           >
-            <Text style={s.title}>当前交易导出</Text>
-            <Text style={s.subtitle}>
-              {today}  共{totalRows}条  第{pageIdx + 1}/{totalPages}页
-            </Text>
             <View style={s.table}>
-              <TableHeader groupNames={groupNames} colWidths={colWidths} />
+              <TableHeader groupNames={groupNames} colWidths={colWidths} date={today} />
               {pageRows.map((row, idx) => (
                 <DataRow
                   key={row.journal.id}
