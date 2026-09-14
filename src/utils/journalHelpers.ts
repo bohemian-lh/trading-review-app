@@ -134,7 +134,7 @@ const COMPUTED_PRICE_CODES: Record<string, (levels: string[]) => string | null> 
   maoci: (levels) => {
     const close = getClosePrice(levels);
     if (close == null) return null;
-    return ((close * 0.01) / 3.66).toFixed(2);
+    return ((close * 0.01) / 3.66).toFixed(3);
   },
 };
 
