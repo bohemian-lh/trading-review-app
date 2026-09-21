@@ -104,6 +104,12 @@ const s = StyleSheet.create({
     marginBottom: 2,
     border: '1 solid #d1d5db',
     backgroundColor: '#f3f4f6',
+    flexShrink: 1,
+  },
+  strategyGroupCell: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
   },
   cardRedBg: {
     backgroundColor: '#fee2e2',
@@ -138,7 +144,7 @@ const StrategyCardPdf: React.FC<{
   const cardStyle: any[] = [s.cardBase];
   if (isRed) cardStyle.push(s.cardRedBg);
   if (item.isCustom) cardStyle.push(s.cardCustom);
-  if (spacing != null) cardStyle.push({ marginBottom: spacing });
+  if (spacing != null) cardStyle.push({ marginRight: spacing, marginBottom: spacing });
 
   let color = '#374151'; // gray-700
   if (isRed) color = '#991b1b'; // red-800
@@ -314,7 +320,7 @@ const DataRow: React.FC<{
       {groupIds.map((gid, i) => {
         const items = grouped[gid] || [];
         return (
-          <View key={gid} style={bodyCellStyle(i + 1, groupIds.length, colWidths)}>
+          <View key={gid} style={[...bodyCellStyle(i + 1, groupIds.length, colWidths), s.strategyGroupCell]}>
             {items.map(item => (
               <StrategyCardPdf
                 key={item.strategyId}

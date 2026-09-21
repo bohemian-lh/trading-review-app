@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import type { TradingJournal, CustomStrategy, JournalConfigSnapshot, JournalStageConfig, JournalStrategyGroup, JournalDraft } from '@/types';
 import { DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS } from '@/types';
-import { loadJournals, saveJournals, loadSnapshots, saveSnapshots } from '@/services/journalService';
+import { loadJournals, saveJournals, loadSnapshots, saveSnapshots, loadWatchlist, saveWatchlist } from '@/services/journalService';
 import { generateId } from '@/utils';
 import { useRecordsStore } from '@/stores';
 
@@ -10,6 +10,7 @@ interface JournalState {
   journals: TradingJournal[];
   snapshots: JournalConfigSnapshot[];
   activeStages: JournalStageConfig[];
+  watchlist: string[];
   loading: boolean;
   error: string | null;
 
@@ -21,6 +22,7 @@ interface JournalState {
   updateDraftJournal: (journalId: string, partial: Partial<TradingJournal>, datasetId: string) => Promise<void>;
   updateJournalRecordId: (journalId: string, recordId: string | undefined, datasetId: string) => Promise<void>;
   deleteJournal: (journalId: string, datasetId: string) => Promise<void>;
+  updateWatchlist: (watchlist: string[], datasetId: string) => Promise<void>;
   saveDraft: (entryId: string, draft: JournalDraft) => void;
   getDraft: (entryId: string) => JournalDraft | null;
   getAllDraftEntries: () => JournalDraft[];
@@ -111,15 +113,17 @@ export const useJournalStore = create<JournalState>((set, get) => ({
   journals: [],
   snapshots: [],
   activeStages: buildActiveStages(DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS),
+  watchlist: [],
   loading: false,
   error: null,
 
   init: async (datasetId: string) => {
     set({ loading: true, error: null });
     try {
-      const [journals, snapshots] = await Promise.all([
+      const [journals, snapshots, watchlist] = await Promise.all([
         loadJournals(datasetId),
         loadSnapshots(datasetId),
+        loadWatchlist(datasetId),
       ]);
       // 阶段名称始终从 fieldConfig 取，快照仅用于历史日志渲染
       const fc = useRecordsStore.getState().fieldConfig;
@@ -127,7 +131,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       const sharedGroups = fc.sharedJournalStrategyGroups ?? DEFAULT_SHARED_STRATEGY_GROUPS;
       const activeStages = buildActiveStages(stageNames, sharedGroups);
       const fixedJournals = journals.map(migrateJournal);
-      set({ journals: fixedJournals, snapshots, activeStages, loading: false });
+      set({ journals: fixedJournals, snapshots, activeStages, watchlist: Array.isArray(watchlist) ? watchlist : [], loading: false });
     } catch (e: any) {
       set({ error: e.message, loading: false });
     }
@@ -246,6 +250,15 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     try {
       await saveJournals(datasetId, newJournals);
       set({ journals: newJournals });
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  updateWatchlist: async (watchlist: string[], datasetId: string) => {
+    try {
+      await saveWatchlist(datasetId, watchlist);
+      set({ watchlist });
     } catch (e: any) {
       set({ error: e.message });
     }

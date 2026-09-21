@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings, Maximize, Minimize, Download } from 'lucide-react';
+import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings, Maximize, Minimize, Download, Plus } from 'lucide-react';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { useRecordsStore } from '@/stores';
@@ -134,7 +134,7 @@ const StrategyPopover: React.FC<{
 
 // ─── 组件 ──────────────────────────────────────────────────────────
 export const JournalDrafts: React.FC = () => {
-  const { journals, snapshots, activeStages, createSnapshot, finalizeJournal, updateDraftJournal, deleteJournal } = useJournalStore();
+  const { journals, snapshots, activeStages, createSnapshot, finalizeJournal, updateDraftJournal, deleteJournal, watchlist, updateWatchlist } = useJournalStore();
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
   const priceLevelCodes = useRecordsStore(s => s.fieldConfig.priceLevelCodes);
 
@@ -149,6 +149,11 @@ export const JournalDrafts: React.FC = () => {
   };
   const [editState, setEditState] = useState<Record<string, EditStateEntry>>({});
   const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
+
+  // 「后续可关注」编辑状态
+  const [editingWatchIndex, setEditingWatchIndex] = useState<number | null>(null);
+  const [editingWatchValue, setEditingWatchValue] = useState('');
+  const [newWatchValue, setNewWatchValue] = useState('');
 
   // Popover 状态
   const [popover, setPopover] = useState<{ journalId: string; strategyId: string; x: number; y: number } | null>(null);
@@ -320,9 +325,17 @@ export const JournalDrafts: React.FC = () => {
 
   const handleFinalize = async (journalId: string) => {
     if (!confirm('确认提交此条日志？提交后将移至「已存储日志」。')) return;
+    const journal = journals.find(j => j.id === journalId);
+    let addToWatchlist = false;
+    if (journal?.stockName && confirm('是否将股票名称添加到「后续可关注」？')) {
+      addToWatchlist = true;
+    }
     setSubmittingIds(prev => new Set([...prev, journalId]));
     try {
       await finalizeJournal(journalId, datasetId);
+      if (addToWatchlist && journal?.stockName) {
+        await updateWatchlist([...watchlist, journal.stockName], datasetId);
+      }
     } finally {
       setSubmittingIds(prev => {
         const next = new Set(prev);
@@ -335,6 +348,29 @@ export const JournalDrafts: React.FC = () => {
   const handleDelete = async (journalId: string) => {
     if (!confirm('确认删除此条创建？')) return;
     await deleteJournal(journalId, datasetId);
+  };
+
+  // ─── 「后续可关注」操作 ──────────────────────────────────────
+  const commitWatchlist = (next: string[]) => {
+    updateWatchlist(next.map(s => s.trim()).filter(Boolean), datasetId);
+  };
+
+  const saveWatchItem = (index: number, value: string) => {
+    const next = [...watchlist];
+    next[index] = value;
+    commitWatchlist(next);
+    setEditingWatchIndex(null);
+  };
+
+  const removeWatchItem = (index: number) => {
+    commitWatchlist(watchlist.filter((_, i) => i !== index));
+  };
+
+  const addWatchItem = () => {
+    const v = newWatchValue.trim();
+    if (!v) return;
+    commitWatchlist([...watchlist, v]);
+    setNewWatchValue('');
   };
 
   // ─── 价位卡片内联编辑 ────────────────────────────────────────
@@ -938,7 +974,7 @@ export const JournalDrafts: React.FC = () => {
                     return (
                       <td key={gid} className="px-3 py-1 border border-gray-200 align-top" style={getCellStyle(gid)}>
                         {items.length > 0 ? (
-                          <div className="flex flex-col" style={{ gap: `${settings.rowGaps[gid] || 4}px` }}>
+                          <div className="flex flex-wrap items-start" style={{ gap: `${settings.rowGaps[gid] || 4}px 2ch` }}>
                             {items.map(item => renderStrategyCard(item, journal, gid))}
                           </div>
                         ) : (
@@ -968,6 +1004,49 @@ export const JournalDrafts: React.FC = () => {
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* ─── 后续可关注 ─────────────────────────────────────── */}
+      <div className="rounded-lg bg-white border border-gray-200 p-3">
+        <div className="text-xs text-gray-500 mb-2">后续可关注</div>
+        <div className="flex flex-wrap items-center gap-2">
+          {watchlist.map((name, idx) =>
+            editingWatchIndex === idx ? (
+              <span key={idx}>
+                <input
+                  autoFocus
+                  value={editingWatchValue}
+                  onChange={(e) => setEditingWatchValue(e.target.value)}
+                  onBlur={() => saveWatchItem(idx, editingWatchValue)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveWatchItem(idx, editingWatchValue);
+                    if (e.key === 'Escape') setEditingWatchIndex(null);
+                  }}
+                  className="text-xs border border-blue-400 rounded px-2 py-0.5 outline-none bg-white"
+                />
+              </span>
+            ) : (
+              <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-solid border-blue-200 bg-blue-50 text-blue-800 text-xs">
+                <button onClick={() => { setEditingWatchIndex(idx); setEditingWatchValue(name); }} className="hover:underline">{name}</button>
+                <button onClick={() => removeWatchItem(idx)} className="text-blue-400 hover:text-red-500" title="删除">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )
+          )}
+          <span className="inline-flex items-center gap-1">
+            <input
+              value={newWatchValue}
+              onChange={(e) => setNewWatchValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') addWatchItem(); }}
+              placeholder="新增"
+              className="text-xs border border-dashed border-gray-300 rounded px-2 py-0.5 outline-none w-20 focus:border-blue-400"
+            />
+            <button onClick={addWatchItem} className="text-gray-400 hover:text-blue-600 p-0.5 rounded" title="添加">
+              <Plus className="h-4 w-4" />
+            </button>
+          </span>
+        </div>
       </div>
 
       {/* Popover */}

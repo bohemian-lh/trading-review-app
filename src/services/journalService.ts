@@ -40,3 +40,14 @@ export async function loadSnapshots(datasetId: string): Promise<JournalConfigSna
 export async function saveSnapshots(datasetId: string, snapshots: JournalConfigSnapshot[]): Promise<void> {
   await apiPost('/api/journal-snapshots', datasetId, { snapshots });
 }
+
+/** 加载「后续可关注」列表 */
+export async function loadWatchlist(datasetId: string): Promise<string[]> {
+  const data = await apiGet<{ success: boolean; watchlist: string[] }>('/api/journal-watchlist', datasetId);
+  return data.watchlist || [];
+}
+
+/** 保存「后续可关注」列表（全量覆盖） */
+export async function saveWatchlist(datasetId: string, watchlist: string[]): Promise<void> {
+  await apiPost('/api/journal-watchlist', datasetId, { watchlist });
+}

@@ -252,21 +252,11 @@ export const JournalViewer: React.FC = () => {
   [records]);
 
   // ─── 只读策略卡片（无交互）─────────────────────────────────────────
-  const renderStrategyCard = (text: string, strategyId: string, journal: TradingJournal) => {
+  const renderStrategyCard = (text: string, strategyId: string, journal: TradingJournal, isCustom: boolean) => {
     const isBold = journal.strategyBold.includes(strategyId);
     const isRed = journal.strategyRed.includes(strategyId);
     const isYellow = journal.strategyYellow.includes(strategyId);
     const isRedText = journal.strategyRedText.includes(strategyId);
-
-    let isCustom = false;
-    if (journal.customStrategies) {
-      for (const gid of Object.keys(journal.customStrategies)) {
-        if (journal.customStrategies[gid]?.some(cs => cs.id === strategyId)) {
-          isCustom = true;
-          break;
-        }
-      }
-    }
 
     let bgClass = '';
     if (isRed) {
@@ -460,8 +450,8 @@ export const JournalViewer: React.FC = () => {
                     return (
                       <td key={gid} className="px-3 py-1 border border-gray-200 align-top text-xs">
                         {items.length > 0 ? (
-                          <div className="flex flex-col gap-1">
-                            {items.map(item => renderStrategyCard(item.text, item.strategyId, journal))}
+                          <div className="flex flex-wrap items-start" style={{ gap: '4px 2ch' }}>
+                            {items.map(item => renderStrategyCard(item.text, item.strategyId, journal, item.isCustom ?? false))}
                           </div>
                         ) : (
                           <span className="text-gray-300">-</span>
