@@ -1080,6 +1080,7 @@ export const JournalDrafts: React.FC = () => {
           groupIds={groupIds}
           groupNames={groupNames}
           priceLevelCodes={priceLevelCodes}
+          watchlist={watchlist}
           onClose={() => setShowPdfPreview(false)}
         />
       )}

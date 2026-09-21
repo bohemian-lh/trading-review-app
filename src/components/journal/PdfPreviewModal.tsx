@@ -34,10 +34,11 @@ interface Props {
   groupIds: string[];
   groupNames: string[];
   priceLevelCodes?: Record<number, string>;
+  watchlist?: string[];
   onClose: () => void;
 }
 
-const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLevelCodes, onClose }) => {
+const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLevelCodes, watchlist, onClose }) => {
   const groupCount = groupIds.length;
   const [settings, setSettings] = useState<PdfSettings>(() => loadSettings(groupCount));
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -52,7 +53,7 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLev
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, settings.colWidths, settings.rowSpacing, priceLevelCodes);
+        const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, settings.colWidths, settings.rowSpacing, priceLevelCodes, watchlist);
         setBlobUrl(prev => {
           if (prev) URL.revokeObjectURL(prev);
           return URL.createObjectURL(blob);
@@ -66,7 +67,7 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLev
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [rows, groupIds, groupNames, settings]);
+  }, [rows, groupIds, groupNames, settings, watchlist]);
 
   // 卸载时释放 blob
   useEffect(() => {
@@ -97,7 +98,7 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLev
 
   const handleDownload = async () => {
     try {
-      const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, settings.colWidths, settings.rowSpacing, priceLevelCodes);
+      const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, settings.colWidths, settings.rowSpacing, priceLevelCodes, watchlist);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

@@ -11,9 +11,10 @@ export async function generateJournalPdfBlob(
   colWidths?: number[],
   rowSpacing?: number,
   priceLevelCodes?: Record<number, string>,
+  watchlist?: string[],
 ): Promise<Blob> {
   await ensurePdfFontsRegistered();
-  const doc = React.createElement(JournalPdfDocument, { rows, groupIds, groupNames, colWidths, rowSpacing, priceLevelCodes });
+  const doc = React.createElement(JournalPdfDocument, { rows, groupIds, groupNames, colWidths, rowSpacing, priceLevelCodes, watchlist });
   // pdf() expects <Document> element; JournalPdfDocument renders one at runtime
   return await pdf(doc as React.ReactElement).toBlob();
 }
@@ -25,8 +26,9 @@ export async function exportJournalPdf(
   colWidths?: number[],
   rowSpacing?: number,
   priceLevelCodes?: Record<number, string>,
+  watchlist?: string[],
 ): Promise<void> {
-  const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, colWidths, rowSpacing, priceLevelCodes);
+  const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, colWidths, rowSpacing, priceLevelCodes, watchlist);
 
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

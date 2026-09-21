@@ -25,6 +25,7 @@ interface Props {
   colWidths?: number[];  // 每股一列宽度（pt），索引 0 = 名称列，1..N = 策略组列
   rowSpacing?: number;   // 策略卡片间距（pt）
   priceLevelCodes?: Record<number, string>;  // 价位代码映射，用于策略文本 /代码 替换
+  watchlist?: string[];  // 「后续可关注」列表，渲染在表格最后一行之后
 }
 
 // ─── 固定配置 ──────────────────────────────────────────────────────
@@ -105,6 +106,8 @@ const s = StyleSheet.create({
     border: '1 solid #d1d5db',
     backgroundColor: '#f3f4f6',
     flexShrink: 1,
+    minWidth: 0,
+    maxWidth: '100%',
   },
   strategyGroupCell: {
     flexDirection: 'row',
@@ -119,6 +122,32 @@ const s = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: '#d8b4fe',
     backgroundColor: '#faf5ff',
+  },
+  watchlistWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: 8,
+    padding: '4 6',
+    border: '1 solid #e5e7eb',
+    borderRadius: 4,
+  },
+  watchlistLabel: {
+    fontSize: 8,
+    color: '#6b7280',
+    marginRight: 4,
+  },
+  watchlistChip: {
+    padding: '1 4',
+    borderRadius: 2,
+    border: '1 solid #bfdbfe',
+    backgroundColor: '#eff6ff',
+    marginRight: 3,
+    marginBottom: 3,
+  },
+  watchlistChipText: {
+    fontSize: 7,
+    color: '#1e40af',
   },
   pageNum: {
     position: 'absolute',
@@ -193,6 +222,22 @@ const PriceLevelsPdf: React.FC<{ journal: TradingJournal }> = ({ journal }) => {
   );
 };
 
+// ─── 后续可关注 ────────────────────────────────────────────────────
+const WatchlistPdf: React.FC<{ watchlist: string[] }> = ({ watchlist }) => {
+  if (!watchlist || watchlist.length === 0) return null;
+  return (
+    <View style={s.watchlistWrap}>
+      <Text style={s.watchlistLabel}>后续可关注：</Text>
+      {watchlist.map((name, i) => (
+        <View key={i} style={s.watchlistChip}>
+          <Text style={s.watchlistChipText}>{name}</Text>
+        </View>
+      ))}
+    </View>
+  );
+};
+WatchlistPdf.displayName = 'WatchlistPdf';
+
 // ─── 表头行 ────────────────────────────────────────────────────────
 const TableHeader: React.FC<{ groupNames: string[]; colWidths?: number[]; date?: string }> = ({ groupNames, colWidths, date }) => (
   <View style={s.thead} fixed>
@@ -235,6 +280,7 @@ export const JournalPdfDocument: React.FC<Props> = ({
   colWidths,
   rowSpacing,
   priceLevelCodes,
+  watchlist,
 }) => {
   const totalRows = rows.length;
   const totalPages = Math.ceil(totalRows / ROWS_PER_PAGE);
@@ -257,6 +303,7 @@ export const JournalPdfDocument: React.FC<Props> = ({
                 priceLevelCodes={priceLevelCodes}
               />
             ))}
+            <WatchlistPdf watchlist={watchlist || []} />
           </View>
         </Page>
       </Document>
@@ -289,6 +336,7 @@ export const JournalPdfDocument: React.FC<Props> = ({
                   priceLevelCodes={priceLevelCodes}
                 />
               ))}
+              {pageIdx === totalPages - 1 && <WatchlistPdf watchlist={watchlist || []} />}
             </View>
           </Page>
         );
