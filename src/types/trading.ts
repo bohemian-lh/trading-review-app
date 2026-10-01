@@ -4,8 +4,8 @@ export interface TradingRecord {
   stockName: string;
   stockCode: string;
   tradingType: TradingType;
-  entryType: string[];
-  isSystem: YesNo;
+  trendFeatures: string[];
+  patternFeatures: string[];
   hasMistake: MistakeStatus;
   profitPercent: number;
   holdDays: number;
@@ -28,7 +28,7 @@ export interface TradingRecord {
 
 // 合法值由 fieldConfig 动态控制，类型层面不做约束
 export type TradingType = string;
-export type EntryType = string;
+export type TrendFeature = string;
 
 export type YesNo = '是' | '否';
 
@@ -39,8 +39,8 @@ export interface TradingRecordInput {
   stockName: string;
   stockCode: string;
   tradingType: TradingType;
-  entryType: string[];
-  isSystem: YesNo;
+  trendFeatures: string[];
+  patternFeatures: string[];
   hasMistake: MistakeStatus;
   profitPercent: number | null;
   holdDays: number | null;

@@ -22,8 +22,8 @@ const emptyRecord: TradingRecordInput = {
   stockName: '',
   stockCode: '',
   tradingType: '齐飞水底',
-  entryType: ['未知'],
-  isSystem: '是',
+  trendFeatures: ['未知'],
+  patternFeatures: ['系统'],
   hasMistake: '否',
   profitPercent: null,
   holdDays: null,
@@ -38,8 +38,8 @@ const emptyRecord: TradingRecordInput = {
 interface Filters {
   month: string;
   tradingType: string;
-  entryType: string;
-  isSystem: string;
+  trendFeatures: string;
+  patternFeatures: string;
 }
 
 interface SortConfig {
@@ -82,7 +82,7 @@ export const DataEditor: React.FC = () => {
   const [editingRecord, setEditingRecord] = useState<TradingRecord | null>(null);
   const [formData, setFormData] = useState<TradingRecordInput>(emptyRecord);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
-  const [filters, setFilters] = useState<Filters>({ month: '', tradingType: '', entryType: '', isSystem: '' });
+  const [filters, setFilters] = useState<Filters>({ month: '', tradingType: '', trendFeatures: '', patternFeatures: '' });
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'openDate', direction: 'desc' });
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [updateMessage, setUpdateMessage] = useState('');
@@ -111,8 +111,8 @@ export const DataEditor: React.FC = () => {
     let result = records.filter(record => {
       if (filters.month && !record.openDate.startsWith(filters.month)) return false;
       if (filters.tradingType && record.tradingType !== filters.tradingType) return false;
-      if (filters.entryType && !record.entryType.includes(filters.entryType)) return false;
-      if (filters.isSystem && record.isSystem !== filters.isSystem) return false;
+      if (filters.trendFeatures && !record.trendFeatures.includes(filters.trendFeatures)) return false;
+      if (filters.patternFeatures && !record.patternFeatures.includes(filters.patternFeatures)) return false;
       return true;
     });
 
@@ -147,7 +147,7 @@ export const DataEditor: React.FC = () => {
       setEditingRecord(record);
       setFormData({
         openDate: record.openDate, stockName: record.stockName, stockCode: record.stockCode,
-        tradingType: record.tradingType, entryType: record.entryType, isSystem: record.isSystem,
+        tradingType: record.tradingType, trendFeatures: record.trendFeatures, patternFeatures: record.patternFeatures,
         hasMistake: record.hasMistake, profitPercent: record.profitPercent, holdDays: record.holdDays,
         images: record.images || [], imagePrefix: record.imagePrefix || '',
         subsequentProfitSpace: record.subsequentProfitSpace, preMarket: record.preMarket,
@@ -312,7 +312,7 @@ export const DataEditor: React.FC = () => {
           filters={filters}
           monthOptions={monthOptions}
           onFilterChange={setFilters}
-          onResetFilters={() => setFilters({ month: '', tradingType: '', entryType: '', isSystem: '' })}
+          onResetFilters={() => setFilters({ month: '', tradingType: '', trendFeatures: '', patternFeatures: '' })}
           imgHasHandle={!!imgDir.handle}
           imgPath={imgDir.path}
           onSelectImageDir={imgDir.selectDirectory}

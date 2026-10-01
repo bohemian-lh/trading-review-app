@@ -18,7 +18,10 @@ export function calculateProfitRatio(
   let sumNegative = 0;
 
   for (const record of records) {
-    if (isSystem !== undefined && record.isSystem !== isSystem) continue;
+    if (isSystem !== undefined) {
+      const marker = isSystem === '是' ? '系统' : '非系统';
+      if (!record.patternFeatures.includes(marker)) continue;
+    }
     if (hasMistake !== undefined && record.hasMistake !== hasMistake) continue;
 
     const profit = record.profitPercent;
@@ -47,7 +50,7 @@ export function calculateProfitRatio(
 
 /** 计算理论盈亏比（使用 theoreticalProfitPercent 字段） */
 export function calculateTheoreticalSystemProfitRatio(records: TradingRecord[]): number | 'N/A' {
-  const systemRecords = records.filter(r => r.isSystem === '是');
+  const systemRecords = records.filter(r => r.patternFeatures.includes('系统'));
   let sumPositive = 0;
   let sumNegative = 0;
 
@@ -127,7 +130,10 @@ export function calculateAverageHoldDays(
   const holdDays: number[] = [];
 
   for (const record of records) {
-    if (isSystem !== undefined && record.isSystem !== isSystem) continue;
+    if (isSystem !== undefined) {
+      const marker = isSystem === '是' ? '系统' : '非系统';
+      if (!record.patternFeatures.includes(marker)) continue;
+    }
 
     const profit = record.profitPercent;
     if (profitType === 'positive' && profit <= 0) continue;
@@ -184,8 +190,8 @@ export function calculateProfitRatioByMultipleTypes(records: TradingRecord[], tr
   return profitSum > lossSum ? ratio : -ratio;
 }
 
-export function calculateProfitRatioByEntryType(records: TradingRecord[], entryType: string): number {
-  const typeRecords = records.filter(r => r.entryType.includes(entryType));
+export function calculateProfitRatioByTrendFeature(records: TradingRecord[], trendFeature: string): number {
+  const typeRecords = records.filter(r => r.trendFeatures.includes(trendFeature));
 
   let profitSum = 0;
   let lossSum = 0;
@@ -219,14 +225,14 @@ export function calculateTradingTypeRatios(
   return result;
 }
 
-export function calculateEntryTypeRatios(
+export function calculateTrendFeatureRatios(
   records: TradingRecord[],
-  entryTypes: string[]
+  trendFeatures: string[]
 ): Record<string, number> {
   const result: Record<string, number> = {};
-  for (const type of entryTypes) {
+  for (const type of trendFeatures) {
     if (type === '未知') continue;
-    result[type] = calculateProfitRatioByEntryType(records, type);
+    result[type] = calculateProfitRatioByTrendFeature(records, type);
   }
   return result;
 }

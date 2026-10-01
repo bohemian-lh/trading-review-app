@@ -4,6 +4,22 @@ import { DEFAULT_FIELD_CONFIG } from '@/types';
 import { generateId } from '@/utils';
 import { buildStatTypes, recalculateSingleCycle, removeRecordFromCycle } from '@/services/cycleStatsService';
 
+/** 迁移旧数据：entryType → trendFeatures；isSystem → patternFeatures */
+export function migrateRecord(r: any): TradingRecord {
+  const { entryType, isSystem, ...rest } = r;
+  const trendFeatures = r.trendFeatures ?? entryType;
+  const patternFeatures = r.patternFeatures ?? (isSystem === '是' ? ['系统'] : isSystem === '否' ? ['非系统'] : []);
+  return {
+    ...rest,
+    trendFeatures: typeof trendFeatures === 'string'
+      ? [trendFeatures]
+      : (Array.isArray(trendFeatures) && trendFeatures.length > 0 ? trendFeatures : ['未知']),
+    patternFeatures: Array.isArray(patternFeatures) ? patternFeatures : [],
+    hasCycleStats: r.hasCycleStats ?? false,
+    hasMonthlyStats: r.hasMonthlyStats ?? false,
+  };
+}
+
 interface RecordsState {
   records: TradingRecord[];
   fieldConfig: FieldConfig;
@@ -41,7 +57,7 @@ const emptyAnalysis: AnalysisResult = {
   systemProfitRatio: 'N/A', systemNoMistakeProfitRatio: 'N/A', systemWithMistakeProfitRatio: 'N/A',
   nonSystemProfitRatio: 'N/A', systemProfitAvgHoldDays: 'N/A', systemLossAvgHoldDays: 'N/A',
   nonSystemProfitAvgHoldDays: 'N/A', nonSystemLossAvgHoldDays: 'N/A',
-  tradingTypeRatios: {}, entryTypeRatios: {}, aggregateRatios: {},
+  tradingTypeRatios: {}, trendFeatureRatios: {}, aggregateRatios: {},
   systemTheoreticalProfitRatio: 'N/A',
 };
 
@@ -58,14 +74,7 @@ export const useRecordsStore = create<RecordsState>((set, get) => ({
   version: null,
 
   setRecords: (records) => {
-    const normalized = records.map(r => ({
-      ...r,
-      entryType: typeof r.entryType === 'string'
-        ? [r.entryType]
-        : (Array.isArray(r.entryType) && r.entryType.length > 0 ? r.entryType : ['未知']),
-      hasCycleStats: r.hasCycleStats ?? false,
-      hasMonthlyStats: r.hasMonthlyStats ?? false
-    }));
+    const normalized = records.map(r => migrateRecord(r));
     set({ records: normalized });
   },
 
@@ -76,13 +85,8 @@ export const useRecordsStore = create<RecordsState>((set, get) => ({
 
   addRecords: (recordsData) => {
     const newRecords: TradingRecord[] = recordsData.map(r => ({
-      ...r,
+      ...migrateRecord(r),
       id: r.id || generateId(),
-      entryType: typeof r.entryType === 'string'
-        ? [r.entryType]
-        : (Array.isArray(r.entryType) && r.entryType.length > 0 ? r.entryType : ['未知']),
-      hasCycleStats: r.hasCycleStats ?? false,
-      hasMonthlyStats: r.hasMonthlyStats ?? false
     }));
     set((s) => ({ records: [...s.records, ...newRecords], statsNeedUpdate: true }));
   },
@@ -93,7 +97,7 @@ export const useRecordsStore = create<RecordsState>((set, get) => ({
     if (!oldRecord) return;
 
     const valueFields = ['profitPercent', 'holdDays'];
-    const typeFields = ['tradingType', 'isSystem', 'hasMistake', 'openDate', 'entryType'];
+    const typeFields = ['tradingType', 'patternFeatures', 'hasMistake', 'openDate', 'trendFeatures'];
     const hasValueChange = valueFields.some(k => (updates as any)[k] !== undefined);
     const hasTypeChange = typeFields.some(k => (updates as any)[k] !== undefined);
 

@@ -6,7 +6,7 @@ interface TradingRecord {
   stockName: string;
   stockCode: string;
   tradingType: string;
-  isSystem: '是' | '否';
+  patternFeatures: string[];
   hasMistake: '是' | '否' | '其他';
   profitPercent: number;
   holdDays: number;
@@ -33,8 +33,8 @@ interface Env {
   API_TOKEN: string;
 }
 
-function calculateProfitRatio(records: TradingRecord[], isSystem: string, hasMistake?: string): number | 'N/A' {
-  let filtered = records.filter(r => r.isSystem === isSystem);
+function calculateProfitRatio(records: TradingRecord[], marker: string, hasMistake?: string): number | 'N/A' {
+  let filtered = records.filter(r => r.patternFeatures.includes(marker));
   
   if (hasMistake !== undefined) {
     filtered = filtered.filter(r => r.hasMistake === hasMistake);
@@ -46,8 +46,8 @@ function calculateProfitRatio(records: TradingRecord[], isSystem: string, hasMis
   return (profitable / filtered.length) * 100;
 }
 
-function calculateAverageHoldDays(records: TradingRecord[], isSystem: string, profitType: 'positive' | 'negative'): number | 'N/A' {
-  let filtered = records.filter(r => r.isSystem === isSystem);
+function calculateAverageHoldDays(records: TradingRecord[], marker: string, profitType: 'positive' | 'negative'): number | 'N/A' {
+  let filtered = records.filter(r => r.patternFeatures.includes(marker));
   
   if (profitType === 'positive') {
     filtered = filtered.filter(r => r.profitPercent > 0);
@@ -63,14 +63,14 @@ function calculateAverageHoldDays(records: TradingRecord[], isSystem: string, pr
 
 function calculateAnalysis(records: TradingRecord[]): AnalysisResult {
   return {
-    systemProfitRatio: calculateProfitRatio(records, '是'),
-    systemNoMistakeProfitRatio: calculateProfitRatio(records, '是', '否'),
-    systemWithMistakeProfitRatio: calculateProfitRatio(records, '是', '是'),
-    nonSystemProfitRatio: calculateProfitRatio(records, '否'),
-    systemProfitAvgHoldDays: calculateAverageHoldDays(records, '是', 'positive'),
-    systemLossAvgHoldDays: calculateAverageHoldDays(records, '是', 'negative'),
-    nonSystemProfitAvgHoldDays: calculateAverageHoldDays(records, '否', 'positive'),
-    nonSystemLossAvgHoldDays: calculateAverageHoldDays(records, '否', 'negative'),
+    systemProfitRatio: calculateProfitRatio(records, '系统'),
+    systemNoMistakeProfitRatio: calculateProfitRatio(records, '系统', '否'),
+    systemWithMistakeProfitRatio: calculateProfitRatio(records, '系统', '是'),
+    nonSystemProfitRatio: calculateProfitRatio(records, '非系统'),
+    systemProfitAvgHoldDays: calculateAverageHoldDays(records, '系统', 'positive'),
+    systemLossAvgHoldDays: calculateAverageHoldDays(records, '系统', 'negative'),
+    nonSystemProfitAvgHoldDays: calculateAverageHoldDays(records, '非系统', 'positive'),
+    nonSystemLossAvgHoldDays: calculateAverageHoldDays(records, '非系统', 'negative'),
   };
 }
 

@@ -16,7 +16,8 @@ export interface HistogramConfig {
 
 export interface FieldConfig {
   tradingTypes: string[];
-  entryTypes: string[];
+  trendFeatures: string[];
+  patternFeatures: string[];
   aggregateRules: AggregateRule[];
   histogramConfigs?: Record<string, HistogramConfig>;  // key = tradingType
   // 交易日志策略配置（可选）
@@ -65,7 +66,8 @@ export const DEFAULT_FIELD_CONFIG: FieldConfig = {
     '非系统',
     '未知',
   ],
-  entryTypes: ['p2前', 'p34', 'p4后', '未知'],
+  trendFeatures: ['p2前', 'p34', 'p4后', '未知'],
+  patternFeatures: ['系统', '非系统'],
   aggregateRules: [
     {
       name: '齐飞水底总',

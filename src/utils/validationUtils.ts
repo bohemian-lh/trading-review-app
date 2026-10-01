@@ -63,38 +63,44 @@ export function validateTradingRecord(
     });
   }
 
-  // 交易切入类型验证 — 从 fieldConfig 动态获取（多值数组）
-  if (!Array.isArray(record.entryType) || record.entryType.length === 0) {
+  // 趋势特征验证 — 从 fieldConfig 动态获取（多值数组）
+  if (!Array.isArray(record.trendFeatures) || record.trendFeatures.length === 0) {
     errors.push({
-      field: 'entryType',
-      message: '交易切入类型不能为空',
+      field: 'trendFeatures',
+      message: '趋势特征不能为空',
       row: rowIndex,
     });
   } else {
-    for (const et of record.entryType) {
-      if (!fieldConfig.entryTypes.includes(et)) {
+    for (const tf of record.trendFeatures) {
+      if (!fieldConfig.trendFeatures.includes(tf)) {
         errors.push({
-          field: 'entryType',
-          message: `交易切入类型"${et}"无效，应为以下之一：${fieldConfig.entryTypes.join('、')}`,
+          field: 'trendFeatures',
+          message: `趋势特征"${tf}"无效，应为以下之一：${fieldConfig.trendFeatures.join('、')}`,
           row: rowIndex,
         });
       }
     }
   }
 
-  // 系统符合验证
-  if (!record.isSystem) {
-    errors.push({
-      field: 'isSystem',
-      message: '是否符合系统不能为空',
-      row: rowIndex,
-    });
-  } else if (!['是', '否'].includes(record.isSystem)) {
-    errors.push({
-      field: 'isSystem',
-      message: '是否符合系统值无效',
-      row: rowIndex,
-    });
+  // 模式特征验证 — 从 fieldConfig 动态获取（可空的多值数组）
+  if (record.patternFeatures !== undefined && record.patternFeatures !== null) {
+    if (!Array.isArray(record.patternFeatures)) {
+      errors.push({
+        field: 'patternFeatures',
+        message: '模式特征格式无效',
+        row: rowIndex,
+      });
+    } else {
+      for (const pf of record.patternFeatures) {
+        if (!fieldConfig.patternFeatures.includes(pf)) {
+          errors.push({
+            field: 'patternFeatures',
+            message: `模式特征"${pf}"无效，应为以下之一：${fieldConfig.patternFeatures.join('、')}`,
+            row: rowIndex,
+          });
+        }
+      }
+    }
   }
 
   // 失误验证

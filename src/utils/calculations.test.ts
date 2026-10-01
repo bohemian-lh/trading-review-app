@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateProfitRatioByEntryType, calculateProfitRatioByType, calculateProfitRatioByMultipleTypes, calculateTradingTypeRatios, calculateEntryTypeRatios, calculateAggregateRatios } from './calculations';
+import { calculateProfitRatioByTrendFeature, calculateProfitRatioByType, calculateProfitRatioByMultipleTypes, calculateTradingTypeRatios, calculateTrendFeatureRatios, calculateAggregateRatios } from './calculations';
 import type { TradingRecord, AggregateRule } from '@/types';
 
 function makeRecord(overrides: Partial<TradingRecord> = {}): TradingRecord {
@@ -9,8 +9,8 @@ function makeRecord(overrides: Partial<TradingRecord> = {}): TradingRecord {
     stockName: '测试',
     stockCode: '000001',
     tradingType: '齐飞水底',
-    entryType: ['未知'],
-    isSystem: '是',
+    trendFeatures: ['未知'],
+    patternFeatures: ['系统'],
     hasMistake: '否',
     profitPercent: 0,
     holdDays: 1,
@@ -21,59 +21,59 @@ function makeRecord(overrides: Partial<TradingRecord> = {}): TradingRecord {
   } as TradingRecord;
 }
 
-describe('calculateProfitRatioByEntryType', () => {
+describe('calculateProfitRatioByTrendFeature', () => {
   it('空记录返回 0', () => {
-    expect(calculateProfitRatioByEntryType([], 'p2前')).toBe(0);
+    expect(calculateProfitRatioByTrendFeature([], 'p2前')).toBe(0);
   });
 
   it('全部是盈利返回盈利和/1.00', () => {
     const records = [
-      makeRecord({ entryType: ['p2前'], profitPercent: 5 }),
-      makeRecord({ entryType: ['p2前'], profitPercent: 3 }),
+      makeRecord({ trendFeatures: ['p2前'], profitPercent: 5 }),
+      makeRecord({ trendFeatures: ['p2前'], profitPercent: 3 }),
     ];
-    expect(calculateProfitRatioByEntryType(records, 'p2前')).toBe(8);
+    expect(calculateProfitRatioByTrendFeature(records, 'p2前')).toBe(8);
   });
 
   it('全部是亏损返回 -lossSum', () => {
     const records = [
-      makeRecord({ entryType: ['p34'], profitPercent: -5 }),
-      makeRecord({ entryType: ['p34'], profitPercent: -3 }),
+      makeRecord({ trendFeatures: ['p34'], profitPercent: -5 }),
+      makeRecord({ trendFeatures: ['p34'], profitPercent: -3 }),
     ];
-    expect(calculateProfitRatioByEntryType(records, 'p34')).toBe(-8);
+    expect(calculateProfitRatioByTrendFeature(records, 'p34')).toBe(-8);
   });
 
   it('盈利多返回正盈亏比', () => {
     const records = [
-      makeRecord({ entryType: ['p4后'], profitPercent: 10 }),
-      makeRecord({ entryType: ['p4后'], profitPercent: -2 }),
+      makeRecord({ trendFeatures: ['p4后'], profitPercent: 10 }),
+      makeRecord({ trendFeatures: ['p4后'], profitPercent: -2 }),
     ];
-    expect(calculateProfitRatioByEntryType(records, 'p4后')).toBe(5);
+    expect(calculateProfitRatioByTrendFeature(records, 'p4后')).toBe(5);
   });
 
   it('亏损多返回负盈亏比', () => {
     const records = [
-      makeRecord({ entryType: ['p2前'], profitPercent: 2 }),
-      makeRecord({ entryType: ['p2前'], profitPercent: -8 }),
+      makeRecord({ trendFeatures: ['p2前'], profitPercent: 2 }),
+      makeRecord({ trendFeatures: ['p2前'], profitPercent: -8 }),
     ];
-    expect(calculateProfitRatioByEntryType(records, 'p2前')).toBe(-4);
+    expect(calculateProfitRatioByTrendFeature(records, 'p2前')).toBe(-4);
   });
 
-  it('只筛选指定 entryType', () => {
+  it('只筛选指定 trendFeature', () => {
     const records = [
-      makeRecord({ entryType: ['p2前'], profitPercent: 10 }),
-      makeRecord({ entryType: ['p34'], profitPercent: -5 }),
-      makeRecord({ entryType: ['p4后'], profitPercent: 3 }),
+      makeRecord({ trendFeatures: ['p2前'], profitPercent: 10 }),
+      makeRecord({ trendFeatures: ['p34'], profitPercent: -5 }),
+      makeRecord({ trendFeatures: ['p4后'], profitPercent: 3 }),
     ];
     // p2前只有一条盈利10
-    expect(calculateProfitRatioByEntryType(records, 'p2前')).toBe(10);
+    expect(calculateProfitRatioByTrendFeature(records, 'p2前')).toBe(10);
   });
 
   it('保留两位小数', () => {
     const records = [
-      makeRecord({ entryType: ['p2前'], profitPercent: 10 }),
-      makeRecord({ entryType: ['p2前'], profitPercent: -3 }),
+      makeRecord({ trendFeatures: ['p2前'], profitPercent: 10 }),
+      makeRecord({ trendFeatures: ['p2前'], profitPercent: -3 }),
     ];
-    const result = calculateProfitRatioByEntryType(records, 'p2前');
+    const result = calculateProfitRatioByTrendFeature(records, 'p2前');
     expect(result).toBeCloseTo(3.33, 2);
   });
 });
@@ -119,14 +119,14 @@ describe('calculateTradingTypeRatios', () => {
   });
 });
 
-describe('calculateEntryTypeRatios', () => {
-  it('批量计算多个切入类型', () => {
+describe('calculateTrendFeatureRatios', () => {
+  it('批量计算多个趋势特征', () => {
     const records = [
-      makeRecord({ entryType: ['p2前'], profitPercent: 6 }),
-      makeRecord({ entryType: ['p2前'], profitPercent: -3 }),
-      makeRecord({ entryType: ['p34'], profitPercent: 4 }),
+      makeRecord({ trendFeatures: ['p2前'], profitPercent: 6 }),
+      makeRecord({ trendFeatures: ['p2前'], profitPercent: -3 }),
+      makeRecord({ trendFeatures: ['p34'], profitPercent: 4 }),
     ];
-    const result = calculateEntryTypeRatios(records, ['p2前', 'p34', 'p4后', '未知']);
+    const result = calculateTrendFeatureRatios(records, ['p2前', 'p34', 'p4后', '未知']);
     expect(result['p2前']).toBe(2);
     expect(result['p34']).toBe(4);
     expect(result['p4后']).toBe(0);

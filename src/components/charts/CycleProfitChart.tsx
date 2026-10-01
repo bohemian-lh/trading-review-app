@@ -32,8 +32,8 @@ export const CycleProfitChart: React.FC = () => {
       if (t === '未知') continue;
       configs.push({ key: t, name: t, color: COLORS[ci++ % COLORS.length] });
     }
-    // 交易切入类型（排除未知）
-    for (const e of fieldConfig.entryTypes) {
+    // 趋势特征（排除未知）
+    for (const e of fieldConfig.trendFeatures) {
       if (e === '未知') continue;
       configs.push({ key: e, name: e, color: COLORS[ci++ % COLORS.length] });
     }

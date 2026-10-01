@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { AnalysisResult, MonthlyAnalysis, TradingRecord } from '@/types';
 import { useRecordsStore } from '@/stores/recordsStore';
-import { calculateProfitRatio, calculateAvgProfitRatio, calculateTotalProfit, calculateAverageHoldDays, calculateTradingTypeRatios, calculateEntryTypeRatios, calculateAggregateRatios, calculateTheoreticalSystemProfitRatio } from '@/utils/calculations';
+import { calculateProfitRatio, calculateAvgProfitRatio, calculateTotalProfit, calculateAverageHoldDays, calculateTradingTypeRatios, calculateTrendFeatureRatios, calculateAggregateRatios, calculateTheoreticalSystemProfitRatio } from '@/utils/calculations';
 import { extractMonth } from '@/utils/dateUtils';
 
 export function useAnalysisResult(): AnalysisResult {
@@ -21,7 +21,7 @@ export function useAnalysisResult(): AnalysisResult {
       nonSystemProfitAvgHoldDays: calculateAverageHoldDays(records, '否', 'positive'),
       nonSystemLossAvgHoldDays: calculateAverageHoldDays(records, '否', 'negative'),
       tradingTypeRatios: calculateTradingTypeRatios(records, fieldConfig.tradingTypes),
-      entryTypeRatios: calculateEntryTypeRatios(records, fieldConfig.entryTypes),
+      trendFeatureRatios: calculateTrendFeatureRatios(records, fieldConfig.trendFeatures),
       aggregateRatios: calculateAggregateRatios(records, fieldConfig.aggregateRules),
       systemTheoreticalProfitRatio: calculateTheoreticalSystemProfitRatio(records),
     };

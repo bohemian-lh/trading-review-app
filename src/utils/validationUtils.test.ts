@@ -8,8 +8,8 @@ function makePartial(overrides: Partial<TradingRecord> = {}): Partial<TradingRec
     stockName: '测试股',
     stockCode: '000001',
     tradingType: '齐飞水底',
-    entryType: ['未知'],
-    isSystem: '是',
+    trendFeatures: ['未知'],
+    patternFeatures: ['系统'],
     hasMistake: '否',
     profitPercent: 5,
     holdDays: 3,
@@ -18,37 +18,61 @@ function makePartial(overrides: Partial<TradingRecord> = {}): Partial<TradingRec
   };
 }
 
-describe('validateTradingRecord - entryType', () => {
-  it('有效的 entryType p2前 通过', () => {
-    const result = validateTradingRecord(makePartial({ entryType: ['p2前'] }));
-    expect(result.errors.filter(e => e.field === 'entryType')).toHaveLength(0);
+describe('validateTradingRecord - trendFeatures', () => {
+  it('有效的 trendFeatures p2前 通过', () => {
+    const result = validateTradingRecord(makePartial({ trendFeatures: ['p2前'] }));
+    expect(result.errors.filter(e => e.field === 'trendFeatures')).toHaveLength(0);
   });
 
-  it('有效的 entryType p34 通过', () => {
-    const result = validateTradingRecord(makePartial({ entryType: ['p34'] }));
-    expect(result.errors.filter(e => e.field === 'entryType')).toHaveLength(0);
+  it('有效的 trendFeatures p34 通过', () => {
+    const result = validateTradingRecord(makePartial({ trendFeatures: ['p34'] }));
+    expect(result.errors.filter(e => e.field === 'trendFeatures')).toHaveLength(0);
   });
 
-  it('有效的 entryType p4后 通过', () => {
-    const result = validateTradingRecord(makePartial({ entryType: ['p4后'] }));
-    expect(result.errors.filter(e => e.field === 'entryType')).toHaveLength(0);
+  it('有效的 trendFeatures p4后 通过', () => {
+    const result = validateTradingRecord(makePartial({ trendFeatures: ['p4后'] }));
+    expect(result.errors.filter(e => e.field === 'trendFeatures')).toHaveLength(0);
   });
 
-  it('有效的 entryType 未知 通过', () => {
-    const result = validateTradingRecord(makePartial({ entryType: ['未知'] }));
-    expect(result.errors.filter(e => e.field === 'entryType')).toHaveLength(0);
+  it('有效的 trendFeatures 未知 通过', () => {
+    const result = validateTradingRecord(makePartial({ trendFeatures: ['未知'] }));
+    expect(result.errors.filter(e => e.field === 'trendFeatures')).toHaveLength(0);
   });
 
-  it('空的 entryType 报错', () => {
-    const result = validateTradingRecord(makePartial({ entryType: [] }));
-    const err = result.errors.find(e => e.field === 'entryType');
+  it('空的 trendFeatures 报错', () => {
+    const result = validateTradingRecord(makePartial({ trendFeatures: [] }));
+    const err = result.errors.find(e => e.field === 'trendFeatures');
     expect(err).toBeDefined();
     expect(err!.message).toContain('不能为空');
   });
 
-  it('无效的 entryType 报错', () => {
-    const result = validateTradingRecord(makePartial({ entryType: ['invalid'] }));
-    const err = result.errors.find(e => e.field === 'entryType');
+  it('无效的 trendFeatures 报错', () => {
+    const result = validateTradingRecord(makePartial({ trendFeatures: ['invalid'] }));
+    const err = result.errors.find(e => e.field === 'trendFeatures');
+    expect(err).toBeDefined();
+    expect(err!.message).toContain('无效');
+  });
+});
+
+describe('validateTradingRecord - patternFeatures', () => {
+  it('有效的 patternFeatures 系统 通过', () => {
+    const result = validateTradingRecord(makePartial({ patternFeatures: ['系统'] }));
+    expect(result.errors.filter(e => e.field === 'patternFeatures')).toHaveLength(0);
+  });
+
+  it('有效的 patternFeatures 非系统 通过', () => {
+    const result = validateTradingRecord(makePartial({ patternFeatures: ['非系统'] }));
+    expect(result.errors.filter(e => e.field === 'patternFeatures')).toHaveLength(0);
+  });
+
+  it('空的 patternFeatures 允许通过', () => {
+    const result = validateTradingRecord(makePartial({ patternFeatures: [] }));
+    expect(result.errors.filter(e => e.field === 'patternFeatures')).toHaveLength(0);
+  });
+
+  it('无效的 patternFeatures 报错', () => {
+    const result = validateTradingRecord(makePartial({ patternFeatures: ['invalid'] }));
+    const err = result.errors.find(e => e.field === 'patternFeatures');
     expect(err).toBeDefined();
     expect(err!.message).toContain('无效');
   });

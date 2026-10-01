@@ -6,16 +6,11 @@ import { useTableZoom } from '@/hooks/useTableZoom';
 import { useRecordsStore } from '@/stores';
 import type { TradingRecord } from '@/types';
 
-const YES_NO_OPTIONS = [
-  { value: '是', label: '是' },
-  { value: '否', label: '否' },
-];
-
 interface Filters {
   month: string;
   tradingType: string;
-  entryType: string;
-  isSystem: string;
+  trendFeatures: string;
+  patternFeatures: string;
 }
 
 interface SortConfig {
@@ -88,15 +83,19 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
     fieldConfig.tradingTypes.map(t => ({ value: t, label: t })),
     [fieldConfig.tradingTypes]
   );
-  const entryTypeOptions = useMemo(() =>
-    fieldConfig.entryTypes.map(t => ({ value: t, label: t })),
-    [fieldConfig.entryTypes]
+  const trendFeatureOptions = useMemo(() =>
+    fieldConfig.trendFeatures.map(t => ({ value: t, label: t })),
+    [fieldConfig.trendFeatures]
+  );
+  const patternFeatureOptions = useMemo(() =>
+    fieldConfig.patternFeatures.map(t => ({ value: t, label: t })),
+    [fieldConfig.patternFeatures]
   );
 
   const allMonthOptions = [{ value: '', label: '全部月份' }, ...monthOptions];
   const allTradingTypeOptions = [{ value: '', label: '全部类型' }, ...tradingTypeOptions];
-  const allEntryTypeOptions = [{ value: '', label: '全部' }, ...entryTypeOptions];
-  const allYesNoOptions = [{ value: '', label: '全部' }, ...YES_NO_OPTIONS];
+  const allTrendFeatureOptions = [{ value: '', label: '全部' }, ...trendFeatureOptions];
+  const allPatternFeatureOptions = [{ value: '', label: '全部' }, ...patternFeatureOptions];
 
   const updateRecord = useRecordsStore(s => s.updateRecord);
   const [expandedRemarkId, setExpandedRemarkId] = useState<string | null>(null);
@@ -177,7 +176,7 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
         <div className="flex items-center gap-4 mb-4">
           <Filter className="h-5 w-5 text-gray-600" />
           <h3 className="font-medium text-gray-800">数据筛选</h3>
-          {(filters.month || filters.tradingType || filters.entryType || filters.isSystem) && (
+          {(filters.month || filters.tradingType || filters.trendFeatures || filters.patternFeatures) && (
             <button onClick={onResetFilters} className="ml-auto text-sm text-gray-600 hover:text-gray-800">
               重置筛选
             </button>
@@ -202,19 +201,19 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">交易切入类型</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">趋势特征</label>
             <Select
-              value={filters.entryType || ''}
-              onChange={(e) => onFilterChange({ ...filters, entryType: e.target.value })}
-              options={allEntryTypeOptions}
+              value={filters.trendFeatures || ''}
+              onChange={(e) => onFilterChange({ ...filters, trendFeatures: e.target.value })}
+              options={allTrendFeatureOptions}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">系统符合</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">模式特征</label>
             <Select
-              value={filters.isSystem}
-              onChange={(e) => onFilterChange({ ...filters, isSystem: e.target.value })}
-              options={allYesNoOptions}
+              value={filters.patternFeatures}
+              onChange={(e) => onFilterChange({ ...filters, patternFeatures: e.target.value })}
+              options={allPatternFeatureOptions}
             />
           </div>
         </div>
@@ -258,8 +257,8 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                     </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">交易类型</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">交易切入类型</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">是否符合系统</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">趋势特征</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">模式特征</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">有无大的失误</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏情况</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">持仓时间（天）</th>
@@ -284,12 +283,10 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                       <td className="px-4 py-3 text-sm text-gray-900">{record.stockName}</td>
                       <td className="px-4 py-3 text-sm text-gray-900">{record.stockCode}</td>
                       <td className="px-4 py-3 text-sm text-gray-900">{record.tradingType}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{record.entryType.join(', ')}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900">{record.trendFeatures.join(', ')}</td>
                       <td className="px-4 py-3 text-sm">
-                        <span className={`inline-flex px-2 py-1 text-xs rounded ${
-                          record.isSystem === '是' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
-                          {record.isSystem}
+                        <span className="inline-flex px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">
+                          {record.patternFeatures.length > 0 ? record.patternFeatures.join(', ') : '-'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">

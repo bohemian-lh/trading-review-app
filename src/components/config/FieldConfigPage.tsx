@@ -10,7 +10,8 @@ const PRICE_LEVEL_LABELS = ['建仓价', '第一硬止损位', '目标位', '固
 
 type PendingConfig = {
   tradingTypes: string[];
-  entryTypes: string[];
+  trendFeatures: string[];
+  patternFeatures: string[];
   aggregateRules: AggregateRule[];
   histogramConfigs: Record<string, HistogramConfig>;
   journalStrategyConfig: JournalStageConfig[];
@@ -27,7 +28,8 @@ export const FieldConfigPage: React.FC = () => {
 
   const [pending, setPending] = useState<PendingConfig>({
     tradingTypes: [...fieldConfig.tradingTypes],
-    entryTypes: [...fieldConfig.entryTypes],
+    trendFeatures: [...fieldConfig.trendFeatures],
+    patternFeatures: [...fieldConfig.patternFeatures],
     aggregateRules: fieldConfig.aggregateRules.map(r => ({ ...r, includedTypes: [...r.includedTypes] })),
     histogramConfigs: fieldConfig.histogramConfigs ? { ...fieldConfig.histogramConfigs } : {},
     journalStrategyConfig: fieldConfig.journalStrategyConfig
@@ -46,14 +48,15 @@ export const FieldConfigPage: React.FC = () => {
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [dragType, setDragType] = useState<'trading' | 'entry' | null>(null);
+  const [dragType, setDragType] = useState<'trading' | 'trend' | null>(null);
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
 
   // 重置为 store 中的当前值
   const resetFromStore = useCallback(() => {
     setPending({
       tradingTypes: [...fieldConfig.tradingTypes],
-      entryTypes: [...fieldConfig.entryTypes],
+      trendFeatures: [...fieldConfig.trendFeatures],
+      patternFeatures: [...fieldConfig.patternFeatures],
       aggregateRules: fieldConfig.aggregateRules.map(r => ({ ...r, includedTypes: [...r.includedTypes] })),
       histogramConfigs: fieldConfig.histogramConfigs ? { ...fieldConfig.histogramConfigs } : {},
       journalStrategyConfig: fieldConfig.journalStrategyConfig
@@ -75,7 +78,8 @@ export const FieldConfigPage: React.FC = () => {
 
   const hasChanges = JSON.stringify(pending) !== JSON.stringify({
     tradingTypes: fieldConfig.tradingTypes,
-    entryTypes: fieldConfig.entryTypes,
+    trendFeatures: fieldConfig.trendFeatures,
+    patternFeatures: fieldConfig.patternFeatures,
     aggregateRules: fieldConfig.aggregateRules,
     histogramConfigs: fieldConfig.histogramConfigs || {},
     journalStrategyConfig: fieldConfig.journalStrategyConfig || DEFAULT_JOURNAL_STAGES,
@@ -99,20 +103,20 @@ export const FieldConfigPage: React.FC = () => {
   };
 
   // ---------- 拖动排序 ----------
-  const handleDragStart = (type: 'trading' | 'entry', index: number) => {
+  const handleDragStart = (type: 'trading' | 'trend', index: number) => {
     setDragType(type);
     setDragFromIndex(index);
   };
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
-  const handleDrop = (type: 'trading' | 'entry', toIndex: number) => {
+  const handleDrop = (type: 'trading' | 'trend', toIndex: number) => {
     if (dragType !== type || dragFromIndex === null || dragFromIndex === toIndex) {
       setDragType(null); setDragFromIndex(null); return;
     }
     setPending(p => {
-      const list = type === 'trading' ? [...p.tradingTypes] : [...p.entryTypes];
+      const list = type === 'trading' ? [...p.tradingTypes] : [...p.trendFeatures];
       const [moved] = list.splice(dragFromIndex, 1);
       list.splice(toIndex, 0, moved);
-      return type === 'trading' ? { ...p, tradingTypes: list } : { ...p, entryTypes: list };
+      return type === 'trading' ? { ...p, tradingTypes: list } : { ...p, trendFeatures: list };
     });
     setDragType(null); setDragFromIndex(null);
   };
@@ -136,7 +140,8 @@ export const FieldConfigPage: React.FC = () => {
       const { [type]: _, ...restHistogramConfigs } = p.histogramConfigs;
       return {
         tradingTypes: p.tradingTypes.filter(t => t !== type),
-        entryTypes: p.entryTypes,
+        trendFeatures: p.trendFeatures,
+        patternFeatures: p.patternFeatures,
         aggregateRules: p.aggregateRules.map(r => ({
           ...r,
           includedTypes: r.includedTypes.filter(t => t !== type),
@@ -152,27 +157,51 @@ export const FieldConfigPage: React.FC = () => {
     setMessage(null);
   };
 
-  // ---------- entryType ----------
-  const addEntryType = () => {
-    const name = prompt('请输入新的交易切入类型名称：');
+  // ---------- trendFeature ----------
+  const addTrendFeature = () => {
+    const name = prompt('请输入新的趋势特征名称：');
     if (!name || !name.trim()) return;
     const trimmed = name.trim();
-    if (pending.entryTypes.includes(trimmed)) {
-      setMessage({ type: 'error', text: `交易切入类型「${trimmed}」已存在` });
+    if (pending.trendFeatures.includes(trimmed)) {
+      setMessage({ type: 'error', text: `趋势特征「${trimmed}」已存在` });
       return;
     }
-    setPending(p => ({ ...p, entryTypes: [...p.entryTypes, trimmed] }));
+    setPending(p => ({ ...p, trendFeatures: [...p.trendFeatures, trimmed] }));
     setMessage(null);
   };
 
-  const deleteEntryType = (type: string) => {
+  const deleteTrendFeature = (type: string) => {
     if (type === '未知') {
       setMessage({ type: 'error', text: '「未知」类型不可删除' });
       return;
     }
-    const count = records.filter(r => r.entryType.includes(type)).length;
-    if (!confirm(`确定删除交易切入类型「${type}」？\n${count} 条记录将被标记为「未知」`)) return;
-    setPending(p => ({ ...p, entryTypes: p.entryTypes.filter(e => e !== type) }));
+    const count = records.filter(r => r.trendFeatures.includes(type)).length;
+    if (!confirm(`确定删除趋势特征「${type}」？\n${count} 条记录将被标记为「未知」`)) return;
+    setPending(p => ({ ...p, trendFeatures: p.trendFeatures.filter(e => e !== type) }));
+    setMessage(null);
+  };
+
+  // ---------- patternFeature ----------
+  const addPatternFeature = () => {
+    const name = prompt('请输入新的模式特征名称：');
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    if (pending.patternFeatures.includes(trimmed)) {
+      setMessage({ type: 'error', text: `模式特征「${trimmed}」已存在` });
+      return;
+    }
+    setPending(p => ({ ...p, patternFeatures: [...p.patternFeatures, trimmed] }));
+    setMessage(null);
+  };
+
+  const deletePatternFeature = (type: string) => {
+    if (type === '系统' || type === '非系统') {
+      setMessage({ type: 'error', text: `「${type}」为固定标记，不可删除` });
+      return;
+    }
+    const count = records.filter(r => r.patternFeatures.includes(type)).length;
+    if (!confirm(`确定删除模式特征「${type}」？\n${count} 条记录将移除该标记`)) return;
+    setPending(p => ({ ...p, patternFeatures: p.patternFeatures.filter(e => e !== type) }));
     setMessage(null);
   };
 
@@ -221,22 +250,28 @@ export const FieldConfigPage: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // 1. 删除枚举值：将受影响记录标记为「未知」
+      // 1. 删除枚举值：将受影响记录标记为「未知」或移除标记
       const deletedTradingTypes = fieldConfig.tradingTypes.filter(t => !pending.tradingTypes.includes(t));
-      const deletedEntryTypes = fieldConfig.entryTypes.filter(t => !pending.entryTypes.includes(t));
-      if (deletedTradingTypes.length > 0 || deletedEntryTypes.length > 0) {
+      const deletedTrendFeatures = fieldConfig.trendFeatures.filter(t => !pending.trendFeatures.includes(t));
+      const deletedPatternFeatures = fieldConfig.patternFeatures.filter(t => !pending.patternFeatures.includes(t));
+      if (deletedTradingTypes.length > 0 || deletedTrendFeatures.length > 0 || deletedPatternFeatures.length > 0) {
         useRecordsStore.getState().setRecords(
           records.map(r => {
             let changed = false;
             let tradingType = r.tradingType;
-            let entryType = r.entryType;
+            let trendFeatures = r.trendFeatures;
+            let patternFeatures = r.patternFeatures;
             if (deletedTradingTypes.includes(r.tradingType)) { tradingType = '未知'; changed = true; }
-            if (deletedEntryTypes.some(dt => r.entryType.includes(dt))) {
-              entryType = r.entryType.filter(et => !deletedEntryTypes.includes(et));
-              if (entryType.length === 0) entryType = ['未知'];
+            if (deletedTrendFeatures.some(dt => r.trendFeatures.includes(dt))) {
+              trendFeatures = r.trendFeatures.filter(et => !deletedTrendFeatures.includes(et));
+              if (trendFeatures.length === 0) trendFeatures = ['未知'];
               changed = true;
             }
-            return changed ? { ...r, tradingType, entryType, hasCycleStats: false, cycleId: undefined } : r;
+            if (deletedPatternFeatures.some(dt => r.patternFeatures.includes(dt))) {
+              patternFeatures = r.patternFeatures.filter(pf => !deletedPatternFeatures.includes(pf));
+              changed = true;
+            }
+            return changed ? { ...r, tradingType, trendFeatures, patternFeatures, hasCycleStats: false, cycleId: undefined } : r;
           })
         );
       }
@@ -244,7 +279,8 @@ export const FieldConfigPage: React.FC = () => {
       // 2. 保存配置
       const newConfig: FieldConfig = {
         tradingTypes: pending.tradingTypes,
-        entryTypes: pending.entryTypes,
+        trendFeatures: pending.trendFeatures,
+        patternFeatures: pending.patternFeatures,
         aggregateRules: pending.aggregateRules.map(r => ({ name: r.name, includedTypes: [...r.includedTypes] })),
         histogramConfigs: { ...pending.histogramConfigs },
         journalStrategyConfig: pending.journalStrategyConfig.map(s => ({ ...s, strategyGroups: [] })),
@@ -331,30 +367,56 @@ export const FieldConfigPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Section 2: 交易切入类型 */}
+      {/* Section 2: 趋势特征 */}
       <div className="bg-white shadow rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">交易切入类型 (entryType)</h3>
-          <button onClick={addEntryType} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">
+          <h3 className="text-lg font-semibold text-gray-900">趋势特征 (trendFeatures)</h3>
+          <button onClick={addTrendFeature} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">
             <Plus className="h-3.5 w-3.5" /> 新增
           </button>
         </div>
         <p className="text-xs text-gray-400 mt-1 mb-3">拖动标签可调整排序，下拉框按此顺序显示</p>
         <div className="flex flex-wrap gap-2">
-          {pending.entryTypes.map((e, idx) => (
+          {pending.trendFeatures.map((e, idx) => (
             <span
               key={e}
               draggable
-              onDragStart={() => handleDragStart('entry', idx)}
+              onDragStart={() => handleDragStart('trend', idx)}
               onDragOver={handleDragOver}
-              onDrop={() => handleDrop('entry', idx)}
+              onDrop={() => handleDrop('trend', idx)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-800 rounded-full text-sm cursor-grab active:cursor-grabbing select-none ${
-                dragType === 'entry' && dragFromIndex === idx ? 'opacity-40' : ''
+                dragType === 'trend' && dragFromIndex === idx ? 'opacity-40' : ''
               }`}
             >
               {e}
               {e !== '未知' && (
-                <button onClick={() => deleteEntryType(e)} className="hover:text-red-600">
+                <button onClick={() => deleteTrendFeature(e)} className="hover:text-red-600">
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Section 3: 模式特征 */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">模式特征 (patternFeatures)</h3>
+          <button onClick={addPatternFeature} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">
+            <Plus className="h-3.5 w-3.5" /> 新增
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-1 mb-3">「系统」「非系统」为固定标记，不可删除</p>
+        <div className="flex flex-wrap gap-2">
+          {pending.patternFeatures.map((e) => (
+            <span
+              key={e}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-800 rounded-full text-sm select-none"
+            >
+              {e}
+              {e !== '系统' && e !== '非系统' && (
+                <button onClick={() => deletePatternFeature(e)} className="hover:text-red-600">
                   <Trash2 className="h-3 w-3" />
                 </button>
               )}

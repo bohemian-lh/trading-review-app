@@ -4,7 +4,8 @@ import type { FieldConfig, TradingRecord } from '@/types';
 
 const DEFAULT_CONFIG: FieldConfig = {
   tradingTypes: ['齐飞水底', '齐飞水底三等量', '齐飞前多踩MA', '风险释放平台转一致', '双阳平台转一致', '非系统', '未知'],
-  entryTypes: ['p2前', 'p34', 'p4后', '未知'],
+  trendFeatures: ['p2前', 'p34', 'p4后', '未知'],
+  patternFeatures: ['系统', '非系统'],
   aggregateRules: [
     { name: '齐飞水底总', includedTypes: ['齐飞水底', '齐飞水底三等量', '齐飞前多踩MA'] },
     { name: '转一致', includedTypes: ['风险释放平台转一致', '双阳平台转一致'] },
@@ -14,7 +15,7 @@ const DEFAULT_CONFIG: FieldConfig = {
 function makeRecord(overrides: Partial<TradingRecord> = {}): TradingRecord {
   return {
     id: 'test-1', openDate: '20240101', stockName: '测试', stockCode: '000001',
-    tradingType: '齐飞水底', entryType: ['未知'], isSystem: '是', hasMistake: '否',
+    tradingType: '齐飞水底', trendFeatures: ['未知'], patternFeatures: ['系统'], hasMistake: '否',
     profitPercent: 0, holdDays: 1, preMarket: '否',
     hasCycleStats: false, hasMonthlyStats: false,
     ...overrides,
@@ -24,7 +25,7 @@ function makeRecord(overrides: Partial<TradingRecord> = {}): TradingRecord {
 describe('buildStatTypes', () => {
   it('默认配置生成正确数量的类型', () => {
     const types = buildStatTypes(DEFAULT_CONFIG);
-    // 4固定 + 4理论固定 + 6 tradingType(排除未知) + 6 理论tradingType(排除未知) + 3 entryType(排除未知) + 2 aggregate
+    // 4固定 + 4理论固定 + 6 tradingType(排除未知) + 6 理论tradingType(排除未知) + 3 trendFeature(排除未知) + 2 aggregate
     expect(types).toHaveLength(25);
   });
 
@@ -50,7 +51,7 @@ describe('buildStatTypes', () => {
   });
 
   it('空配置只返回固定维度', () => {
-    const types = buildStatTypes({ tradingTypes: [], entryTypes: [], aggregateRules: [] });
+    const types = buildStatTypes({ tradingTypes: [], trendFeatures: [], patternFeatures: [], aggregateRules: [] });
     expect(types).toEqual([
       '系统', '系统无失误', '系统有失误', '非系统',
       '理论-系统', '理论-系统无失误', '理论-系统有失误', '理论-非系统',
@@ -59,28 +60,28 @@ describe('buildStatTypes', () => {
 });
 
 describe('matchesStatType', () => {
-  it('系统维度匹配 isSystem=是', () => {
-    const r = makeRecord({ isSystem: '是' });
+  it('系统维度匹配 patternFeatures=系统', () => {
+    const r = makeRecord({ patternFeatures: ['系统'] });
     expect(matchesStatType(r, '系统', DEFAULT_CONFIG)).toBe(true);
   });
 
-  it('系统维度不匹配 isSystem=否', () => {
-    const r = makeRecord({ isSystem: '否' });
+  it('系统维度不匹配 patternFeatures=非系统', () => {
+    const r = makeRecord({ patternFeatures: ['非系统'] });
     expect(matchesStatType(r, '系统', DEFAULT_CONFIG)).toBe(false);
   });
 
   it('系统无失误匹配', () => {
-    const r = makeRecord({ isSystem: '是', hasMistake: '否' });
+    const r = makeRecord({ patternFeatures: ['系统'], hasMistake: '否' });
     expect(matchesStatType(r, '系统无失误', DEFAULT_CONFIG)).toBe(true);
   });
 
   it('系统有失误匹配', () => {
-    const r = makeRecord({ isSystem: '是', hasMistake: '是' });
+    const r = makeRecord({ patternFeatures: ['系统'], hasMistake: '是' });
     expect(matchesStatType(r, '系统有失误', DEFAULT_CONFIG)).toBe(true);
   });
 
   it('非系统匹配', () => {
-    const r = makeRecord({ isSystem: '否' });
+    const r = makeRecord({ patternFeatures: ['非系统'] });
     expect(matchesStatType(r, '非系统', DEFAULT_CONFIG)).toBe(true);
   });
 
@@ -94,8 +95,8 @@ describe('matchesStatType', () => {
     expect(matchesStatType(r, '齐飞前多踩MA', DEFAULT_CONFIG)).toBe(false);
   });
 
-  it('交易切入类型维度匹配', () => {
-    const r = makeRecord({ entryType: ['p2前'] });
+  it('趋势特征维度匹配', () => {
+    const r = makeRecord({ trendFeatures: ['p2前'] });
     expect(matchesStatType(r, 'p2前', DEFAULT_CONFIG)).toBe(true);
   });
 

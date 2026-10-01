@@ -70,9 +70,13 @@ export const RecordModal: React.FC<RecordModalProps> = ({
     fieldConfig.tradingTypes.map(t => ({ value: t, label: t })),
     [fieldConfig.tradingTypes]
   );
-  const entryTypeOptions = useMemo(() =>
-    fieldConfig.entryTypes.map(t => ({ value: t, label: t })),
-    [fieldConfig.entryTypes]
+  const trendFeatureOptions = useMemo(() =>
+    fieldConfig.trendFeatures.map(t => ({ value: t, label: t })),
+    [fieldConfig.trendFeatures]
+  );
+  const patternFeatureOptions = useMemo(() =>
+    fieldConfig.patternFeatures.map(t => ({ value: t, label: t })),
+    [fieldConfig.patternFeatures]
   );
 
   const getFieldError = (field: string): string | undefined => {
@@ -134,24 +138,30 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 error={getFieldError('stockName')}
               />
             </div>
-            {/* 符合系统 */}
+            {/* 模式特征 */}
             <div>
               <label className="block text-base font-medium text-gray-700 mb-2">
-                符合系统
+                模式特征
               </label>
-              <Select
-                value={formData.isSystem}
-                onChange={(e) => {
-                  const newIsSystem = e.target.value as '是' | '否';
-                  onFormChange({
-                    ...formData,
-                    isSystem: newIsSystem,
-                    tradingType: newIsSystem === '否' ? '非系统' : formData.tradingType,
-                    hasMistake: newIsSystem === '否' ? '其他' : formData.hasMistake,
-                  });
-                }}
-                options={YES_NO_OPTIONS}
-              />
+              <div className="flex flex-wrap gap-3">
+                {patternFeatureOptions.map(opt => (
+                  <label key={opt.value} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.patternFeatures.includes(opt.value)}
+                      onChange={() => {
+                        const current = formData.patternFeatures;
+                        const next = current.includes(opt.value)
+                          ? current.filter(v => v !== opt.value)
+                          : [...current, opt.value];
+                        onFormChange({ ...formData, patternFeatures: next });
+                      }}
+                      className="rounded"
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
             </div>
             {/* 盈亏% */}
             <div>
@@ -184,7 +194,12 @@ export const RecordModal: React.FC<RecordModalProps> = ({
               </label>
               <Select
                 value={formData.tradingType}
-                onChange={(e) => onFormChange({ ...formData, tradingType: e.target.value as TradingType })}
+                onChange={(e) => {
+                  const newType = e.target.value as TradingType;
+                  // 单向联动：仅交易类型选择「非系统」时，自动勾选模式特征=非系统（并互斥移除「系统」）
+                  const patternFeatures = newType === '非系统' ? ['非系统'] : formData.patternFeatures;
+                  onFormChange({ ...formData, tradingType: newType, patternFeatures });
+                }}
                 options={tradingTypeOptions}
               />
             </div>
@@ -212,24 +227,24 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 error={getFieldError('holdDays')}
               />
             </div>
-            {/* 交易切入类型 */}
+            {/* 趋势特征 */}
             <div>
               <label className="block text-base font-medium text-gray-700 mb-2">
-                交易切入类型
+                趋势特征
               </label>
               <div className="flex flex-wrap gap-3">
-                {entryTypeOptions.map(opt => (
+                {trendFeatureOptions.map(opt => (
                   <label key={opt.value} className="flex items-center gap-1.5 text-sm cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={formData.entryType.includes(opt.value)}
+                      checked={formData.trendFeatures.includes(opt.value)}
                       onChange={() => {
-                        const current = formData.entryType;
+                        const current = formData.trendFeatures;
                         const next = current.includes(opt.value)
                           ? current.filter(v => v !== opt.value)
                           : [...current, opt.value];
                         // 如果全部取消，默认回退为 ['未知']
-                        onFormChange({ ...formData, entryType: next.length > 0 ? next : ['未知'] });
+                        onFormChange({ ...formData, trendFeatures: next.length > 0 ? next : ['未知'] });
                       }}
                       className="rounded"
                     />

@@ -12,8 +12,8 @@ const HEADERS_1 = [
   '股票名称',
   '股票代码',
   '交易类型',
-  '交易切入类型',
-  '是否符合系统',
+  '趋势特征',
+  '模式特征',
   '有无大的失误',
   '盈亏情况',
   '持仓时间（天）',
@@ -206,7 +206,7 @@ function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
     nonSystemProfitAvgHoldDays: analysisMap.get('非系统盈利平均持仓天数') || 'N/A',
     nonSystemLossAvgHoldDays: analysisMap.get('非系统亏损平均持仓天数') || 'N/A',
     tradingTypeRatios: {},
-    entryTypeRatios: {},
+    trendFeatureRatios: {},
     aggregateRatios: {},
     systemTheoreticalProfitRatio: analysisMap.get('系统理论盈亏比') || 'N/A',
   };
@@ -266,12 +266,21 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
 
   const tradingType = (String(row['交易类型'] || '').trim() || '未知') as TradingType;
 
-  // 解析交易切入类型（逗号分隔多值）
-  const rawEntryType = String(row['交易切入类型'] || '').trim();
-  const entryType = rawEntryType
-    ? rawEntryType.split(',').map(s => s.trim()).filter(Boolean)
+  // 解析趋势特征（逗号分隔多值）
+  const rawTrendFeatures = String(row['趋势特征'] || '').trim();
+  const trendFeatures = rawTrendFeatures
+    ? rawTrendFeatures.split(',').map(s => s.trim()).filter(Boolean)
     : [];
-  if (entryType.length === 0) entryType.push('未知');
+  if (trendFeatures.length === 0) trendFeatures.push('未知');
+
+  // 解析模式特征（逗号分隔多值，兼容旧列「是否符合系统」）
+  const rawPatternFeatures = String(row['模式特征'] || '').trim();
+  let patternFeatures = rawPatternFeatures
+    ? rawPatternFeatures.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+  if (patternFeatures.length === 0 && row['是否符合系统'] !== undefined && row['是否符合系统'] !== '') {
+    patternFeatures = row['是否符合系统'] === '是' ? ['系统'] : ['非系统'];
+  }
 
   // 解析盈亏情况，可能带有 %
   const profitStr = String(row['盈亏情况'] || '').trim().replace('%', '');
@@ -291,8 +300,8 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     stockName: String(row['股票名称'] || ''),
     stockCode: String(row['股票代码'] || ''),
     tradingType,
-    entryType,
-    isSystem: row['是否符合系统'] === '是' ? '是' : '否',
+    trendFeatures,
+    patternFeatures,
     hasMistake: row['有无大的失误'] === '是' ? '是' : row['有无大的失误'] === '其他' ? '其他' : '否',
     profitPercent,
     holdDays,
@@ -317,8 +326,8 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string):
       record.stockName,
       record.stockCode,
       record.tradingType,
-      record.entryType.join(','),
-      record.isSystem,
+      record.trendFeatures.join(','),
+      record.patternFeatures.join(','),
       record.hasMistake,
       record.profitPercent,
       record.holdDays,
@@ -476,8 +485,8 @@ export function exportAllToExcel(
       record.stockName,
       record.stockCode,
       record.tradingType,
-      record.entryType.join(','),
-      record.isSystem,
+      record.trendFeatures.join(','),
+      record.patternFeatures.join(','),
       record.hasMistake,
       record.profitPercent,
       record.holdDays,
@@ -621,7 +630,8 @@ const TRADING_TYPES = [
   '非系统'
 ];
 
-const ENTRY_TYPES = ['p2前', 'p34', 'p4后', '未知'];
+const TREND_FEATURES = ['p2前', 'p34', 'p4后', '未知'];
+const PATTERN_FEATURES = ['系统', '非系统'];
 
 function generateRandomProfit(): number {
   return Math.round((Math.random() * 80 - 30) * 100) / 100;
@@ -640,12 +650,12 @@ function createTestTable1Data(): any[][] {
       const day = String(Math.floor(Math.random() * 28) + 1).padStart(2, '0');
       const openDate = `${month.replace('-', '')}${day}`;
       const tradingType = TRADING_TYPES[Math.floor(Math.random() * TRADING_TYPES.length)];
-      const isSystem = Math.random() > 0.3 ? '是' : '否';
-      const hasMistake = isSystem === '是' && Math.random() > 0.7 ? '是' : '否';
+      const patternFeature = PATTERN_FEATURES[Math.floor(Math.random() * PATTERN_FEATURES.length)];
+      const hasMistake = patternFeature === '系统' && Math.random() > 0.7 ? '是' : '否';
       const profitPercent = generateRandomProfit();
       const holdDays = generateRandomHoldDays();
-      const entryType = ENTRY_TYPES[Math.floor(Math.random() * ENTRY_TYPES.length)];
-      tableData.push([openDate, stock.name, stock.code, tradingType, entryType, isSystem, hasMistake, profitPercent, holdDays, '', '', '', '', '']);
+      const trendFeature = TREND_FEATURES[Math.floor(Math.random() * TREND_FEATURES.length)];
+      tableData.push([openDate, stock.name, stock.code, tradingType, trendFeature, patternFeature, hasMistake, profitPercent, holdDays, '', '', '', '', '']);
     }
   }
   return tableData;

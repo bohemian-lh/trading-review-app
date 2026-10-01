@@ -35,8 +35,8 @@ export const TradingTypeProfitBarChart: React.FC = () => {
       if (t === '未知') continue;
       configs.push({ key: t, name: t, color: COLORS[ci++ % COLORS.length] });
     }
-    // 交易切入类型（排除未知）
-    for (const e of fieldConfig.entryTypes) {
+    // 趋势特征（排除未知）
+    for (const e of fieldConfig.trendFeatures) {
       if (e === '未知') continue;
       configs.push({ key: e, name: e, color: COLORS[ci++ % COLORS.length] });
     }
@@ -58,7 +58,7 @@ export const TradingTypeProfitBarChart: React.FC = () => {
       else if (b.key === 'nonSystem') value = toValue(analysis.nonSystemProfitRatio);
       else if (analysis.aggregateRatios[b.key] !== undefined) value = analysis.aggregateRatios[b.key];
       else if (analysis.tradingTypeRatios[b.key] !== undefined) value = analysis.tradingTypeRatios[b.key];
-      else if (analysis.entryTypeRatios[b.key] !== undefined) value = analysis.entryTypeRatios[b.key];
+      else if (analysis.trendFeatureRatios[b.key] !== undefined) value = analysis.trendFeatureRatios[b.key];
       else value = 0;
       return { key: b.key, name: b.name, value, color: b.color };
     }).filter(d => selected.includes(d.key));

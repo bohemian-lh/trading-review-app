@@ -21,7 +21,7 @@ export function buildStatTypes(config: FieldConfig): string[] {
       types.push(`理论-${t}`);
     }
   }
-  for (const e of config.entryTypes) {
+  for (const e of config.trendFeatures) {
     if (e !== '未知') types.push(e);
   }
   for (const r of config.aggregateRules) {
@@ -131,16 +131,16 @@ export function matchesStatType(record: TradingRecord, statType: string, config:
   const actualType = isTheoretical(statType) ? statType.slice(3) : statType;
 
   // 4 个固定系统维度
-  if (actualType === '系统') return record.isSystem === '是';
-  if (actualType === '系统无失误') return record.isSystem === '是' && record.hasMistake === '否';
-  if (actualType === '系统有失误') return record.isSystem === '是' && record.hasMistake === '是';
-  if (actualType === '非系统') return record.isSystem === '否';
+  if (actualType === '系统') return record.patternFeatures.includes('系统');
+  if (actualType === '系统无失误') return record.patternFeatures.includes('系统') && record.hasMistake === '否';
+  if (actualType === '系统有失误') return record.patternFeatures.includes('系统') && record.hasMistake === '是';
+  if (actualType === '非系统') return record.patternFeatures.includes('非系统');
 
   // 交易类型维度
   if (config.tradingTypes.includes(actualType)) return record.tradingType === actualType;
 
-  // 交易切入类型维度
-  if (config.entryTypes.includes(actualType)) return record.entryType.includes(actualType);
+  // 趋势特征维度
+  if (config.trendFeatures.includes(actualType)) return record.trendFeatures.includes(actualType);
 
   // 聚合规则维度
   const rule = config.aggregateRules.find(r => r.name === actualType);

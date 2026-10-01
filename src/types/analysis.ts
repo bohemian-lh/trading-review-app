@@ -9,7 +9,7 @@ export interface AnalysisResult {
   nonSystemLossAvgHoldDays: number | 'N/A';
   // 动态字段（从 fieldConfig 驱动）
   tradingTypeRatios: Record<string, number>;
-  entryTypeRatios: Record<string, number>;
+  trendFeatureRatios: Record<string, number>;
   aggregateRatios: Record<string, number>;
   // 系统理论盈亏比
   systemTheoreticalProfitRatio: number | 'N/A';
