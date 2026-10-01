@@ -89,3 +89,31 @@ export const DEFAULT_FIELD_CONFIG: FieldConfig = {
     6: 'low',
   },
 };
+
+/**
+ * 迁移旧版 fieldConfig：entryTypes → trendFeatures；补齐 patternFeatures
+ * 兼容 R2 中存量的旧配置（旧配置没有 trendFeatures/patternFeatures 字段）
+ */
+export function migrateFieldConfig(raw: unknown): FieldConfig {
+  const base: FieldConfig = { ...DEFAULT_FIELD_CONFIG };
+  if (!raw || typeof raw !== 'object') return base;
+
+  const cfg = raw as Record<string, unknown>;
+
+  return {
+    ...base,
+    ...raw,
+    tradingTypes: Array.isArray(cfg.tradingTypes) && cfg.tradingTypes.length > 0
+      ? (cfg.tradingTypes as string[])
+      : base.tradingTypes,
+    trendFeatures: Array.isArray(cfg.trendFeatures) && cfg.trendFeatures.length > 0
+      ? (cfg.trendFeatures as string[])
+      : (Array.isArray(cfg.entryTypes) && cfg.entryTypes.length > 0
+          ? (cfg.entryTypes as string[])
+          : base.trendFeatures),
+    patternFeatures: Array.isArray(cfg.patternFeatures) && cfg.patternFeatures.length > 0
+      ? (cfg.patternFeatures as string[])
+      : base.patternFeatures,
+    aggregateRules: Array.isArray(cfg.aggregateRules) ? (cfg.aggregateRules as AggregateRule[]) : base.aggregateRules,
+  };
+}

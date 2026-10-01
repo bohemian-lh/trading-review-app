@@ -3,7 +3,7 @@ import { r2StorageService } from '@/services/r2Service';
 import { useRecordsStore, migrateRecord } from '@/stores/recordsStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { useUIStore } from '@/stores/uiStore';
-import { DEFAULT_FIELD_CONFIG } from '@/types';
+import { DEFAULT_FIELD_CONFIG, migrateFieldConfig } from '@/types';
 import { generateCycleStats } from '@/services/cycleStatsService';
 
 /**
@@ -112,8 +112,8 @@ async function loadDatasetData(datasetId: string): Promise<void> {
   try {
     const result = await r2StorageService.getRecords(datasetId) as any;
     const configResult = await r2StorageService.getConfig(datasetId);
-    const fieldConfig = (configResult.success && configResult.config?.tradingTypes)
-      ? configResult.config
+    const fieldConfig = configResult.success && configResult.config
+      ? migrateFieldConfig(configResult.config)
       : { ...DEFAULT_FIELD_CONFIG };
 
     if (result.success) {
