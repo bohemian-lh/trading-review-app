@@ -3,8 +3,8 @@ import { Settings, Plus, Trash2, Save, X } from 'lucide-react';
 import { useRecordsStore, useAnalysisTabStore } from '@/stores';
 import { saveFieldConfigToR2, saveTabsToR2 } from '@/hooks/useStoreSync';
 import { generateId } from '@/utils';
-import type { FieldConfig, AggregateRule, TheoreticalDimension, JournalStageConfig, JournalStrategyGroup, MindsetRow, DecisionCheckItem } from '@/types';
-import { DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS, DEFAULT_MINDSET_ROWS, DEFAULT_FIELD_CONFIG } from '@/types';
+import type { FieldConfig, AggregateRule, TheoreticalDimension, JournalStageConfig, JournalStrategyGroup, MindsetRow, DecisionCheckItem, AnalysisTab } from '@/types';
+import { DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS, DEFAULT_MINDSET_ROWS, DEFAULT_FIELD_CONFIG, getSourceDimensionId } from '@/types';
 
 // 7 个价位的语义标签（用于字段配置中编辑代码）
 const PRICE_LEVEL_LABELS = ['建仓价', '第一硬止损位', '目标位', '固定目标位', '压力1', '压力2', '趋势最低点'];
@@ -303,14 +303,28 @@ export const FieldConfigPage: React.FC = () => {
         );
       }
 
-      // 1.5 删除理论维度：同步删除引用该维度的分析页签
+      // 1.5 删除理论维度：同步删除引用该维度的分析页签（及其分组）
       if (deletedTheoreticalDimensions.length > 0) {
         const tabState = useAnalysisTabStore.getState();
-        const remainingTabs = tabState.tabs.filter(t => {
-          const dimId = t.source.startsWith('dim:') ? t.source.slice(4) : null;
-          return dimId === null || !deletedTheoreticalDimensions.includes(dimId);
-        });
-        if (remainingTabs.length !== tabState.tabs.length) {
+        let changed = false;
+        const remainingTabs: AnalysisTab[] = [];
+        for (const t of tabState.tabs) {
+          const groups = t.groups.filter(g => {
+            const dimId = getSourceDimensionId(g.source);
+            return dimId === null || !deletedTheoreticalDimensions.includes(dimId);
+          });
+          if (groups.length === 0) {
+            changed = true; // 全部分组引用被删维度，删除整个页签
+            continue;
+          }
+          if (groups.length !== t.groups.length) {
+            changed = true;
+            remainingTabs.push({ ...t, groups });
+          } else {
+            remainingTabs.push(t);
+          }
+        }
+        if (changed) {
           tabState.setTabs(remainingTabs);
           await saveTabsToR2(remainingTabs);
         }
