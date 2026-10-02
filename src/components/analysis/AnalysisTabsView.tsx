@@ -3,7 +3,7 @@ import { useRecordsStore, useAnalysisResult, useAnalysisTabStore } from '@/store
 import { saveTabsToR2 } from '@/hooks/useStoreSync';
 import { useChartConfig } from '@/hooks/useChartConfig';
 import type { AnalysisTab, ProfitSource } from '@/types';
-import { PROFIT_SOURCE_LABELS } from '@/types';
+import { getProfitSourceLabel } from '@/types';
 import {
   filterRecords, buildDimensions, getDimensionRecords,
   computeCumulativeProfit, computeCycleProfitRatios, computeGrowthProfitRatios,
@@ -166,7 +166,7 @@ export const AnalysisTabsView: React.FC = () => {
       {/* 自定义页签信源提示 */}
       {activeTab && (
         <div className="text-xs text-gray-500">
-          数据范围已固定 · 盈亏比信源：{PROFIT_SOURCE_LABELS[activeTab.source]} · 记录数：{baseRecords.length}
+          数据范围已固定 · 盈亏比信源：{getProfitSourceLabel(activeTab.source, fieldConfig)} · 记录数：{baseRecords.length}
         </div>
       )}
 

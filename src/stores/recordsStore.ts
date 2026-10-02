@@ -4,9 +4,11 @@ import { DEFAULT_FIELD_CONFIG } from '@/types';
 import { generateId } from '@/utils';
 import { buildStatTypes, recalculateSingleCycle, removeRecordFromCycle } from '@/services/cycleStatsService';
 
-/** 迁移旧数据：entryType → trendFeatures；isSystem → patternFeatures */
+/** 迁移旧数据：entryType → trendFeatures；isSystem → patternFeatures；丢弃已删除的旧字段 */
 export function migrateRecord(r: any): TradingRecord {
   const { entryType, isSystem, ...rest } = r;
+  delete rest.subsequentProfitSpace;
+  delete rest.theoreticalProfitPercent;
   const trendFeatures = r.trendFeatures ?? entryType;
   const patternFeatures = r.patternFeatures ?? (isSystem === '是' ? ['系统'] : isSystem === '否' ? ['非系统'] : []);
   return {
@@ -17,6 +19,7 @@ export function migrateRecord(r: any): TradingRecord {
     patternFeatures: Array.isArray(patternFeatures) ? patternFeatures : [],
     hasCycleStats: r.hasCycleStats ?? false,
     hasMonthlyStats: r.hasMonthlyStats ?? false,
+    theoreticalProfitRatios: r.theoreticalProfitRatios ?? {},
   };
 }
 
@@ -58,7 +61,7 @@ const emptyAnalysis: AnalysisResult = {
   nonSystemProfitRatio: 'N/A', systemProfitAvgHoldDays: 'N/A', systemLossAvgHoldDays: 'N/A',
   nonSystemProfitAvgHoldDays: 'N/A', nonSystemLossAvgHoldDays: 'N/A',
   tradingTypeRatios: {}, trendFeatureRatios: {}, aggregateRatios: {},
-  systemTheoreticalProfitRatio: 'N/A',
+  theoreticalProfitRatios: {},
 };
 
 export const emptyCycleStats: Record<string, CycleStats[]> = {};

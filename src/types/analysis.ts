@@ -11,8 +11,8 @@ export interface AnalysisResult {
   tradingTypeRatios: Record<string, number>;
   trendFeatureRatios: Record<string, number>;
   aggregateRatios: Record<string, number>;
-  // 系统理论盈亏比
-  systemTheoreticalProfitRatio: number | 'N/A';
+  // 各理论维度的系统盈亏比（key = 维度 id）
+  theoreticalProfitRatios: Record<string, number | 'N/A'>;
 }
 
 export interface MonthlyAnalysis {
@@ -23,31 +23,6 @@ export interface MonthlyAnalysis {
   nonSystemProfitRatio: number | 'N/A';
   avgProfitRatio: number | 'N/A';
   totalProfit: number | 'N/A';
-}
-
-// ============ 后续盈亏空间分析（独立统计） ============
-
-export interface HistogramBucket {
-  label: string;
-  count: number;
-}
-
-export interface SubsequentProfitStats {
-  tradingType: string;
-  count: number;
-  avg: number;
-  max: number;
-  min: number;
-  histogram: HistogramBucket[];
-}
-
-export interface SubsequentProfitAnalysis {
-  stats: SubsequentProfitStats[];
-  allPoints: {
-    tradingType: string;
-    value: number;
-    stockName: string;
-  }[];
 }
 
 export interface ChartDataPoint {

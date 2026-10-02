@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { AnalysisTab, AnalysisTabFilter, ProfitSource, MistakeStatus } from '@/types';
-import { PROFIT_SOURCE_LABELS } from '@/types';
 import { useRecordsStore } from '@/stores';
 import { generateId } from '@/utils';
 
@@ -10,7 +9,6 @@ interface CreateAnalysisTabModalProps {
 }
 
 const MISTAKE_OPTIONS: MistakeStatus[] = ['是', '否', '其他'];
-const SOURCE_OPTIONS: ProfitSource[] = ['profitPercent', 'subsequentProfitSpace', 'theoreticalProfitPercent'];
 
 function fromMonthInput(v: string): string | undefined {
   if (!v) return undefined;
@@ -19,6 +17,11 @@ function fromMonthInput(v: string): string | undefined {
 
 export const CreateAnalysisTabModal: React.FC<CreateAnalysisTabModalProps> = ({ onClose, onSave }) => {
   const fieldConfig = useRecordsStore(s => s.fieldConfig);
+
+  const sourceOptions = useMemo<Array<{ value: ProfitSource; label: string }>>(() => [
+    { value: 'profitPercent', label: '盈亏情况' },
+    ...fieldConfig.theoreticalDimensions.map(d => ({ value: `dim:${d.id}` as ProfitSource, label: d.name || '未命名维度' })),
+  ], [fieldConfig.theoreticalDimensions]);
 
   const [name, setName] = useState('');
   const [source, setSource] = useState<ProfitSource>('profitPercent');
@@ -77,10 +80,10 @@ export const CreateAnalysisTabModal: React.FC<CreateAnalysisTabModalProps> = ({ 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">盈亏比信源</label>
             <div className="flex flex-wrap gap-3">
-              {SOURCE_OPTIONS.map(s => (
-                <label key={s} className="flex items-center gap-1.5 text-sm">
-                  <input type="radio" name="source" checked={source === s} onChange={() => setSource(s)} className="rounded" />
-                  <span>{PROFIT_SOURCE_LABELS[s]}</span>
+              {sourceOptions.map(s => (
+                <label key={s.value} className="flex items-center gap-1.5 text-sm">
+                  <input type="radio" name="source" checked={source === s.value} onChange={() => setSource(s.value)} className="rounded" />
+                  <span>{s.label}</span>
                 </label>
               ))}
             </div>

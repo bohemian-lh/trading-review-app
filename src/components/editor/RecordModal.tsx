@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Save, Clipboard, AlertCircle, Loader2, X } from 'lucide-react';
 import { Button, Input, Select, Modal } from '@/components/common';
 import { ImagePreviewModal } from '@/components/editor/ImagePreviewModal';
@@ -49,20 +49,6 @@ export const RecordModal: React.FC<RecordModalProps> = ({
 }) => {
   const [imagePreviewImages, setImagePreviewImages] = useState<string[]>([]);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
-  const [subsequentNumberMode, setSubsequentNumberMode] = useState(true);
-  const [theoryManual, setTheoryManual] = useState(false);
-
-  // 新记录时，自动计算理论盈亏比，除非用户已手动修改
-  useEffect(() => {
-    if (!editingRecord && !theoryManual && formData.profitPercent !== null) {
-      const subsequent = subsequentNumberMode ? (formData.subsequentProfitSpace ?? 0) : 0;
-      const computed = parseFloat((formData.profitPercent + subsequent).toFixed(2));
-      if (computed !== formData.theoreticalProfitPercent) {
-        onFormChange({ ...formData, theoreticalProfitPercent: computed });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.profitPercent, subsequentNumberMode, formData.subsequentProfitSpace]);
 
   // 从 fieldConfig 动态生成选项
   const fieldConfig = useRecordsStore(s => s.fieldConfig);
@@ -264,69 +250,44 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 options={HAS_MISTAKE_OPTIONS}
               />
             </div>
-            {/* 理论盈亏比 */}
-            <div>
-              <label className="block text-base font-medium text-gray-700 mb-2">
-                理论盈亏比%
-              </label>
-              <Input
-                type="number"
-                step="0.1"
-                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                value={formData.theoreticalProfitPercent !== undefined ? formData.theoreticalProfitPercent : ''}
-                onChange={(e) => {
-                  if (!theoryManual) setTheoryManual(true);
-                  const raw = e.target.value;
-                  if (raw === '' || raw === '-') {
-                    onFormChange({ ...formData, theoreticalProfitPercent: 0 });
-                    return;
-                  }
-                  const num = parseFloat(raw);
-                  if (isNaN(num)) return;
-                  onFormChange({ ...formData, theoreticalProfitPercent: parseFloat(num.toFixed(2)) });
-                }}
-                placeholder="默认 = 盈亏% + 后续盈亏空间%"
-              />
-            </div>
-            {/* 后续盈亏空间% */}
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">
-                后续盈亏空间%
-              </label>
-              <div className="flex gap-2">
-                <select
-                  value={subsequentNumberMode ? 'number' : 'N/A'}
-                  onChange={(e) => {
-                    const isNum = e.target.value === 'number';
-                    setSubsequentNumberMode(isNum);
-                  }}
-                  className="w-24 rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm"
-                >
-                  <option value="N/A">N/A</option>
-                  <option value="number">数值</option>
-                </select>
-                {subsequentNumberMode && (
-                  <Input
-                    type="number"
-                    step="0.1"
-                    className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    value={formData.subsequentProfitSpace !== null ? formData.subsequentProfitSpace : ''}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      if (raw === '' || raw === '-') {
-                        onFormChange({ ...formData, subsequentProfitSpace: null });
-                        return;
-                      }
-                      const num = parseFloat(raw);
-                      if (isNaN(num)) return;
-                      onFormChange({ ...formData, subsequentProfitSpace: parseFloat(num.toFixed(2)) });
-                    }}
-                    placeholder="例如: 5.2"
-                    error={getFieldError('subsequentProfitSpace')}
-                  />
-                )}
+            {/* 理论盈亏比维度 */}
+            {fieldConfig.theoreticalDimensions.length > 0 && (
+              <div className="md:col-span-2 space-y-2">
+                <label className="block text-base font-medium text-gray-700 mb-2">
+                  理论盈亏比%
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                  {fieldConfig.theoreticalDimensions.map(dim => {
+                    const ratios = formData.theoreticalProfitRatios ?? {};
+                    const value = ratios[dim.id];
+                    return (
+                      <div key={dim.id}>
+                        <label className="block text-sm text-gray-600 mb-1">{dim.name}</label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          value={value !== undefined ? value : ''}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            const next = { ...ratios };
+                            if (raw === '' || raw === '-') {
+                              delete next[dim.id];
+                            } else {
+                              const num = parseFloat(raw);
+                              if (isNaN(num)) return;
+                              next[dim.id] = parseFloat(num.toFixed(2));
+                            }
+                            onFormChange({ ...formData, theoreticalProfitRatios: next });
+                          }}
+                          placeholder="默认 = 盈亏情况"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* 备注 */}
             <div className="md:col-span-2">

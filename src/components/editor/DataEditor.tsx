@@ -29,10 +29,9 @@ const emptyRecord: TradingRecordInput = {
   holdDays: null,
   images: [],
   imagePrefix: '',
-  subsequentProfitSpace: null,
   preMarket: '否',
   remark: '',
-  theoreticalProfitPercent: 0,
+  theoreticalProfitRatios: {},
 };
 
 interface Filters {
@@ -150,12 +149,12 @@ export const DataEditor: React.FC = () => {
         tradingType: record.tradingType, trendFeatures: record.trendFeatures, patternFeatures: record.patternFeatures,
         hasMistake: record.hasMistake, profitPercent: record.profitPercent, holdDays: record.holdDays,
         images: record.images || [], imagePrefix: record.imagePrefix || '',
-        subsequentProfitSpace: record.subsequentProfitSpace, preMarket: record.preMarket,
-        remark: record.remark, theoreticalProfitPercent: record.theoreticalProfitPercent,
+        preMarket: record.preMarket,
+        remark: record.remark, theoreticalProfitRatios: record.theoreticalProfitRatios ?? {},
       });
     } else {
       setEditingRecord(null);
-      setFormData({ ...emptyRecord, openDate: getDefaultOpenDate(), theoreticalProfitPercent: 0 });
+      setFormData({ ...emptyRecord, openDate: getDefaultOpenDate() });
     }
     setValidationErrors([]);
     setSaveError(null);
@@ -199,9 +198,8 @@ export const DataEditor: React.FC = () => {
     const saveData = {
       ...formData, profitPercent: formData.profitPercent, holdDays: formData.holdDays,
       images: formData.images || [], imagePrefix: formData.imagePrefix || '',
-      subsequentProfitSpace: formData.subsequentProfitSpace ?? null,
       remark: formData.remark ?? '',
-      theoreticalProfitPercent: formData.theoreticalProfitPercent ?? 0,
+      theoreticalProfitRatios: formData.theoreticalProfitRatios ?? {},
     };
     if (editingRecord) updateRecord(editingRecord.id, saveData);
     else addRecord(saveData);
@@ -231,6 +229,19 @@ export const DataEditor: React.FC = () => {
   // ---- analysis ----
   const handleAnalysisFieldChange = (field: keyof AnalysisResult, value: string) => {
     updateCustomAnalysisField(field, value === 'N/A' ? 'N/A' : Number(value));
+  };
+
+  const handleTheoreticalFieldChange = (dimensionId: string, value: string) => {
+    setCustomAnalysis({
+      ...customAnalysis,
+      data: {
+        ...customAnalysis.data,
+        theoreticalProfitRatios: {
+          ...(customAnalysis.data.theoreticalProfitRatios || {}),
+          [dimensionId]: value === 'N/A' ? 'N/A' : Number(value),
+        },
+      },
+    });
   };
 
   const syncFromComputed = () => {
@@ -334,8 +345,10 @@ export const DataEditor: React.FC = () => {
           useCustom={customAnalysis.useCustom}
           customData={customAnalysis.data}
           computedData={computedAnalysis}
+          theoreticalDimensions={fieldConfig.theoreticalDimensions}
           onToggleUseCustom={toggleUseCustomAnalysis}
           onFieldChange={handleAnalysisFieldChange}
+          onTheoreticalFieldChange={handleTheoreticalFieldChange}
           onSyncFromComputed={syncFromComputed}
         />
       )}

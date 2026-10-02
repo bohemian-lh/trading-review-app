@@ -179,16 +179,16 @@ export function validateTradingRecord(
     });
   }
 
-  // 后续盈亏空间验证（留空/null 均有效）
-  if (record.subsequentProfitSpace !== undefined && record.subsequentProfitSpace !== null) {
-    // subsequentProfitSpace 一定是 number（非 null），但防止 Excel 导入后出现非数字字符串
-    const val = Number(record.subsequentProfitSpace);
-    if (isNaN(val)) {
-      errors.push({
-        field: 'subsequentProfitSpace',
-        message: '后续盈亏空间必须为有效数字或留空',
-        row: rowIndex,
-      });
+  // 理论盈亏比维度值验证（可选字段，键为维度 id）
+  if (record.theoreticalProfitRatios !== undefined && record.theoreticalProfitRatios !== null) {
+    for (const [dimId, val] of Object.entries(record.theoreticalProfitRatios)) {
+      if (typeof val !== 'number' || isNaN(val)) {
+        errors.push({
+          field: 'theoreticalProfitRatios',
+          message: `理论盈亏比维度"${dimId}"的值必须为有效数字`,
+          row: rowIndex,
+        });
+      }
     }
   }
 

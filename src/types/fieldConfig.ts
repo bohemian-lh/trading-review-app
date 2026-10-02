@@ -9,9 +9,11 @@ export interface AggregateRule {
   includedTypes: string[];
 }
 
-// 直方图档位配置（9 个切分点 → 10 档）
-export interface HistogramConfig {
-  cuts: number[];  // 9 个严格递增的切分点
+// 理论盈亏比维度（字段编辑维护）
+export interface TheoreticalDimension {
+  id: string;
+  name: string;
+  comment: string;
 }
 
 export interface FieldConfig {
@@ -19,7 +21,8 @@ export interface FieldConfig {
   trendFeatures: string[];
   patternFeatures: string[];
   aggregateRules: AggregateRule[];
-  histogramConfigs?: Record<string, HistogramConfig>;  // key = tradingType
+  // 理论盈亏比维度（字段编辑维护「维度 id → 名称 / 备注说明」）
+  theoreticalDimensions: TheoreticalDimension[];
   // 交易日志策略配置（可选）
   journalStrategyConfig?: JournalStageConfig[];
   // 共享策略组（所有阶段共用；优先级高于 journalStrategyConfig 中的 per-stage groups）
@@ -30,29 +33,6 @@ export interface FieldConfig {
   decisionChecklist?: DecisionCheckItem[];
   // 价位代码（key = 价位索引 0..6，value = 代码；策略文本中可用 /代码 引用，渲染时替换为对应日志数值）
   priceLevelCodes?: Record<number, string>;
-}
-
-// 默认直方图 9 切分点
-export const DEFAULT_HISTOGRAM_CUTS: number[] = [-15, -10, -8, -5, 0, 5, 8, 15, 20];
-
-// 根据切分点生成 10 个档位的标签
-export function buildHistogramLabels(cuts: number[]): string[] {
-  if (cuts.length === 0) return ['全部'];
-  const labels: string[] = [];
-  labels.push(`≤ ${cuts[0]}%`);
-  for (let i = 0; i < cuts.length - 1; i++) {
-    labels.push(`${cuts[i]}% ~ ${cuts[i + 1]}%`);
-  }
-  labels.push(`> ${cuts[cuts.length - 1]}%`);
-  return labels;
-}
-
-// 数据值匹配档位索引
-export function bucketValue(value: number, cuts: number[]): number {
-  for (let i = 0; i < cuts.length; i++) {
-    if (value <= cuts[i]) return i;
-  }
-  return cuts.length; // 落入末档
 }
 
 // 默认配置（首次使用 / R2不可用时的降级）
@@ -78,6 +58,8 @@ export const DEFAULT_FIELD_CONFIG: FieldConfig = {
       includedTypes: ['风险释放平台转一致', '双阳平台转一致'],
     },
   ],
+  // 不预留默认理论维度，由用户在字段编辑中新增
+  theoreticalDimensions: [],
   // 7 个价位对应的代码（策略文本可用 /代码 引用）
   priceLevelCodes: {
     0: 'entry',
@@ -115,5 +97,8 @@ export function migrateFieldConfig(raw: unknown): FieldConfig {
       ? (cfg.patternFeatures as string[])
       : base.patternFeatures,
     aggregateRules: Array.isArray(cfg.aggregateRules) ? (cfg.aggregateRules as AggregateRule[]) : base.aggregateRules,
+    theoreticalDimensions: Array.isArray(cfg.theoreticalDimensions)
+      ? (cfg.theoreticalDimensions as TheoreticalDimension[])
+      : [],
   };
 }

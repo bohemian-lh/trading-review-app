@@ -11,6 +11,7 @@ export const DatasetSelector: React.FC = () => {
   const createDataset = useDatasetStore(s => s.createDataset);
   const deleteDataset = useDatasetStore(s => s.deleteDataset);
   const records = useRecordsStore(s => s.records);
+  const fieldConfig = useRecordsStore(s => s.fieldConfig);
   const imgDir = useImageDirectory();
   const [showDelete, setShowDelete] = React.useState<string | null>(null);
 
@@ -34,7 +35,7 @@ export const DatasetSelector: React.FC = () => {
 
   const handleDownloadBeforeDelete = (id: string) => {
     const name = datasets.find(d => d.id === id)?.name || id;
-    exportTable1ToExcel(records, `dataset-${name}`);
+    exportTable1ToExcel(records, `dataset-${name}`, fieldConfig.theoreticalDimensions);
     setShowDelete(id);
   };
 

@@ -1,5 +1,4 @@
-import type { TradingRecord, YesNo, AggregateRule, SubsequentProfitAnalysis, SubsequentProfitStats, HistogramBucket, FieldConfig } from '@/types';
-import { DEFAULT_HISTOGRAM_CUTS, buildHistogramLabels, bucketValue } from '@/types';
+import type { TradingRecord, YesNo, AggregateRule, TheoreticalDimension } from '@/types';
 
 // 盈亏比计算规则 (v3):
 // - 总盈利绝对值 > 总亏损绝对值: 盈亏比 = 总盈利绝对值 / 总亏损绝对值 (正)
@@ -48,14 +47,19 @@ export function calculateProfitRatio(
   return parseFloat(ratio.toFixed(2));
 }
 
-/** 计算理论盈亏比（使用 theoreticalProfitPercent 字段） */
-export function calculateTheoreticalSystemProfitRatio(records: TradingRecord[]): number | 'N/A' {
+/** 获取某条记录在指定理论维度下的数值（未填则默认等于盈亏情况） */
+export function getTheoreticalRatio(record: TradingRecord, dimensionId: string): number {
+  return record.theoreticalProfitRatios[dimensionId] ?? record.profitPercent;
+}
+
+/** 计算某理论维度下的系统盈亏比 */
+export function calculateTheoreticalSystemProfitRatio(records: TradingRecord[], dimensionId: string): number | 'N/A' {
   const systemRecords = records.filter(r => r.patternFeatures.includes('系统'));
   let sumPositive = 0;
   let sumNegative = 0;
 
   for (const r of systemRecords) {
-    const val = r.theoreticalProfitPercent;
+    const val = getTheoreticalRatio(r, dimensionId);
     if (val > 0) sumPositive += val;
     else if (val < 0) sumNegative += val;
   }
@@ -73,6 +77,18 @@ export function calculateTheoreticalSystemProfitRatio(records: TradingRecord[]):
   else ratio = sumPositive > 0 ? 1.0 : -1.0;
 
   return parseFloat(ratio.toFixed(2));
+}
+
+/** 批量计算所有理论维度的系统盈亏比 */
+export function calculateTheoreticalProfitRatios(
+  records: TradingRecord[],
+  dimensions: TheoreticalDimension[]
+): Record<string, number | 'N/A'> {
+  const result: Record<string, number | 'N/A'> = {};
+  for (const d of dimensions) {
+    result[d.id] = calculateTheoreticalSystemProfitRatio(records, d.id);
+  }
+  return result;
 }
 
 export function calculateAvgProfitRatio(
@@ -246,61 +262,4 @@ export function calculateAggregateRatios(
     result[rule.name] = calculateProfitRatioByMultipleTypes(records, rule.includedTypes);
   }
   return result;
-}
-
-// ============ 后续盈亏空间分析 ============
-
-export function calculateSubsequentProfitAnalysis(
-  records: TradingRecord[],
-  tradingTypes: string[],
-  fieldConfig?: FieldConfig
-): SubsequentProfitAnalysis {
-  const types = tradingTypes.filter(t => t !== '未知');
-  const allPoints: SubsequentProfitAnalysis['allPoints'] = [];
-  const stats: SubsequentProfitStats[] = [];
-
-  for (const type of types) {
-    const validRecords = records.filter(
-      r => r.tradingType === type && r.subsequentProfitSpace !== null
-    );
-
-    // 散点图数据
-    for (const r of validRecords) {
-      allPoints.push({
-        tradingType: type,
-        value: r.subsequentProfitSpace as number,
-        stockName: r.stockName,
-      });
-    }
-
-    if (validRecords.length === 0) {
-      stats.push({ tradingType: type, count: 0, avg: 0, max: 0, min: 0, histogram: [] });
-      continue;
-    }
-
-    const values = validRecords.map(r => r.subsequentProfitSpace as number);
-    const sorted = [...values].sort((a, b) => a - b);
-    const count = sorted.length;
-    const avg = parseFloat((sorted.reduce((s, v) => s + v, 0) / count).toFixed(2));
-
-    // 直方图：从 fieldConfig 取切分点，否则用默认
-    const cuts = fieldConfig?.histogramConfigs?.[type]?.cuts ?? DEFAULT_HISTOGRAM_CUTS;
-    const labels = buildHistogramLabels(cuts);
-    const histogram: HistogramBucket[] = labels.map(label => ({ label, count: 0 }));
-    for (const v of values) {
-      const idx = bucketValue(v, cuts);
-      histogram[idx].count++;
-    }
-
-    stats.push({
-      tradingType: type,
-      count,
-      avg,
-      max: sorted[count - 1],
-      min: sorted[0],
-      histogram,
-    });
-  }
-
-  return { stats, allPoints };
 }

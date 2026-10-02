@@ -1,13 +1,31 @@
 import type { MistakeStatus } from './trading';
+import type { FieldConfig } from './fieldConfig';
 
-// 盈亏比信源：决定盈亏比/盈亏曲线用哪个字段计算
-export type ProfitSource = 'profitPercent' | 'subsequentProfitSpace' | 'theoreticalProfitPercent';
+// 盈亏比信源：盈亏情况 或 某个理论维度（dim:<维度id>）
+export type ProfitSource = 'profitPercent' | `dim:${string}`;
 
-export const PROFIT_SOURCE_LABELS: Record<ProfitSource, string> = {
-  profitPercent: '盈亏情况',
-  subsequentProfitSpace: '后续盈亏空间',
-  theoreticalProfitPercent: '理论盈亏率',
-};
+/** 是否为理论维度信源 */
+export function isDimensionSource(source: ProfitSource): source is `dim:${string}` {
+  return source.startsWith('dim:');
+}
+
+/** 从信源中取出维度 id（profitPercent 返回 null） */
+export function getSourceDimensionId(source: ProfitSource): string | null {
+  return isDimensionSource(source) ? source.slice(4) : null;
+}
+
+/** 信源展示名称 */
+export function getProfitSourceLabel(source: ProfitSource, fieldConfig: FieldConfig): string {
+  if (source === 'profitPercent') return '盈亏情况';
+  const id = source.slice(4);
+  return fieldConfig.theoreticalDimensions.find(d => d.id === id)?.name ?? '未知维度';
+}
+
+/** 迁移旧信源值：后续盈亏空间 / 理论盈亏率 均归为盈亏情况 */
+export function migrateProfitSource(raw: unknown): ProfitSource {
+  if (typeof raw === 'string' && raw.startsWith('dim:')) return raw as ProfitSource;
+  return 'profitPercent';
+}
 
 export interface AnalysisTabFilter {
   startDate?: string;          // 'YYYYMM' 起，空=不限

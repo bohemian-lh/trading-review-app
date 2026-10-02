@@ -25,8 +25,7 @@ export const TheoryTypeTotalChart: React.FC = () => {
     for (const t of fieldConfig.tradingTypes) {
       if (t === '未知') continue;
       configs.push({ key: t, name: `${t}实际总盈亏`, color: COLORS[ci % COLORS.length] });
-      configs.push({ key: `理论-${t}`, name: `${t}理论总盈亏`, color: COLORS[(ci + 1) % COLORS.length] });
-      ci += 2;
+      ci += 1;
     }
     return configs;
   }, [fieldConfig]);
@@ -36,10 +35,9 @@ export const TheoryTypeTotalChart: React.FC = () => {
   const [selected, setSelected] = useChartConfig(CHART_KEY, ALL_KEYS, DEFAULT_KEYS);
 
   const chartData = useMemo(() => {
-    // 按 openDate 排序，逐条累计各交易类型的实际盈亏和理论盈亏
+    // 按 openDate 排序，逐条累计各交易类型的实际盈亏
     const sorted = [...records].sort((a, b) => a.openDate.localeCompare(b.openDate));
     const accum: Record<string, number> = {};
-    const accumTheo: Record<string, number> = {};
     const data: Record<string, any>[] = [];
 
     for (let i = 0; i < sorted.length; i++) {
@@ -48,15 +46,10 @@ export const TheoryTypeTotalChart: React.FC = () => {
       if (t === '未知') continue;
 
       accum[t] = (accum[t] || 0) + r.profitPercent;
-      accumTheo[t] = (accumTheo[t] || 0) + r.theoreticalProfitPercent;
 
       const point: any = { index: i + 1 };
       for (const l of lineConfigs) {
-        if (l.key.startsWith('理论-')) {
-          point[l.key] = parseFloat(accumTheo[l.key.slice(3)]?.toFixed(2) || '0');
-        } else {
-          point[l.key] = parseFloat(accum[l.key]?.toFixed(2) || '0');
-        }
+        point[l.key] = parseFloat(accum[l.key]?.toFixed(2) || '0');
       }
       data.push(point);
     }

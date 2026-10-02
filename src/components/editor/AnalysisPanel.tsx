@@ -2,11 +2,10 @@ import React from 'react';
 import { AlertCircle } from 'lucide-react';
 import { Button, Input, Toggle, ZoomControls } from '@/components/common';
 import { useTableZoom } from '@/hooks/useTableZoom';
-import type { AnalysisResult } from '@/types';
+import type { AnalysisResult, TheoreticalDimension } from '@/types';
 
 const ANALYSIS_FIELDS: Array<{ key: keyof AnalysisResult; label: string }> = [
   { key: 'systemProfitRatio', label: '符合系统盈亏比' },
-  { key: 'systemTheoreticalProfitRatio', label: '系统理论盈亏比' },
   { key: 'systemNoMistakeProfitRatio', label: '符合系统无失误盈亏比' },
   { key: 'systemWithMistakeProfitRatio', label: '符合系统有失误盈亏比' },
   { key: 'nonSystemProfitRatio', label: '不符合系统盈亏比' },
@@ -20,8 +19,10 @@ interface AnalysisPanelProps {
   useCustom: boolean;
   customData: AnalysisResult;
   computedData: AnalysisResult;
+  theoreticalDimensions: TheoreticalDimension[];
   onToggleUseCustom: () => void;
   onFieldChange: (field: keyof AnalysisResult, value: string) => void;
+  onTheoreticalFieldChange: (dimensionId: string, value: string) => void;
   onSyncFromComputed: () => void;
 }
 
@@ -29,8 +30,10 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   useCustom,
   customData,
   computedData,
+  theoreticalDimensions,
   onToggleUseCustom,
   onFieldChange,
+  onTheoreticalFieldChange,
   onSyncFromComputed,
 }) => {
   const { zoom, containerRef, showZoomHint, zoomHint, resetZoom, increaseZoom, decreaseZoom, isAtMin, isAtMax, zoomStyle } = useTableZoom();
@@ -96,6 +99,27 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                 )}
               </div>
             ))}
+            {theoreticalDimensions.map(dim => {
+              const value = customData.theoreticalProfitRatios[dim.id];
+              const computed = computedData.theoreticalProfitRatios[dim.id];
+              return (
+                <div key={dim.id} className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">理论盈亏比 · {dim.name || '未命名维度'}</label>
+                  {useCustom ? (
+                    <Input
+                      type="text"
+                      value={value === 'N/A' ? 'N/A' : (value !== undefined ? String(value) : '')}
+                      onChange={(e) => onTheoreticalFieldChange(dim.id, e.target.value)}
+                      placeholder="输入数值或 N/A"
+                    />
+                  ) : (
+                    <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-gray-700">
+                      {computed === 'N/A' ? 'N/A' : String(computed)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

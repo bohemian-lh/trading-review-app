@@ -4,7 +4,7 @@ import { useRecordsStore, migrateRecord } from '@/stores/recordsStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useAnalysisTabStore } from '@/stores/analysisTabStore';
-import { DEFAULT_FIELD_CONFIG, migrateFieldConfig, type AnalysisTab } from '@/types';
+import { DEFAULT_FIELD_CONFIG, migrateFieldConfig, migrateProfitSource, type AnalysisTab } from '@/types';
 import { generateCycleStats } from '@/services/cycleStatsService';
 
 /**
@@ -118,7 +118,11 @@ async function loadDatasetData(datasetId: string): Promise<void> {
       ? migrateFieldConfig(configResult.config)
       : { ...DEFAULT_FIELD_CONFIG };
 
-    useAnalysisTabStore.getState().setTabs(tabsResult.success ? (tabsResult.tabs || []) : []);
+    useAnalysisTabStore.getState().setTabs(
+      tabsResult.success
+        ? (tabsResult.tabs || []).map((t: AnalysisTab) => ({ ...t, source: migrateProfitSource(t.source) }))
+        : []
+    );
     useAnalysisTabStore.getState().setActiveTabId(null);
 
     if (result.success) {

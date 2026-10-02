@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import { Settings, Plus, Trash2, Save, X } from 'lucide-react';
-import { useRecordsStore } from '@/stores';
-import { saveFieldConfigToR2 } from '@/hooks/useStoreSync';
-import type { FieldConfig, AggregateRule, HistogramConfig, JournalStageConfig, JournalStrategyGroup, MindsetRow, DecisionCheckItem } from '@/types';
-import { DEFAULT_HISTOGRAM_CUTS, DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS, DEFAULT_MINDSET_ROWS, DEFAULT_FIELD_CONFIG } from '@/types';
+import { useRecordsStore, useAnalysisTabStore } from '@/stores';
+import { saveFieldConfigToR2, saveTabsToR2 } from '@/hooks/useStoreSync';
+import { generateId } from '@/utils';
+import type { FieldConfig, AggregateRule, TheoreticalDimension, JournalStageConfig, JournalStrategyGroup, MindsetRow, DecisionCheckItem } from '@/types';
+import { DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS, DEFAULT_MINDSET_ROWS, DEFAULT_FIELD_CONFIG } from '@/types';
 
 // 7 个价位的语义标签（用于字段配置中编辑代码）
 const PRICE_LEVEL_LABELS = ['建仓价', '第一硬止损位', '目标位', '固定目标位', '压力1', '压力2', '趋势最低点'];
@@ -13,7 +14,7 @@ type PendingConfig = {
   trendFeatures: string[];
   patternFeatures: string[];
   aggregateRules: AggregateRule[];
-  histogramConfigs: Record<string, HistogramConfig>;
+  theoreticalDimensions: TheoreticalDimension[];
   journalStrategyConfig: JournalStageConfig[];
   sharedStrategyGroups: JournalStrategyGroup[];
   mindsetTable: MindsetRow[];
@@ -31,7 +32,7 @@ export const FieldConfigPage: React.FC = () => {
     trendFeatures: [...fieldConfig.trendFeatures],
     patternFeatures: [...fieldConfig.patternFeatures],
     aggregateRules: fieldConfig.aggregateRules.map(r => ({ ...r, includedTypes: [...r.includedTypes] })),
-    histogramConfigs: fieldConfig.histogramConfigs ? { ...fieldConfig.histogramConfigs } : {},
+    theoreticalDimensions: fieldConfig.theoreticalDimensions.map(d => ({ ...d })),
     journalStrategyConfig: fieldConfig.journalStrategyConfig
       ? fieldConfig.journalStrategyConfig.map(s => ({ ...s, strategyGroups: [] }))
       : DEFAULT_JOURNAL_STAGES.map(s => ({ ...s, strategyGroups: [] })),
@@ -58,7 +59,7 @@ export const FieldConfigPage: React.FC = () => {
       trendFeatures: [...fieldConfig.trendFeatures],
       patternFeatures: [...fieldConfig.patternFeatures],
       aggregateRules: fieldConfig.aggregateRules.map(r => ({ ...r, includedTypes: [...r.includedTypes] })),
-      histogramConfigs: fieldConfig.histogramConfigs ? { ...fieldConfig.histogramConfigs } : {},
+      theoreticalDimensions: fieldConfig.theoreticalDimensions.map(d => ({ ...d })),
       journalStrategyConfig: fieldConfig.journalStrategyConfig
         ? fieldConfig.journalStrategyConfig.map(s => ({ ...s, strategyGroups: [] }))
         : DEFAULT_JOURNAL_STAGES.map(s => ({ ...s, strategyGroups: [] })),
@@ -81,7 +82,7 @@ export const FieldConfigPage: React.FC = () => {
     trendFeatures: fieldConfig.trendFeatures,
     patternFeatures: fieldConfig.patternFeatures,
     aggregateRules: fieldConfig.aggregateRules,
-    histogramConfigs: fieldConfig.histogramConfigs || {},
+    theoreticalDimensions: fieldConfig.theoreticalDimensions,
     journalStrategyConfig: fieldConfig.journalStrategyConfig || DEFAULT_JOURNAL_STAGES,
     sharedStrategyGroups: fieldConfig.sharedJournalStrategyGroups || DEFAULT_SHARED_STRATEGY_GROUPS,
     mindsetTable: fieldConfig.mindsetTable || DEFAULT_MINDSET_ROWS,
@@ -136,24 +137,14 @@ export const FieldConfigPage: React.FC = () => {
     
     if (!confirm(confirmMsg)) return;
     
-    setPending(p => {
-      const { [type]: _, ...restHistogramConfigs } = p.histogramConfigs;
-      return {
-        tradingTypes: p.tradingTypes.filter(t => t !== type),
-        trendFeatures: p.trendFeatures,
-        patternFeatures: p.patternFeatures,
-        aggregateRules: p.aggregateRules.map(r => ({
-          ...r,
-          includedTypes: r.includedTypes.filter(t => t !== type),
-        })),
-        histogramConfigs: restHistogramConfigs,
-        journalStrategyConfig: p.journalStrategyConfig,
-        sharedStrategyGroups: p.sharedStrategyGroups,
-        mindsetTable: p.mindsetTable,
-        decisionChecklist: p.decisionChecklist,
-        priceLevelCodes: p.priceLevelCodes,
-      };
-    });
+    setPending(p => ({
+      ...p,
+      tradingTypes: p.tradingTypes.filter(t => t !== type),
+      aggregateRules: p.aggregateRules.map(r => ({
+        ...r,
+        includedTypes: r.includedTypes.filter(t => t !== type),
+      })),
+    }));
     setMessage(null);
   };
 
@@ -246,21 +237,52 @@ export const FieldConfigPage: React.FC = () => {
     setMessage(null);
   };
 
+  // ---------- 理论盈亏比维度 ----------
+  const addTheoreticalDimension = () => {
+    setPending(p => ({
+      ...p,
+      theoreticalDimensions: [...p.theoreticalDimensions, { id: generateId(), name: '', comment: '' }],
+    }));
+    setMessage(null);
+  };
+
+  const updateTheoreticalDimension = (id: string, patch: Partial<TheoreticalDimension>) => {
+    setPending(p => ({
+      ...p,
+      theoreticalDimensions: p.theoreticalDimensions.map(d => d.id === id ? { ...d, ...patch } : d),
+    }));
+    setMessage(null);
+  };
+
+  const deleteTheoreticalDimension = (id: string) => {
+    const dim = pending.theoreticalDimensions.find(d => d.id === id);
+    if (!confirm(`确定删除理论盈亏比维度「${dim?.name || '未命名'}」？\n删除后将同时移除所有记录中该维度的数值，并影响相关的统计分析页面。`)) return;
+    setPending(p => ({
+      ...p,
+      theoreticalDimensions: p.theoreticalDimensions.filter(d => d.id !== id),
+    }));
+    setMessage(null);
+  };
+
   // ---------- Save ----------
   const handleSave = async () => {
     setSaving(true);
     try {
-      // 1. 删除枚举值：将受影响记录标记为「未知」或移除标记
+      // 1. 删除枚举值/理论维度：同步处理受影响记录
       const deletedTradingTypes = fieldConfig.tradingTypes.filter(t => !pending.tradingTypes.includes(t));
       const deletedTrendFeatures = fieldConfig.trendFeatures.filter(t => !pending.trendFeatures.includes(t));
       const deletedPatternFeatures = fieldConfig.patternFeatures.filter(t => !pending.patternFeatures.includes(t));
-      if (deletedTradingTypes.length > 0 || deletedTrendFeatures.length > 0 || deletedPatternFeatures.length > 0) {
+      const deletedTheoreticalDimensions = fieldConfig.theoreticalDimensions
+        .filter(d => !pending.theoreticalDimensions.some(pd => pd.id === d.id))
+        .map(d => d.id);
+      if (deletedTradingTypes.length > 0 || deletedTrendFeatures.length > 0 || deletedPatternFeatures.length > 0 || deletedTheoreticalDimensions.length > 0) {
         useRecordsStore.getState().setRecords(
           records.map(r => {
             let changed = false;
             let tradingType = r.tradingType;
             let trendFeatures = r.trendFeatures;
             let patternFeatures = r.patternFeatures;
+            let theoreticalProfitRatios = r.theoreticalProfitRatios;
             if (deletedTradingTypes.includes(r.tradingType)) { tradingType = '未知'; changed = true; }
             if (deletedTrendFeatures.some(dt => r.trendFeatures.includes(dt))) {
               trendFeatures = r.trendFeatures.filter(et => !deletedTrendFeatures.includes(et));
@@ -271,9 +293,27 @@ export const FieldConfigPage: React.FC = () => {
               patternFeatures = r.patternFeatures.filter(pf => !deletedPatternFeatures.includes(pf));
               changed = true;
             }
-            return changed ? { ...r, tradingType, trendFeatures, patternFeatures, hasCycleStats: false, cycleId: undefined } : r;
+            if (deletedTheoreticalDimensions.some(id => id in (r.theoreticalProfitRatios || {}))) {
+              theoreticalProfitRatios = { ...(r.theoreticalProfitRatios || {}) };
+              deletedTheoreticalDimensions.forEach(id => delete theoreticalProfitRatios[id]);
+              changed = true;
+            }
+            return changed ? { ...r, tradingType, trendFeatures, patternFeatures, theoreticalProfitRatios, hasCycleStats: false, cycleId: undefined } : r;
           })
         );
+      }
+
+      // 1.5 删除理论维度：同步删除引用该维度的分析页签
+      if (deletedTheoreticalDimensions.length > 0) {
+        const tabState = useAnalysisTabStore.getState();
+        const remainingTabs = tabState.tabs.filter(t => {
+          const dimId = t.source.startsWith('dim:') ? t.source.slice(4) : null;
+          return dimId === null || !deletedTheoreticalDimensions.includes(dimId);
+        });
+        if (remainingTabs.length !== tabState.tabs.length) {
+          tabState.setTabs(remainingTabs);
+          await saveTabsToR2(remainingTabs);
+        }
       }
 
       // 2. 保存配置
@@ -282,7 +322,7 @@ export const FieldConfigPage: React.FC = () => {
         trendFeatures: pending.trendFeatures,
         patternFeatures: pending.patternFeatures,
         aggregateRules: pending.aggregateRules.map(r => ({ name: r.name, includedTypes: [...r.includedTypes] })),
-        histogramConfigs: { ...pending.histogramConfigs },
+        theoreticalDimensions: pending.theoreticalDimensions.map(d => ({ ...d })),
         journalStrategyConfig: pending.journalStrategyConfig.map(s => ({ ...s, strategyGroups: [] })),
         sharedJournalStrategyGroups: pending.sharedStrategyGroups.map(g => ({ ...g, strategies: [...g.strategies] })),
         mindsetTable: pending.mindsetTable,
@@ -464,103 +504,45 @@ export const FieldConfigPage: React.FC = () => {
         )}
       </div>
 
-      {/* Section 4: 直方图档位配置 */}
+      {/* Section 4: 理论盈亏比维度 */}
       <div className="bg-white shadow rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">后续盈亏直方图档位</h3>
+          <h3 className="text-lg font-semibold text-gray-900">理论盈亏比维度</h3>
+          <button onClick={addTheoreticalDimension} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">
+            <Plus className="h-3.5 w-3.5" /> 新增维度
+          </button>
         </div>
-        <p className="text-sm text-gray-500 mb-4">为各交易类型配置直方图档位切分点（9 个递增数值 → 10 个档位）。不配置的类型自动使用默认档位。</p>
-        
-        <div className="space-y-4">
-          {pending.tradingTypes.filter(t => t !== '未知').map(type => {
-            const config = pending.histogramConfigs[type];
-            const cuts = config?.cuts ?? DEFAULT_HISTOGRAM_CUTS;
-            const hasCustom = !!config;
-            const labels = [
-              `≤ ${cuts[0]}%`,
-              ...cuts.slice(0, -1).map((c, i) => `${c}% ~ ${cuts[i + 1]}%`),
-              `> ${cuts[cuts.length - 1]}%`,
-            ];
-            
-            return (
-              <div key={type} className="border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-medium text-gray-900">{type}</span>
-                  <div className="flex items-center gap-2">
-                    {hasCustom && (
-                      <button
-                        onClick={() => {
-                          setPending(p => {
-                            const { [type]: _, ...rest } = p.histogramConfigs;
-                            return { ...p, histogramConfigs: rest };
-                          });
-                        }}
-                        className="text-xs text-gray-500 hover:text-red-600"
-                      >
-                        使用默认
-                      </button>
-                    )}
-                    {!hasCustom && (
-                      <button
-                        onClick={() => {
-                          setPending(p => ({
-                            ...p,
-                            histogramConfigs: { ...p.histogramConfigs, [type]: { cuts: [...DEFAULT_HISTOGRAM_CUTS] } },
-                          }));
-                        }}
-                        className="text-xs text-blue-600 hover:text-blue-800"
-                      >
-                        自定义
-                      </button>
-                    )}
-                  </div>
+        <p className="text-xs text-gray-400 mt-1 mb-4">维度的名称与备注说明仅在字段编辑中维护；数据编辑中按维度录入数值（未填默认等于盈亏情况）。</p>
+
+        {pending.theoreticalDimensions.length === 0 ? (
+          <p className="text-sm text-gray-500">暂无理论盈亏比维度，点击「新增维度」添加。</p>
+        ) : (
+          <div className="space-y-3">
+            {pending.theoreticalDimensions.map(dim => (
+              <div key={dim.id} className="border rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={dim.name}
+                    onChange={(e) => updateTheoreticalDimension(dim.id, { name: e.target.value })}
+                    placeholder="维度名称（如：理论目标位）"
+                    className="flex-1 text-sm border rounded px-2 py-1.5"
+                  />
+                  <button onClick={() => deleteTheoreticalDimension(dim.id)} className="text-red-500 hover:text-red-700">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
-                
-                {hasCustom ? (
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap gap-2 items-center">
-                      {cuts.map((c, i) => (
-                        <input
-                          key={i}
-                          type="number"
-                          step="0.1"
-                          value={c}
-                          onChange={e => {
-                            const val = parseFloat(e.target.value);
-                            if (isNaN(val)) return;
-                            setPending(p => {
-                              const newCuts = [...(p.histogramConfigs[type]?.cuts ?? cuts)];
-                              newCuts[i] = val;
-                              return {
-                                ...p,
-                                histogramConfigs: { ...p.histogramConfigs, [type]: { cuts: newCuts } },
-                              };
-                            });
-                          }}
-                          className="w-16 px-1.5 py-1 border rounded text-xs text-center"
-                        />
-                      ))}
-                    </div>
-                    {(() => {
-                      const curCuts = pending.histogramConfigs[type]?.cuts ?? cuts;
-                      const isSorted = curCuts.every((c, i) => i === 0 || c > curCuts[i - 1]);
-                      return !isSorted && (
-                        <p className="text-xs text-red-600">切分点必须严格递增</p>
-                      );
-                    })()}
-                    <div className="text-xs text-gray-500 mt-2">
-                      预览：{labels.join(' | ')}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-xs text-gray-500">
-                    默认档位：{labels.join(' | ')}
-                  </div>
-                )}
+                <input
+                  type="text"
+                  value={dim.comment}
+                  onChange={(e) => updateTheoreticalDimension(dim.id, { comment: e.target.value })}
+                  placeholder="备注说明（仅在字段编辑显示）"
+                  className="w-full text-xs border rounded px-2 py-1.5"
+                />
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ───────── 交易日志策略配置 ───────── */}

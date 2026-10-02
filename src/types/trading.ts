@@ -18,12 +18,10 @@ export interface TradingRecord {
   hasMonthlyStats: boolean;
   // 关联的周期ID（可选）
   cycleId?: string;
-  // 后续盈亏空间
-  subsequentProfitSpace: number | null;
   // 备注
   remark: string;
-  // 理论盈亏比
-  theoreticalProfitPercent: number;
+  // 理论盈亏比（key = 维度 id，value = 该维度数值；未填时语义上等于盈亏情况）
+  theoreticalProfitRatios: Record<string, number>;
 }
 
 // 合法值由 fieldConfig 动态控制，类型层面不做约束
@@ -51,9 +49,8 @@ export interface TradingRecordInput {
   hasCycleStats?: boolean;
   hasMonthlyStats?: boolean;
   cycleId?: string;
-  subsequentProfitSpace?: number | null;
   remark?: string;
-  theoreticalProfitPercent?: number;
+  theoreticalProfitRatios?: Record<string, number>;
 }
 
 // ============ 数据集 ============

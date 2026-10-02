@@ -42,6 +42,7 @@ export const ExcelUploader: React.FC = () => {
   }, [isModalOpen]);
 
   const records = useRecordsStore(s => s.records);
+  const fieldConfig = useRecordsStore(s => s.fieldConfig);
   const customAnalysis = useRecordsStore(s => s.customAnalysis);
   const customMonthly = useRecordsStore(s => s.customMonthly);
   const cycleStats = useRecordsStore(s => s.cycleStats);
@@ -114,7 +115,7 @@ export const ExcelUploader: React.FC = () => {
     setError(null);
 
     try {
-      const result = await parseExcelFile(file, options);
+      const result = await parseExcelFile(file, options, fieldConfig.theoreticalDimensions);
       console.log('Parse completed - Success!');
       console.log('Parse result (summary):', {
         hasRecords: !!result.records,
@@ -252,8 +253,8 @@ export const ExcelUploader: React.FC = () => {
       setError('没有数据可导出');
       return;
     }
-    exportAllToExcel(records, analysis, monthlyAnalysis, currentFileName || '交易复盘数据.xlsx', customAnalysis, customMonthly, cycleStats);
-  }, [records, analysis, monthlyAnalysis, currentFileName, customAnalysis, customMonthly, cycleStats, setError]);
+    exportAllToExcel(records, analysis, monthlyAnalysis, currentFileName || '交易复盘数据.xlsx', customAnalysis, customMonthly, cycleStats, fieldConfig.theoreticalDimensions);
+  }, [records, analysis, monthlyAnalysis, currentFileName, customAnalysis, customMonthly, cycleStats, fieldConfig.theoreticalDimensions, setError]);
 
   const handleUploadToR2 = useCallback(async (file: File) => {
     try {
@@ -525,7 +526,7 @@ export const ExcelUploader: React.FC = () => {
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         <h3 className="text-sm font-medium text-gray-700 mb-3">工具</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <Button variant="secondary" onClick={generateTestExcel} className="flex items-center justify-center">
+          <Button variant="secondary" onClick={() => generateTestExcel(fieldConfig.theoreticalDimensions)} className="flex items-center justify-center">
             <Database className="mr-2 h-4 w-4" />
             生成测试数据 Excel
           </Button>

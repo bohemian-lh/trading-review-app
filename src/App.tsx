@@ -10,7 +10,6 @@ const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m
 const ExcelUploader = lazy(() => import('@/components/excel').then(m => ({ default: m.ExcelUploader })));
 const DataEditor = lazy(() => import('@/components/editor').then(m => ({ default: m.DataEditor })));
 const FieldConfigPage = lazy(() => import('@/components/config/FieldConfigPage').then(m => ({ default: m.FieldConfigPage })));
-const SubsequentProfitPage = lazy(() => import('@/components/charts/SubsequentProfitPage').then(m => ({ default: m.SubsequentProfitPage })));
 const TheoryVsActualPage = lazy(() => import('@/pages/TheoryVsActualPage').then(m => ({ default: m.default })));
 const TradingJournalPage = lazy(() => import('@/pages/TradingJournalPage').then(m => ({ default: m.default })));
 const MindsetManagementPage = lazy(() => import('@/pages/MindsetManagementPage').then(m => ({ default: m.default })));
@@ -62,7 +61,6 @@ const App: React.FC = () => {
               <Route path="/" element={<Dashboard />} />
               <Route path="/import" element={<ExcelUploader />} />
               <Route path="/editor" element={<DataEditor />} />
-              <Route path="/subsequent-profit" element={<SubsequentProfitPage />} />
               <Route path="/theory-vs-actual" element={<TheoryVsActualPage />} />
               <Route path="/journal" element={<TradingJournalPage />} />
               <Route path="/mindset" element={<MindsetManagementPage />} />

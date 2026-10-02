@@ -3,10 +3,10 @@ import { extractMonth } from '@/utils/dateUtils';
 
 // ============ 信源取值 ============
 
-export function getSourceValue(record: TradingRecord, source: ProfitSource): number | null {
+export function getSourceValue(record: TradingRecord, source: ProfitSource): number {
   if (source === 'profitPercent') return record.profitPercent;
-  if (source === 'subsequentProfitSpace') return record.subsequentProfitSpace;
-  return record.theoreticalProfitPercent;
+  const dimensionId = source.slice(4);
+  return record.theoreticalProfitRatios[dimensionId] ?? record.profitPercent;
 }
 
 // ============ 数据范围筛选 ============

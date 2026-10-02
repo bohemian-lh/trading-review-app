@@ -26,7 +26,7 @@ const AnalysisResultSchema = z.object({
   tradingTypeRatios: z.record(z.string(), z.number()),
   trendFeatureRatios: z.record(z.string(), z.number()),
   aggregateRatios: z.record(z.string(), z.number()),
-  systemTheoreticalProfitRatio: NumberOrNASchema,
+  theoreticalProfitRatios: z.record(z.string(), NumberOrNASchema),
 }) satisfies z.ZodType<AnalysisResult>;
 
 // MonthlyAnalysis schema
@@ -69,9 +69,8 @@ export const TradingRecordSchema = z.object({
   hasCycleStats: z.boolean().default(false),
   hasMonthlyStats: z.boolean().default(false),
   cycleId: z.string().optional(),
-  subsequentProfitSpace: z.union([z.number(), z.null()]),
   remark: z.string().max(1000, '备注不能超过1000个字符').default(''),
-  theoreticalProfitPercent: z.number().min(-100).max(1000).default(0),
+  theoreticalProfitRatios: z.record(z.string(), z.number()).default({}),
 }) satisfies z.ZodType<TradingRecord>;
 
 export const TradingRecordArraySchema = z.array(TradingRecordSchema);

@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType } from '@/types';
+import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType, TheoreticalDimension } from '@/types';
 import { generateId } from '@/utils';
 
 export const SHEET_NAME_1 = '表1-交易复盘数据';
@@ -7,7 +7,8 @@ export const SHEET_NAME_2 = '表2-动态数据分析';
 export const SHEET_NAME_3 = '表3-月度统计';
 export const SHEET_NAME_4 = '表4-周期统计';
 
-const HEADERS_1 = [
+// 表1 基础列（不含理论盈亏比维度列）
+const BASE_HEADERS_1 = [
   '开单时间',
   '股票名称',
   '股票代码',
@@ -17,12 +18,30 @@ const HEADERS_1 = [
   '有无大的失误',
   '盈亏情况',
   '持仓时间（天）',
-  '后续盈亏空间',
   '图片',
   '盘前是否',
   '备注',
-  '理论盈亏率',
 ];
+
+// 理论维度列名（名称去重；空名回退为「理论维度N」）
+function buildTheoreticalColumns(dimensions: TheoreticalDimension[]): Array<{ id: string; header: string }> {
+  const used = new Set<string>();
+  return dimensions.map((d, i) => {
+    const base = d.name?.trim() || `理论维度${i + 1}`;
+    let header = base;
+    let n = 2;
+    while (used.has(header)) {
+      header = `${base}${n}`;
+      n++;
+    }
+    used.add(header);
+    return { id: d.id, header };
+  });
+}
+
+function buildHeaders1(dimensions: TheoreticalDimension[]): string[] {
+  return [...BASE_HEADERS_1, ...buildTheoreticalColumns(dimensions).map(c => c.header)];
+}
 
 const HEADERS_2 = [
   '指标',
@@ -57,7 +76,8 @@ export interface ImportOptions {
 
 export function parseExcelFile(
   file: File,
-  options: ImportOptions
+  options: ImportOptions,
+  dimensions: TheoreticalDimension[] = []
 ): Promise<ParseResult> {
   return new Promise((resolve, reject) => {
     if (!file) {
@@ -99,7 +119,7 @@ export function parseExcelFile(
           if (!worksheet) {
             result.errors.push(`未找到工作表：${SHEET_NAME_1}`);
           } else {
-            const { records, errors } = parseTable1(worksheet);
+            const { records, errors } = parseTable1(worksheet, dimensions);
             result.records = records;
             result.errors.push(...errors);
           }
@@ -110,7 +130,7 @@ export function parseExcelFile(
           if (!worksheet) {
             result.errors.push(`未找到工作表：${SHEET_NAME_2}`);
           } else {
-            result.analysis = parseTable2(worksheet);
+            result.analysis = parseTable2(worksheet, dimensions);
           }
         }
 
@@ -159,7 +179,7 @@ export function parseExcelFile(
   });
 }
 
-function parseTable1(worksheet: XLSX.WorkSheet): {
+function parseTable1(worksheet: XLSX.WorkSheet, dimensions: TheoreticalDimension[]): {
   records: TradingRecord[];
   errors: string[];
 } {
@@ -170,7 +190,7 @@ function parseTable1(worksheet: XLSX.WorkSheet): {
   for (let i = 0; i < jsonData.length; i++) {
     const row = jsonData[i];
     try {
-      const record = mapRowToRecord(row);
+      const record = mapRowToRecord(row, dimensions);
       if (record) {
         records.push(record);
       }
@@ -182,7 +202,7 @@ function parseTable1(worksheet: XLSX.WorkSheet): {
   return { records, errors };
 }
 
-function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
+function parseTable2(worksheet: XLSX.WorkSheet, dimensions: TheoreticalDimension[]): AnalysisResult | undefined {
   const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' });
   const analysisMap = new Map<string, number | 'N/A'>();
 
@@ -194,6 +214,11 @@ function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
     if (key) {
       analysisMap.set(key, parseValue(value));
     }
+  }
+
+  const theoreticalProfitRatios: Record<string, number | 'N/A'> = {};
+  for (const d of dimensions) {
+    theoreticalProfitRatios[d.id] = analysisMap.get(`理论盈亏比·${d.name || '未命名维度'}`) || 'N/A';
   }
 
   return {
@@ -208,7 +233,7 @@ function parseTable2(worksheet: XLSX.WorkSheet): AnalysisResult | undefined {
     tradingTypeRatios: {},
     trendFeatureRatios: {},
     aggregateRatios: {},
-    systemTheoreticalProfitRatio: analysisMap.get('系统理论盈亏比') || 'N/A',
+    theoreticalProfitRatios,
   };
 }
 
@@ -259,7 +284,7 @@ function parseImagesColumn(raw: unknown): string[] {
   return str.split(',').map(s => s.trim()).filter(Boolean);
 }
 
-function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
+function mapRowToRecord(row: Record<string, unknown>, dimensions: TheoreticalDimension[]): TradingRecord | null {
   if (!row['开单时间'] && !row['股票名称']) {
     return null;
   }
@@ -289,10 +314,14 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
   // 解析持仓时间
   const holdDays = parseInt(String(row['持仓时间（天）'] || '').trim(), 10) || 0;
 
-  // 解析后续盈亏空间
-  const subSpaceStr = String(row['后续盈亏空间'] || '').trim().replace('%', '');
-  const subsequentProfitSpace: number | null = 
-    subSpaceStr === '' || subSpaceStr === 'N/A' ? null : (parseFloat(subSpaceStr) || 0);
+  // 解析理论盈亏比维度值（按列名匹配）
+  const theoreticalProfitRatios: Record<string, number> = {};
+  for (const col of buildTheoreticalColumns(dimensions)) {
+    const raw = String(row[col.header] ?? '').trim().replace('%', '');
+    if (raw === '' || raw === 'N/A') continue;
+    const num = parseFloat(raw);
+    if (!isNaN(num)) theoreticalProfitRatios[col.id] = num;
+  }
 
   return {
     id: generateId(),
@@ -310,17 +339,17 @@ function mapRowToRecord(row: Record<string, unknown>): TradingRecord | null {
     preMarket: row['盘前是否'] === '是' ? '是' : '否',
     hasCycleStats: false,
     hasMonthlyStats: false,
-    subsequentProfitSpace,
     remark: String(row['备注'] || '').slice(0, 1000),
-    theoreticalProfitPercent: parseFloat(String(row['理论盈亏率'] || '')) || 0,
+    theoreticalProfitRatios,
   };
 }
 
-export function exportTable1ToExcel(records: TradingRecord[], filename: string): void {
+export function exportTable1ToExcel(records: TradingRecord[], filename: string, dimensions: TheoreticalDimension[] = []): void {
   const workbook = XLSX.utils.book_new();
+  const theoCols = buildTheoreticalColumns(dimensions);
 
   const data = [
-    HEADERS_1,
+    buildHeaders1(dimensions),
     ...records.map((record) => [
       record.openDate,
       record.stockName,
@@ -331,11 +360,13 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string):
       record.hasMistake,
       record.profitPercent,
       record.holdDays,
-      record.subsequentProfitSpace === null ? 'N/A' : record.subsequentProfitSpace,
       record.images ? record.images.join(',') : '',
       record.preMarket,
       record.remark,
-      record.theoreticalProfitPercent,
+      ...theoCols.map(c => {
+        const v = record.theoreticalProfitRatios[c.id];
+        return v === undefined ? '' : v;
+      }),
     ]),
   ];
 
@@ -354,15 +385,14 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string):
     { wch: 15 },
     { wch: 15 },
     { wch: 15 },
-    { wch: 10 },
-    { wch: 12 },
+    ...theoCols.map(() => ({ wch: 12 })),
   ];
 
   XLSX.utils.book_append_sheet(workbook, worksheet, SHEET_NAME_1);
   XLSX.writeFile(workbook, filename);
 }
 
-export function exportTable2ToExcel(analysis: AnalysisResult, filename: string): void {
+export function exportTable2ToExcel(analysis: AnalysisResult, filename: string, dimensions: TheoreticalDimension[] = []): void {
   const workbook = XLSX.utils.book_new();
 
   const data = [
@@ -375,7 +405,7 @@ export function exportTable2ToExcel(analysis: AnalysisResult, filename: string):
     ['系统亏损平均持仓天数', formatValue(analysis.systemLossAvgHoldDays, false)],
     ['非系统盈利平均持仓天数', formatValue(analysis.nonSystemProfitAvgHoldDays, false)],
     ['非系统亏损平均持仓天数', formatValue(analysis.nonSystemLossAvgHoldDays, false)],
-    ['系统理论盈亏比', formatValue(analysis.systemTheoreticalProfitRatio, true)],
+    ...dimensions.map(d => [`理论盈亏比·${d.name || '未命名维度'}`, formatValue(analysis.theoreticalProfitRatios[d.id] ?? 'N/A', true)]),
   ];
 
   const worksheet = XLSX.utils.aoa_to_sheet(data);
@@ -470,7 +500,8 @@ export function exportAllToExcel(
   filename: string,
   customAnalysis?: CustomAnalysisData,
   customMonthly?: CustomMonthlyData,
-  cycleStats?: Record<CycleStatType, CycleStats[]>
+  cycleStats?: Record<CycleStatType, CycleStats[]>,
+  dimensions: TheoreticalDimension[] = []
 ): void {
   const workbook = XLSX.utils.book_new();
 
@@ -478,8 +509,10 @@ export function exportAllToExcel(
   const finalAnalysis = customAnalysis?.useCustom ? customAnalysis.data : analysis;
   const finalMonthly = customMonthly?.useCustom ? customMonthly.data : monthlyAnalysis;
 
+  const theoCols = buildTheoreticalColumns(dimensions);
+
   const table1Data = [
-    HEADERS_1,
+    buildHeaders1(dimensions),
     ...records.map((record) => [
       record.openDate,
       record.stockName,
@@ -490,9 +523,13 @@ export function exportAllToExcel(
       record.hasMistake,
       record.profitPercent,
       record.holdDays,
-      record.subsequentProfitSpace === null ? 'N/A' : record.subsequentProfitSpace,
       record.images ? record.images.join(',') : '',
       record.preMarket,
+      record.remark,
+      ...theoCols.map(c => {
+        const v = record.theoreticalProfitRatios[c.id];
+        return v === undefined ? '' : v;
+      }),
     ]),
   ];
 
@@ -506,6 +543,7 @@ export function exportAllToExcel(
     ['系统亏损平均持仓天数', formatValue(finalAnalysis.systemLossAvgHoldDays, false)],
     ['非系统盈利平均持仓天数', formatValue(finalAnalysis.nonSystemProfitAvgHoldDays, false)],
     ['非系统亏损平均持仓天数', formatValue(finalAnalysis.nonSystemLossAvgHoldDays, false)],
+    ...dimensions.map(d => [`理论盈亏比·${d.name || '未命名维度'}`, formatValue(finalAnalysis.theoreticalProfitRatios[d.id] ?? 'N/A', true)]),
   ];
 
   const table3Data = [
@@ -525,7 +563,7 @@ export function exportAllToExcel(
   worksheet1['!cols'] = [
     { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
     { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
-    { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
+    { wch: 15 }, { wch: 15 }, ...theoCols.map(() => ({ wch: 12 })),
   ];
 
   const worksheet2 = XLSX.utils.aoa_to_sheet(table2Data);
@@ -590,8 +628,8 @@ function formatValue(value: number | 'N/A', addPercent: boolean = true): string 
   return `${value.toFixed(0)}`;
 }
 
-export function exportToExcel(records: TradingRecord[], filename: string): void {
-  exportTable1ToExcel(records, filename);
+export function exportToExcel(records: TradingRecord[], filename: string, dimensions: TheoreticalDimension[] = []): void {
+  exportTable1ToExcel(records, filename, dimensions);
 }
 
 // 表4的表头
@@ -641,8 +679,9 @@ function generateRandomHoldDays(): number {
   return Math.floor(Math.random() * 15) + 1;
 }
 
-function createTestTable1Data(): any[][] {
-  const tableData: any[][] = [HEADERS_1];
+function createTestTable1Data(dimensions: TheoreticalDimension[] = []): any[][] {
+  const theoCols = buildTheoreticalColumns(dimensions);
+  const tableData: any[][] = [buildHeaders1(dimensions)];
   for (const month of MONTHS) {
     const recordCount = Math.floor(Math.random() * 8) + 5;
     for (let i = 0; i < recordCount; i++) {
@@ -655,7 +694,7 @@ function createTestTable1Data(): any[][] {
       const profitPercent = generateRandomProfit();
       const holdDays = generateRandomHoldDays();
       const trendFeature = TREND_FEATURES[Math.floor(Math.random() * TREND_FEATURES.length)];
-      tableData.push([openDate, stock.name, stock.code, tradingType, trendFeature, patternFeature, hasMistake, profitPercent, holdDays, '', '', '', '', '']);
+      tableData.push([openDate, stock.name, stock.code, tradingType, trendFeature, patternFeature, hasMistake, profitPercent, holdDays, '', '', '', ...theoCols.map(() => '')]);
     }
   }
   return tableData;
@@ -696,14 +735,15 @@ function createTestTable3Data(): any[][] {
   return tableData;
 }
 
-export function generateTestExcel(): void {
+export function generateTestExcel(dimensions: TheoreticalDimension[] = []): void {
   const workbook = XLSX.utils.book_new();
+  const theoCols = buildTheoreticalColumns(dimensions);
   
-  const worksheet1 = XLSX.utils.aoa_to_sheet(createTestTable1Data());
+  const worksheet1 = XLSX.utils.aoa_to_sheet(createTestTable1Data(dimensions));
   worksheet1['!cols'] = [
     { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
     { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
-    { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
+    { wch: 15 }, { wch: 15 }, ...theoCols.map(() => ({ wch: 12 })),
   ];
   XLSX.utils.book_append_sheet(workbook, worksheet1, SHEET_NAME_1);
 
@@ -721,14 +761,15 @@ export function generateTestExcel(): void {
   XLSX.writeFile(workbook, '交易复盘测试数据.xlsx');
 }
 
-export function createEmptyWorkbook(): void {
+export function createEmptyWorkbook(dimensions: TheoreticalDimension[] = []): void {
   const workbook = XLSX.utils.book_new();
+  const theoCols = buildTheoreticalColumns(dimensions);
   
-  const worksheet1 = XLSX.utils.aoa_to_sheet([HEADERS_1]);
+  const worksheet1 = XLSX.utils.aoa_to_sheet([buildHeaders1(dimensions)]);
   worksheet1['!cols'] = [
     { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
     { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
-    { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
+    { wch: 15 }, { wch: 15 }, ...theoCols.map(() => ({ wch: 12 })),
   ];
   XLSX.utils.book_append_sheet(workbook, worksheet1, SHEET_NAME_1);
 
