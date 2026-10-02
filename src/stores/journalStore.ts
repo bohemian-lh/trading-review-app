@@ -4,7 +4,7 @@ import type { TradingJournal, CustomStrategy, JournalConfigSnapshot, JournalStag
 import { DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS } from '@/types';
 import { loadJournals, saveJournals, loadSnapshots, saveSnapshots, loadWatchlist, saveWatchlist } from '@/services/journalService';
 import { generateId } from '@/utils';
-import { useRecordsStore } from '@/stores';
+import { useRecordsStore } from '@/stores/recordsStore';
 
 interface JournalState {
   journals: TradingJournal[];

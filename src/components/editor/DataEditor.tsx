@@ -7,33 +7,8 @@ import { MonthlyAnalysisPanel } from '@/components/editor/MonthlyAnalysisPanel';
 import { CycleStatsPanel } from '@/components/editor/CycleStatsPanel';
 import { RecordModal } from '@/components/editor/RecordModal';
 import { MonthlyAnalysisModal } from '@/components/editor/MonthlyAnalysisModal';
-import { useRecordsStore, useUIStore, useAnalysisResult, useMonthlyAnalysis } from '@/stores';
-import { useImageDirectory } from '@/hooks/useImageDirectory';
-import { saveNow, updateCycleStats } from '@/hooks/useStoreSync';
-import type { TradingRecord, TradingRecordInput, AnalysisResult, MonthlyAnalysis, ParsedTradeData, FieldConfig } from '@/types';
-import { getDefaultOpenDate } from '@/utils/dateUtils';
-import { validateTradingRecord } from '@/utils/validationUtils';
+import { useDataEditor } from '@/hooks/useDataEditor';
 import { ImportModal } from './ImportModal';
-
-type ValidationError = { field: string; message: string };
-
-const emptyRecord: TradingRecordInput = {
-  openDate: getDefaultOpenDate(),
-  stockName: '',
-  stockCode: '',
-  tradingType: '齐飞水底',
-  trendFeatures: ['未知'],
-  patternFeatures: ['系统'],
-  hasMistake: '否',
-  profitPercent: null,
-  holdDays: null,
-  positionSize: 33,
-  images: [],
-  imagePrefix: '',
-  preMarket: '否',
-  remark: '',
-  theoreticalProfitRatios: {},
-};
 
 interface Filters {
   month: string;
@@ -47,56 +22,18 @@ interface SortConfig {
   direction: 'asc' | 'desc';
 }
 
-function validateForm(data: TradingRecordInput, fieldConfig: FieldConfig): { field: string; message: string }[] {
-  const result = validateTradingRecord(data as Partial<TradingRecord>, undefined, fieldConfig);
-  return result.errors.map(err => ({ field: err.field, message: err.message }));
-}
-
 export const DataEditor: React.FC = () => {
-  // ---- stores ----
-  const records = useRecordsStore(s => s.records);
-  const addRecord = useRecordsStore(s => s.addRecord);
-  const updateRecord = useRecordsStore(s => s.updateRecord);
-  const deleteRecord = useRecordsStore(s => s.deleteRecord);
-  const customAnalysis = useRecordsStore(s => s.customAnalysis);
-  const setCustomAnalysis = useRecordsStore(s => s.setCustomAnalysis);
-  const updateCustomAnalysisField = useRecordsStore(s => s.updateCustomAnalysisField);
-  const toggleUseCustomAnalysis = useRecordsStore(s => s.toggleUseCustomAnalysis);
-  const customMonthly = useRecordsStore(s => s.customMonthly);
-  const setCustomMonthly = useRecordsStore(s => s.setCustomMonthly);
-  const addCustomMonthly = useRecordsStore(s => s.addCustomMonthly);
-  const updateCustomMonthly = useRecordsStore(s => s.updateCustomMonthly);
-  const deleteCustomMonthly = useRecordsStore(s => s.deleteCustomMonthly);
-  const toggleUseCustomMonthly = useRecordsStore(s => s.toggleUseCustomMonthly);
-  const cycleStats = useRecordsStore(s => s.cycleStats);
-  const fieldConfig = useRecordsStore(s => s.fieldConfig);
-  const statsNeedUpdate = useRecordsStore(s => s.statsNeedUpdate);
-  const isSaving = useUIStore(s => s.isSaving);
+  const { records, cycleStats, fieldConfig, statsNeedUpdate, isSaving, imageDir, recordEditor, stats, analysis, monthly } = useDataEditor();
 
-  const computedAnalysis = useAnalysisResult();
-  const computedMonthly = useMonthlyAnalysis();
-
-  // ---- local state ----
+  // ---- 视图态 ----
   const [activeTab, setActiveTab] = useState<'table1' | 'table2' | 'table3' | 'table4'>('table1');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingRecord, setEditingRecord] = useState<TradingRecord | null>(null);
-  const [formData, setFormData] = useState<TradingRecordInput>(emptyRecord);
-  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [filters, setFilters] = useState<Filters>({ month: '', tradingType: '', trendFeatures: '', patternFeatures: '' });
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'openDate', direction: 'desc' });
-  const [updateStatus, setUpdateStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [updateMessage, setUpdateMessage] = useState('');
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [editingMonthly, setEditingMonthly] = useState<MonthlyAnalysis | null>(null);
-  const [isMonthlyModalOpen, setIsMonthlyModalOpen] = useState(false);
-  const [monthlyFormData, setMonthlyFormData] = useState<Partial<MonthlyAnalysis>>({});
   const [isImageImportModalOpen, setIsImageImportModalOpen] = useState(false);
   const [imagePreviewImages, setImagePreviewImages] = useState<string[]>([]);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
-
-  const imgDir = useImageDirectory();
 
   // ---- sort ----
   const handleSort = (key: 'openDate' | 'stockCode') => {
@@ -141,152 +78,6 @@ export const DataEditor: React.FC = () => {
     return Array.from(months).sort().map(m => ({ value: m, label: `${m.slice(0, 4)}-${m.slice(4, 6)}` }));
   }, [records]);
 
-  // ---- record modal ----
-  const handleOpenModal = (record?: TradingRecord) => {
-    if (record) {
-      setEditingRecord(record);
-      setFormData({
-        openDate: record.openDate, stockName: record.stockName, stockCode: record.stockCode,
-        tradingType: record.tradingType, trendFeatures: record.trendFeatures, patternFeatures: record.patternFeatures,
-        hasMistake: record.hasMistake, profitPercent: record.profitPercent, holdDays: record.holdDays,
-        positionSize: record.positionSize ?? 33,
-        images: record.images || [], imagePrefix: record.imagePrefix || '',
-        preMarket: record.preMarket,
-        remark: record.remark, theoreticalProfitRatios: record.theoreticalProfitRatios ?? {},
-      });
-    } else {
-      setEditingRecord(null);
-      setFormData({ ...emptyRecord, openDate: getDefaultOpenDate() });
-    }
-    setValidationErrors([]);
-    setSaveError(null);
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setEditingRecord(null);
-    setFormData(emptyRecord);
-    setValidationErrors([]);
-  };
-
-  const handleClipboardPaste = async () => {
-    if (!imgDir.handle) { alert('请先在页面顶部选择图片存储目录'); return; }
-    if (!formData.openDate) { alert('请先填写开单时间'); return; }
-    try {
-      let prefix = formData.imagePrefix || '';
-      if (!editingRecord || !prefix) {
-        const state = useRecordsStore.getState();
-        const sameDateRecords = state.records
-          .filter(r => r.openDate === formData.openDate && r.imagePrefix)
-          .sort((a, b) => (a.imagePrefix || '').localeCompare(b.imagePrefix || ''));
-        prefix = imgDir.generatePrefix(formData.openDate, sameDateRecords.length);
-      }
-      const filenames = await imgDir.saveImagesFromClipboard(prefix, (formData.images || []).length, formData.openDate);
-      setFormData(prev => ({ ...prev, images: [...(prev.images || []), ...filenames], imagePrefix: prefix }));
-    } catch (e: any) { alert('粘贴失败: ' + e.message); }
-  };
-
-  const handleClearImages = () => setFormData(prev => ({ ...prev, images: [], imagePrefix: '' }));
-
-  const handleSave = async () => {
-    const errors = validateForm(formData, fieldConfig);
-    if (errors.length > 0) { setValidationErrors(errors); return; }
-    setSaveError(null);
-    if (formData.profitPercent === null || formData.holdDays === null) {
-      setValidationErrors([{ field: 'profitPercent', message: '盈亏和持仓天数不能为空' }]);
-      return;
-    }
-    const saveData = {
-      ...formData, profitPercent: formData.profitPercent, holdDays: formData.holdDays,
-      positionSize: formData.positionSize ?? 33,
-      images: formData.images || [], imagePrefix: formData.imagePrefix || '',
-      remark: formData.remark ?? '',
-      theoreticalProfitRatios: formData.theoreticalProfitRatios ?? {},
-    };
-    if (editingRecord) updateRecord(editingRecord.id, saveData);
-    else addRecord(saveData);
-    try { await saveNow(); handleCloseModal(); } catch (error) {
-      setSaveError(error instanceof Error ? error.message : '保存失败');
-    }
-  };
-
-  // ---- delete ----
-  const handleDelete = (id: string) => {
-    const record = records.find(r => r.id === id);
-    if (confirm('确定要删除这条记录吗？')) {
-      deleteRecord(id);
-      if (record?.imagePrefix) imgDir.deleteImages(record.imagePrefix).catch(() => {});
-    }
-  };
-
-  // ---- stats ----
-  const handleUpdateStats = async () => {
-    if (records.length === 0) { setUpdateStatus('error'); setUpdateMessage('没有数据需要处理'); return; }
-    setUpdateStatus('loading'); setUpdateMessage('正在更新统计数据...');
-    try { updateCycleStats(); await saveNow(); setUpdateStatus('success'); setUpdateMessage('统计数据已更新'); }
-    catch (error) { setUpdateStatus('error'); setUpdateMessage(error instanceof Error ? error.message : '更新失败'); }
-    setTimeout(() => { setUpdateStatus('idle'); setUpdateMessage(''); }, 5000);
-  };
-
-  // ---- analysis ----
-  const handleAnalysisFieldChange = (field: keyof AnalysisResult, value: string) => {
-    updateCustomAnalysisField(field, value === 'N/A' ? 'N/A' : Number(value));
-  };
-
-  const handleTheoreticalFieldChange = (dimensionId: string, value: string) => {
-    setCustomAnalysis({
-      ...customAnalysis,
-      data: {
-        ...customAnalysis.data,
-        theoreticalProfitRatios: {
-          ...(customAnalysis.data.theoreticalProfitRatios || {}),
-          [dimensionId]: value === 'N/A' ? 'N/A' : Number(value),
-        },
-      },
-    });
-  };
-
-  const syncFromComputed = () => {
-    if (confirm('确定要把当前计算的数据同步到自定义数据吗？')) {
-      setCustomAnalysis({ useCustom: true, data: computedAnalysis });
-      setCustomMonthly({ useCustom: true, data: computedMonthly });
-    }
-  };
-
-  // ---- monthly modal ----
-  const handleOpenMonthlyModal = (item?: MonthlyAnalysis) => {
-    if (item) {
-      setEditingMonthly(item);
-      setMonthlyFormData({ ...item });
-    } else {
-      setEditingMonthly(null);
-      setMonthlyFormData({ month: '', systemProfitRatio: 'N/A', systemNoMistakeProfitRatio: 'N/A',
-        systemWithMistakeProfitRatio: 'N/A', nonSystemProfitRatio: 'N/A', avgProfitRatio: 'N/A', totalProfit: 'N/A' });
-    }
-    setIsMonthlyModalOpen(true);
-  };
-
-  const handleCloseMonthlyModal = () => { setIsMonthlyModalOpen(false); setEditingMonthly(null); setMonthlyFormData({}); };
-
-  const handleSaveMonthly = () => {
-    if (!monthlyFormData.month) { alert('请输入月份'); return; }
-    if (editingMonthly) updateCustomMonthly(editingMonthly.month, monthlyFormData as MonthlyAnalysis);
-    else addCustomMonthly(monthlyFormData as MonthlyAnalysis);
-    handleCloseMonthlyModal();
-  };
-
-  const handleDeleteMonthly = (month: string) => {
-    if (confirm('确定要删除这个月份的数据吗？')) deleteCustomMonthly(month);
-  };
-
-  // ---- image import ----
-  const handleImageImport = (data: ParsedTradeData) => {
-    setFormData({ ...emptyRecord, openDate: data.openDate, stockName: data.stockName,
-      stockCode: data.stockCode, profitPercent: data.profitPercent, holdDays: data.holdDays });
-    setIsModalOpen(true);
-  };
-
   // ---- render ----
   return (
     <div className="space-y-6">
@@ -327,17 +118,17 @@ export const DataEditor: React.FC = () => {
           monthOptions={monthOptions}
           onFilterChange={setFilters}
           onResetFilters={() => setFilters({ month: '', tradingType: '', trendFeatures: '', patternFeatures: '' })}
-          imgHasHandle={!!imgDir.handle}
-          imgPath={imgDir.path}
-          onSelectImageDir={imgDir.selectDirectory}
+          imgHasHandle={!!imageDir.handle}
+          imgPath={imageDir.path}
+          onSelectImageDir={imageDir.selectDirectory}
           statsNeedUpdate={statsNeedUpdate}
-          updateStatus={updateStatus}
-          updateMessage={updateMessage}
-          onUpdateStats={handleUpdateStats}
+          updateStatus={stats.updateStatus}
+          updateMessage={stats.updateMessage}
+          onUpdateStats={stats.refreshCycleStats}
           isSaving={isSaving}
-          onAddRecord={() => handleOpenModal()}
-          onEditRecord={handleOpenModal}
-          onDeleteRecord={handleDelete}
+          onAddRecord={() => recordEditor.openRecordModal()}
+          onEditRecord={recordEditor.openRecordModal}
+          onDeleteRecord={recordEditor.deleteRecord}
           onImageImport={() => setIsImageImportModalOpen(true)}
           onPreviewImages={(images) => { setImagePreviewImages(images); setIsImagePreviewOpen(true); }}
         />
@@ -345,60 +136,60 @@ export const DataEditor: React.FC = () => {
 
       {activeTab === 'table2' && (
         <AnalysisPanel
-          useCustom={customAnalysis.useCustom}
-          customData={customAnalysis.data}
-          computedData={computedAnalysis}
+          useCustom={analysis.useCustom}
+          customData={analysis.customData}
+          computedData={analysis.computedData}
           theoreticalDimensions={fieldConfig.theoreticalDimensions}
-          onToggleUseCustom={toggleUseCustomAnalysis}
-          onFieldChange={handleAnalysisFieldChange}
-          onTheoreticalFieldChange={handleTheoreticalFieldChange}
-          onSyncFromComputed={syncFromComputed}
+          onToggleUseCustom={analysis.toggleUseCustom}
+          onFieldChange={analysis.changeAnalysisField}
+          onTheoreticalFieldChange={analysis.changeTheoreticalField}
+          onSyncFromComputed={analysis.syncFromComputed}
         />
       )}
 
       {activeTab === 'table3' && (
         <MonthlyAnalysisPanel
-          useCustom={customMonthly.useCustom}
-          customData={customMonthly.data}
-          computedData={computedMonthly}
-          onToggleUseCustom={toggleUseCustomMonthly}
-          onSyncFromComputed={syncFromComputed}
-          onAddMonthly={() => handleOpenMonthlyModal()}
-          onEditMonthly={handleOpenMonthlyModal}
-          onDeleteMonthly={handleDeleteMonthly}
+          useCustom={monthly.useCustom}
+          customData={monthly.customData}
+          computedData={monthly.computedData}
+          onToggleUseCustom={monthly.toggleUseCustom}
+          onSyncFromComputed={monthly.syncFromComputed}
+          onAddMonthly={() => monthly.openMonthlyModal()}
+          onEditMonthly={monthly.openMonthlyModal}
+          onDeleteMonthly={monthly.deleteMonthly}
         />
       )}
 
       {activeTab === 'table4' && <CycleStatsPanel cycleStats={cycleStats} />}
 
       <RecordModal
-        isOpen={isModalOpen}
-        editingRecord={editingRecord}
-        formData={formData}
-        validationErrors={validationErrors}
-        saveError={saveError}
+        isOpen={recordEditor.isModalOpen}
+        editingRecord={recordEditor.editingRecord}
+        formData={recordEditor.formData}
+        validationErrors={recordEditor.validationErrors}
+        saveError={recordEditor.saveError}
         isSaving={isSaving}
-        imgHasHandle={!!imgDir.handle}
-        onFormChange={setFormData}
-        onSave={handleSave}
-        onClose={handleCloseModal}
-        onClipboardPaste={handleClipboardPaste}
-        onClearImages={handleClearImages}
+        imgHasHandle={!!imageDir.handle}
+        onFormChange={recordEditor.setFormData}
+        onSave={recordEditor.saveRecord}
+        onClose={recordEditor.closeRecordModal}
+        onClipboardPaste={recordEditor.pasteImagesFromClipboard}
+        onClearImages={recordEditor.clearImages}
       />
 
       <MonthlyAnalysisModal
-        isOpen={isMonthlyModalOpen}
-        editingMonthly={editingMonthly}
-        monthlyFormData={monthlyFormData}
-        onFormChange={setMonthlyFormData}
-        onSave={handleSaveMonthly}
-        onClose={handleCloseMonthlyModal}
+        isOpen={monthly.isModalOpen}
+        editingMonthly={monthly.editingMonthly}
+        monthlyFormData={monthly.formData}
+        onFormChange={monthly.setFormData}
+        onSave={monthly.saveMonthly}
+        onClose={monthly.closeMonthlyModal}
       />
 
       <ImportModal
         isOpen={isImageImportModalOpen}
         onClose={() => setIsImageImportModalOpen(false)}
-        onImport={handleImageImport}
+        onImport={recordEditor.importRecordFromParsed}
       />
 
       <ImagePreviewModal

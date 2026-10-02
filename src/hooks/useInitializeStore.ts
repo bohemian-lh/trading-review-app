@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useUIStore } from '@/stores';
+import { useUIStore } from '@/stores/uiStore';
 import { initializeFromR2 } from '@/hooks/useStoreSync';
 
 export function useInitializeStore(): void {

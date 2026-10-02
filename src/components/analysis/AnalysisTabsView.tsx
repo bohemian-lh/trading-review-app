@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { useRecordsStore, useAnalysisResult, useAnalysisTabStore, useDatasetStore } from '@/stores';
+import { useRecordsStore, useAnalysisTabStore, useDatasetStore } from '@/stores';
+import { useAnalysisResult } from '@/hooks/useAnalysis';
 import { saveTabsToR2 } from '@/hooks/useStoreSync';
 import { useChartConfig } from '@/hooks/useChartConfig';
 import { useOnDemandCompute } from '@/hooks/useOnDemandCompute';

@@ -39,5 +39,23 @@
     "react": {
       "version": "detect"
     }
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/hooks/**/*.ts", "src/hooks/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@/stores",
+                "message": "hooks 目录禁止引用 @/stores 桶文件，请改用具体 store 深路径（如 @/stores/recordsStore），避免 hooks ⇄ stores 循环依赖。"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }
