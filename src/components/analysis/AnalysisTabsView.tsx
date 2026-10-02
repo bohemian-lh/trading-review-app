@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useRecordsStore, useAnalysisResult, useAnalysisTabStore } from '@/stores';
 import { saveTabsToR2 } from '@/hooks/useStoreSync';
+import { useChartConfig } from '@/hooks/useChartConfig';
 import type { AnalysisTab, ProfitSource } from '@/types';
 import { PROFIT_SOURCE_LABELS } from '@/types';
 import {
   filterRecords, buildDimensions, getDimensionRecords,
   computeCumulativeProfit, computeCycleProfitRatios, computeGrowthProfitRatios,
+  type DimensionDef,
 } from '@/services/analysisTabService';
 import { SeriesLineChart } from './SeriesLineChart';
 import { CreateAnalysisTabModal } from './CreateAnalysisTabModal';
@@ -17,6 +19,27 @@ interface SeriesInput {
   records: ReturnType<typeof getDimensionRecords>;
 }
 
+const DimensionSelector: React.FC<{
+  dimensions: DimensionDef[];
+  selected: string[];
+  onChange: (keys: string[]) => void;
+}> = ({ dimensions, selected, onChange }) => {
+  const toggle = (key: string) => {
+    onChange(selected.includes(key) ? selected.filter(k => k !== key) : [...selected, key]);
+  };
+  return (
+    <div className="flex flex-wrap gap-3 pb-3 mb-4 border-b border-gray-100">
+      <span className="text-xs font-medium text-gray-500 leading-6">数据统计维度：</span>
+      {dimensions.map(d => (
+        <label key={d.key} className="flex items-center gap-1.5 text-xs cursor-pointer">
+          <input type="checkbox" checked={selected.includes(d.key)} onChange={() => toggle(d.key)} className="rounded" />
+          <span style={{ color: d.color }}>{d.label}</span>
+        </label>
+      ))}
+    </div>
+  );
+};
+
 export const AnalysisTabsView: React.FC = () => {
   const records = useRecordsStore(s => s.records);
   const fieldConfig = useRecordsStore(s => s.fieldConfig);
@@ -27,7 +50,6 @@ export const AnalysisTabsView: React.FC = () => {
   const setActiveTabId = useAnalysisTabStore(s => s.setActiveTabId);
 
   const [showCreate, setShowCreate] = useState(false);
-  const [hiddenDims, setHiddenDims] = useState<string[]>([]);
 
   const dimensions = useMemo(() => buildDimensions(fieldConfig), [fieldConfig]);
   const activeTab = useMemo(() => tabs.find(t => t.id === activeTabId) ?? null, [tabs, activeTabId]);
@@ -40,39 +62,44 @@ export const AnalysisTabsView: React.FC = () => {
   );
   const tabSuffix = activeTab ? ` · ${activeTab.name}` : '';
 
-  // 维度可见集合（默认全选，隐藏集合记录被取消勾选的维度）
-  const visibleDims = useMemo(() => dimensions.filter(d => !hiddenDims.includes(d.key)), [dimensions, hiddenDims]);
-  const toggleDim = (key: string) => {
-    setHiddenDims(h => (h.includes(key) ? h.filter(k => k !== key) : [...h, key]));
-  };
+  // 每张图独立的维度选择（localStorage 持久化，默认全选）
+  const dimensionKeys = useMemo(() => dimensions.map(d => d.key), [dimensions]);
+  const [cumulativeDims, setCumulativeDims, cumulativeReady] = useChartConfig('analysis-cumulative-dims', dimensionKeys);
+  const [cycleDims, setCycleDims, cycleReady] = useChartConfig('analysis-cycle-dims', dimensionKeys);
+  const [growthDims, setGrowthDims, growthReady] = useChartConfig('analysis-growth-dims', dimensionKeys);
 
-  // 图表数据源
-  const seriesInputs: SeriesInput[] = useMemo(() => {
+  // 未就绪前按全选渲染，避免初始空图闪烁
+  const cumulativeSelected = cumulativeReady ? cumulativeDims : dimensionKeys;
+  const cycleSelected = cycleReady ? cycleDims : dimensionKeys;
+  const growthSelected = growthReady ? growthDims : dimensionKeys;
+
+  const buildSeriesInputs = (selected: string[]): SeriesInput[] => {
     if (activeTab) {
       return [{ key: 'main', label: activeTab.name, color: '#0ea5e9', records: baseRecords }];
     }
-    return visibleDims.map(d => ({
-      key: d.key,
-      label: d.label,
-      color: d.color,
-      records: getDimensionRecords(records, d.key),
-    }));
-  }, [activeTab, visibleDims, records, baseRecords]);
+    return dimensions
+      .filter(d => selected.includes(d.key))
+      .map(d => ({ key: d.key, label: d.label, color: d.color, records: getDimensionRecords(records, d.key) }));
+  };
 
-  const cumulativeSeries = useMemo(() => seriesInputs.map(s => ({
+  const cumulativeInputs = useMemo(() => buildSeriesInputs(cumulativeSelected), [cumulativeSelected, activeTab, baseRecords, dimensions, records]);
+  const cycleInputs = useMemo(() => buildSeriesInputs(cycleSelected), [cycleSelected, activeTab, baseRecords, dimensions, records]);
+  const growthInputs = useMemo(() => buildSeriesInputs(growthSelected), [growthSelected, activeTab, baseRecords, dimensions, records]);
+
+  const cumulativeSeries = useMemo(() => cumulativeInputs.map(s => ({
     key: s.key, label: s.label, color: s.color,
     values: computeCumulativeProfit(s.records, source).map(p => p.value),
-  })), [seriesInputs, source]);
+  })), [cumulativeInputs, source]);
 
-  const cycleSeries = useMemo(() => seriesInputs.map(s => ({
+  const cycleSeries = useMemo(() => cycleInputs.map(s => ({
     key: s.key, label: s.label, color: s.color,
     values: computeCycleProfitRatios(s.records, source).map(p => p.value),
-  })), [seriesInputs, source]);
+  })), [cycleInputs, source]);
 
-  const growthSeries = useMemo(() => seriesInputs.map(s => ({
+  const growthSeries = useMemo(() => growthInputs.map(s => ({
     key: s.key, label: s.label, color: s.color,
     values: computeGrowthProfitRatios(s.records, source).map(p => p.value),
-  })), [seriesInputs, source]);
+  })), [growthInputs, source]);
 
   const cumulativeX = useMemo(() => Array.from({ length: Math.max(...cumulativeSeries.map(s => s.values.length), 0) }, (_, i) => String(i + 1)), [cumulativeSeries]);
   const cycleX = useMemo(() => Array.from({ length: Math.max(...cycleSeries.map(s => s.values.length), 0) }, (_, i) => `第${i + 1}周期`), [cycleSeries]);
@@ -184,23 +211,11 @@ export const AnalysisTabsView: React.FC = () => {
         </>
       )}
 
-      {/* 维度选择（仅默认页签） */}
-      {isDefault && (
-        <div className="bg-white shadow rounded-lg p-4">
-          <span className="text-xs font-medium text-gray-500">数据统计维度：</span>
-          <div className="flex flex-wrap gap-3 mt-2">
-            {dimensions.map(d => (
-              <label key={d.key} className="flex items-center gap-1.5 text-xs">
-                <input type="checkbox" checked={!hiddenDims.includes(d.key)} onChange={() => toggleDim(d.key)} className="rounded" />
-                <span style={{ color: d.color }}>{d.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* 图1：盈亏曲线 */}
       <div className="bg-white shadow rounded-lg p-6">
+        {isDefault && (
+          <DimensionSelector dimensions={dimensions} selected={cumulativeSelected} onChange={setCumulativeDims} />
+        )}
         <SeriesLineChart
           title={`盈亏曲线${tabSuffix}`}
           series={cumulativeSeries}
@@ -213,6 +228,9 @@ export const AnalysisTabsView: React.FC = () => {
 
       {/* 图2：盈亏比周期图 */}
       <div className="bg-white shadow rounded-lg p-6">
+        {isDefault && (
+          <DimensionSelector dimensions={dimensions} selected={cycleSelected} onChange={setCycleDims} />
+        )}
         <SeriesLineChart
           title={`盈亏比周期图${tabSuffix}`}
           series={cycleSeries}
@@ -225,6 +243,9 @@ export const AnalysisTabsView: React.FC = () => {
 
       {/* 图3：盈亏比成长曲线 */}
       <div className="bg-white shadow rounded-lg p-6">
+        {isDefault && (
+          <DimensionSelector dimensions={dimensions} selected={growthSelected} onChange={setGrowthDims} />
+        )}
         <SeriesLineChart
           title={`盈亏比成长曲线${tabSuffix}`}
           series={growthSeries}
