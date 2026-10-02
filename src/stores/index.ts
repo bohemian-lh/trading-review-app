@@ -4,4 +4,5 @@ export { useDatasetStore } from './datasetStore';
 export { useUIStore } from './uiStore';
 export { useHeaderKeywordsStore } from './headerKeywordsStore';
 export { useAnalysisTabStore } from './analysisTabStore';
+export { useStressTestStore } from './stressTestStore';
 export { useAnalysisResult, useMonthlyAnalysis } from '../hooks/useAnalysis';

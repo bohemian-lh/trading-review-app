@@ -170,6 +170,23 @@ export function validateTradingRecord(
     });
   }
 
+  // 仓位验证（0-100，可选，默认 33）
+  if (record.positionSize !== undefined && record.positionSize !== null) {
+    if (typeof record.positionSize !== 'number' || isNaN(record.positionSize)) {
+      errors.push({
+        field: 'positionSize',
+        message: '仓位必须是数字',
+        row: rowIndex,
+      });
+    } else if (record.positionSize < 0 || record.positionSize > 100) {
+      errors.push({
+        field: 'positionSize',
+        message: '仓位必须在0-100之间',
+        row: rowIndex,
+      });
+    }
+  }
+
   // 盘前验证
   if (record.preMarket !== undefined && !['是', '否'].includes(record.preMarket)) {
     errors.push({

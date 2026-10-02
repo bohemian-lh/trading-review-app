@@ -27,6 +27,7 @@ const emptyRecord: TradingRecordInput = {
   hasMistake: '否',
   profitPercent: null,
   holdDays: null,
+  positionSize: 33,
   images: [],
   imagePrefix: '',
   preMarket: '否',
@@ -148,6 +149,7 @@ export const DataEditor: React.FC = () => {
         openDate: record.openDate, stockName: record.stockName, stockCode: record.stockCode,
         tradingType: record.tradingType, trendFeatures: record.trendFeatures, patternFeatures: record.patternFeatures,
         hasMistake: record.hasMistake, profitPercent: record.profitPercent, holdDays: record.holdDays,
+        positionSize: record.positionSize ?? 33,
         images: record.images || [], imagePrefix: record.imagePrefix || '',
         preMarket: record.preMarket,
         remark: record.remark, theoreticalProfitRatios: record.theoreticalProfitRatios ?? {},
@@ -197,6 +199,7 @@ export const DataEditor: React.FC = () => {
     }
     const saveData = {
       ...formData, profitPercent: formData.profitPercent, holdDays: formData.holdDays,
+      positionSize: formData.positionSize ?? 33,
       images: formData.images || [], imagePrefix: formData.imagePrefix || '',
       remark: formData.remark ?? '',
       theoreticalProfitRatios: formData.theoreticalProfitRatios ?? {},

@@ -19,6 +19,7 @@ export function migrateRecord(r: any): TradingRecord {
     patternFeatures: Array.isArray(patternFeatures) ? patternFeatures : [],
     hasCycleStats: r.hasCycleStats ?? false,
     hasMonthlyStats: r.hasMonthlyStats ?? false,
+    positionSize: typeof r.positionSize === 'number' ? Math.min(100, Math.max(0, r.positionSize)) : 33,
     theoreticalProfitRatios: r.theoreticalProfitRatios ?? {},
   };
 }

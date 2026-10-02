@@ -18,6 +18,7 @@ const BASE_HEADERS_1 = [
   '有无大的失误',
   '盈亏情况',
   '持仓时间（天）',
+  '仓位',
   '图片',
   '盘前是否',
   '备注',
@@ -314,6 +315,12 @@ function mapRowToRecord(row: Record<string, unknown>, dimensions: TheoreticalDim
   // 解析持仓时间
   const holdDays = parseInt(String(row['持仓时间（天）'] || '').trim(), 10) || 0;
 
+  // 解析仓位（0-100，默认33）
+  const positionSizeRaw = String(row['仓位'] ?? '').trim().replace('%', '');
+  const positionSize = positionSizeRaw === ''
+    ? 33
+    : Math.min(100, Math.max(0, parseFloat(positionSizeRaw) || 33));
+
   // 解析理论盈亏比维度值（按列名匹配）
   const theoreticalProfitRatios: Record<string, number> = {};
   for (const col of buildTheoreticalColumns(dimensions)) {
@@ -334,6 +341,7 @@ function mapRowToRecord(row: Record<string, unknown>, dimensions: TheoreticalDim
     hasMistake: row['有无大的失误'] === '是' ? '是' : row['有无大的失误'] === '其他' ? '其他' : '否',
     profitPercent,
     holdDays,
+    positionSize,
     images: parseImagesColumn(row['图片']),
     imagePrefix: '',
     preMarket: row['盘前是否'] === '是' ? '是' : '否',
@@ -360,6 +368,7 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string, 
       record.hasMistake,
       record.profitPercent,
       record.holdDays,
+      record.positionSize ?? 33,
       record.images ? record.images.join(',') : '',
       record.preMarket,
       record.remark,
@@ -379,6 +388,7 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string, 
     { wch: 18 },
     { wch: 12 },
     { wch: 12 },
+    { wch: 10 },
     { wch: 10 },
     { wch: 10 },
     { wch: 15 },
@@ -523,6 +533,7 @@ export function exportAllToExcel(
       record.hasMistake,
       record.profitPercent,
       record.holdDays,
+      record.positionSize ?? 33,
       record.images ? record.images.join(',') : '',
       record.preMarket,
       record.remark,
@@ -562,7 +573,7 @@ export function exportAllToExcel(
   const worksheet1 = XLSX.utils.aoa_to_sheet(table1Data);
   worksheet1['!cols'] = [
     { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
-    { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
+    { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
     { wch: 15 }, { wch: 15 }, ...theoCols.map(() => ({ wch: 12 })),
   ];
 
@@ -694,7 +705,7 @@ function createTestTable1Data(dimensions: TheoreticalDimension[] = []): any[][] 
       const profitPercent = generateRandomProfit();
       const holdDays = generateRandomHoldDays();
       const trendFeature = TREND_FEATURES[Math.floor(Math.random() * TREND_FEATURES.length)];
-      tableData.push([openDate, stock.name, stock.code, tradingType, trendFeature, patternFeature, hasMistake, profitPercent, holdDays, '', '', '', ...theoCols.map(() => '')]);
+      tableData.push([openDate, stock.name, stock.code, tradingType, trendFeature, patternFeature, hasMistake, profitPercent, holdDays, 33, '', '', '', ...theoCols.map(() => '')]);
     }
   }
   return tableData;
@@ -742,7 +753,7 @@ export function generateTestExcel(dimensions: TheoreticalDimension[] = []): void
   const worksheet1 = XLSX.utils.aoa_to_sheet(createTestTable1Data(dimensions));
   worksheet1['!cols'] = [
     { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
-    { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
+    { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
     { wch: 15 }, { wch: 15 }, ...theoCols.map(() => ({ wch: 12 })),
   ];
   XLSX.utils.book_append_sheet(workbook, worksheet1, SHEET_NAME_1);
@@ -768,7 +779,7 @@ export function createEmptyWorkbook(dimensions: TheoreticalDimension[] = []): vo
   const worksheet1 = XLSX.utils.aoa_to_sheet([buildHeaders1(dimensions)]);
   worksheet1['!cols'] = [
     { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
-    { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
+    { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 },
     { wch: 15 }, { wch: 15 }, ...theoCols.map(() => ({ wch: 12 })),
   ];
   XLSX.utils.book_append_sheet(workbook, worksheet1, SHEET_NAME_1);

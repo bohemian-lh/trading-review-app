@@ -4,7 +4,8 @@ import { useRecordsStore, migrateRecord } from '@/stores/recordsStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useAnalysisTabStore } from '@/stores/analysisTabStore';
-import { DEFAULT_FIELD_CONFIG, migrateFieldConfig, migrateProfitSource, type AnalysisTab } from '@/types';
+import { useStressTestStore } from '@/stores/stressTestStore';
+import { DEFAULT_FIELD_CONFIG, migrateFieldConfig, migrateProfitSource, type AnalysisTab, type StressSeries } from '@/types';
 import { generateCycleStats } from '@/services/cycleStatsService';
 
 /**
@@ -114,6 +115,7 @@ async function loadDatasetData(datasetId: string): Promise<void> {
     const result = await r2StorageService.getRecords(datasetId) as any;
     const configResult = await r2StorageService.getConfig(datasetId);
     const tabsResult = await r2StorageService.getTabs(datasetId);
+    const stressResult = await r2StorageService.getStressSeries(datasetId);
     const fieldConfig = configResult.success && configResult.config
       ? migrateFieldConfig(configResult.config)
       : { ...DEFAULT_FIELD_CONFIG };
@@ -124,6 +126,12 @@ async function loadDatasetData(datasetId: string): Promise<void> {
         : []
     );
     useAnalysisTabStore.getState().setActiveTabId(null);
+
+    useStressTestStore.getState().setSeries(
+      stressResult.success
+        ? (stressResult.series || []).map((s: StressSeries) => ({ ...s, source: migrateProfitSource(s.source) }))
+        : []
+    );
 
     if (result.success) {
       const migrated = (result.records || []).map(migrateRecord);
@@ -176,6 +184,22 @@ export async function saveTabsToR2(tabs: AnalysisTab[]): Promise<{ success: bool
   }
   try {
     await r2StorageService.saveTabs(datasetId, tabs);
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || '保存失败' };
+  }
+}
+
+/**
+ * 保存压测对比系列到 R2
+ */
+export async function saveStressSeriesToR2(series: StressSeries[]): Promise<{ success: boolean; error?: string }> {
+  const datasetId = useDatasetStore.getState().currentDatasetId;
+  if (!datasetId) {
+    return { success: false, error: '未选择数据集' };
+  }
+  try {
+    await r2StorageService.saveStressSeries(datasetId, series);
     return { success: true };
   } catch (e: any) {
     return { success: false, error: e.message || '保存失败' };

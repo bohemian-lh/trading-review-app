@@ -9,6 +9,8 @@ export interface TradingRecord {
   hasMistake: MistakeStatus;
   profitPercent: number;
   holdDays: number;
+  // 仓位（0-100，百分比，默认 33；仅用于蒙特卡洛模拟）
+  positionSize: number;
   images: string[];
   imagePrefix: string;
   preMarket: YesNo;
@@ -42,6 +44,7 @@ export interface TradingRecordInput {
   hasMistake: MistakeStatus;
   profitPercent: number | null;
   holdDays: number | null;
+  positionSize?: number;
   images?: string[];
   imagePrefix?: string;
   preMarket: YesNo;

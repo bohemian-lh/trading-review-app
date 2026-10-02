@@ -8,7 +8,7 @@ export const Navigation: React.FC = () => {
 
   const navItems = [
     { path: '/', label: '首页', icon: LayoutDashboard },
-    { path: '/theory-vs-actual', label: '理论vs实际', icon: GitCompare },
+    { path: '/stress-test', label: '压测对比', icon: GitCompare },
     { path: '/import', label: '导入/导出', icon: FileSpreadsheet },
     { path: '/editor', label: '数据编辑', icon: BarChart3 },
     { path: '/journal', label: '交易日志', icon: BookOpen },

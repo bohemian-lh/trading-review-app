@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import type { AnalysisTab, AnalysisTabFilter, ProfitSource, MistakeStatus } from '@/types';
+import type { StressSeries, AnalysisTabFilter, ProfitSource, MistakeStatus } from '@/types';
 import { useRecordsStore } from '@/stores';
 import { generateId } from '@/utils';
 
-interface CreateAnalysisTabModalProps {
+interface StressSeriesModalProps {
+  editing: StressSeries | null;
   onClose: () => void;
-  onSave: (tab: AnalysisTab) => void;
+  onSave: (series: StressSeries) => void;
 }
 
 const MISTAKE_OPTIONS: MistakeStatus[] = ['是', '否', '其他'];
@@ -15,7 +16,13 @@ function fromMonthInput(v: string): string | undefined {
   return v.replace('-', '');
 }
 
-export const CreateAnalysisTabModal: React.FC<CreateAnalysisTabModalProps> = ({ onClose, onSave }) => {
+function toMonthInput(v?: string): string {
+  if (!v) return '';
+  const m = v.replace('-', '');
+  return `${m.slice(0, 4)}-${m.slice(4, 6)}`;
+}
+
+export const StressSeriesModal: React.FC<StressSeriesModalProps> = ({ editing, onClose, onSave }) => {
   const fieldConfig = useRecordsStore(s => s.fieldConfig);
 
   const sourceOptions = useMemo<Array<{ value: ProfitSource; label: string }>>(() => [
@@ -23,14 +30,14 @@ export const CreateAnalysisTabModal: React.FC<CreateAnalysisTabModalProps> = ({ 
     ...fieldConfig.theoreticalDimensions.map(d => ({ value: `dim:${d.id}` as ProfitSource, label: d.name || '未命名维度' })),
   ], [fieldConfig.theoreticalDimensions]);
 
-  const [name, setName] = useState('');
-  const [source, setSource] = useState<ProfitSource>('profitPercent');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [tradingTypes, setTradingTypes] = useState<string[]>([]);
-  const [trendFeatures, setTrendFeatures] = useState<string[]>([]);
-  const [patternFeatures, setPatternFeatures] = useState<string[]>([]);
-  const [hasMistake, setHasMistake] = useState<MistakeStatus[]>([]);
+  const [name, setName] = useState(editing?.name ?? '');
+  const [source, setSource] = useState<ProfitSource>(editing?.source ?? 'profitPercent');
+  const [startDate, setStartDate] = useState(toMonthInput(editing?.filter.startDate));
+  const [endDate, setEndDate] = useState(toMonthInput(editing?.filter.endDate));
+  const [tradingTypes, setTradingTypes] = useState<string[]>(editing?.filter.tradingTypes ?? []);
+  const [trendFeatures, setTrendFeatures] = useState<string[]>(editing?.filter.trendFeatures ?? []);
+  const [patternFeatures, setPatternFeatures] = useState<string[]>(editing?.filter.patternFeatures ?? []);
+  const [hasMistake, setHasMistake] = useState<MistakeStatus[]>(editing?.filter.hasMistake ?? []);
 
   const toggle = <T,>(list: T[], value: T, setter: (v: T[]) => void) => {
     setter(list.includes(value) ? list.filter(v => v !== value) : [...list, value]);
@@ -45,28 +52,28 @@ export const CreateAnalysisTabModal: React.FC<CreateAnalysisTabModalProps> = ({ 
       patternFeatures,
       hasMistake,
     };
-    const tab: AnalysisTab = {
-      id: generateId(),
-      name: name.trim() || '未命名页签',
+    const series: StressSeries = {
+      id: editing?.id ?? generateId(),
+      name: name.trim() || '未命名系列',
       filter,
       source,
-      createdAt: Date.now(),
+      createdAt: editing?.createdAt ?? Date.now(),
     };
-    onSave(tab);
+    onSave(series);
   };
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">新增分析页签</h3>
+          <h3 className="text-lg font-semibold text-gray-900">{editing ? '编辑对比系列' : '新增对比系列'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
         </div>
 
         <div className="px-6 py-4 space-y-6">
           {/* 名称 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">页签名称</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">系列名称</label>
             <input
               type="text"
               value={name}

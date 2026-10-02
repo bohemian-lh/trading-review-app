@@ -43,3 +43,14 @@ export interface AnalysisTab {
   source: ProfitSource;
   createdAt: number;
 }
+
+// ============ 压测对比系列 ============
+
+/** 压测对比中的一条对比系列：与首页页签相同的数据维度筛选 + 盈亏信源 */
+export interface StressSeries {
+  id: string;
+  name: string;
+  filter: AnalysisTabFilter;
+  source: ProfitSource;
+  createdAt: number;
+}

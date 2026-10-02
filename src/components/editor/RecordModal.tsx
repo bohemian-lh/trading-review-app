@@ -213,6 +213,32 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 error={getFieldError('holdDays')}
               />
             </div>
+            {/* 仓位 */}
+            <div>
+              <label className="block text-base font-medium text-gray-700 mb-2">
+                仓位% <span className="text-xs text-gray-400">(0-100，默认33)</span>
+              </label>
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                max="100"
+                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                value={formData.positionSize !== undefined ? formData.positionSize : ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '' || raw === '-') {
+                    onFormChange({ ...formData, positionSize: undefined });
+                    return;
+                  }
+                  const num = parseFloat(raw);
+                  if (isNaN(num)) return;
+                  onFormChange({ ...formData, positionSize: Math.min(100, Math.max(0, num)) });
+                }}
+                placeholder="例如: 33"
+                error={getFieldError('positionSize')}
+              />
+            </div>
             {/* 趋势特征 */}
             <div>
               <label className="block text-base font-medium text-gray-700 mb-2">

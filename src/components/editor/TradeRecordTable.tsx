@@ -93,7 +93,7 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
   );
 
   const theoreticalDimensions = fieldConfig.theoreticalDimensions;
-  const totalColumns = 11 + theoreticalDimensions.length;
+  const totalColumns = 12 + theoreticalDimensions.length;
 
   const allMonthOptions = [{ value: '', label: '全部月份' }, ...monthOptions];
   const allTradingTypeOptions = [{ value: '', label: '全部类型' }, ...tradingTypeOptions];
@@ -265,6 +265,7 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">有无大的失误</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏情况</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">持仓时间（天）</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">仓位</th>
                   {theoreticalDimensions.map(dim => (
                     <th key={dim.id} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{dim.name}</th>
                   ))}
@@ -308,6 +309,7 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                         {record.profitPercent}%
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">{record.holdDays}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900">{record.positionSize ?? 33}%</td>
                       {theoreticalDimensions.map(dim => {
                         const val = record.theoreticalProfitRatios[dim.id];
                         return (

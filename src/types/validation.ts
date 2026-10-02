@@ -63,6 +63,7 @@ export const TradingRecordSchema = z.object({
   hasMistake: MistakeStatusSchema,
   profitPercent: z.number().min(-100, '盈亏不能小于-100%').max(1000, '盈亏不能大于1000%'),
   holdDays: z.number().int().min(0, '持仓天数不能为负数').max(3650, '持仓天数不能超过3650天'),
+  positionSize: z.number().min(0, '仓位不能小于0%').max(100, '仓位不能大于100%').default(33),
   images: z.array(z.string()).default([]),
   imagePrefix: z.string().default(''),
   preMarket: YesNoSchema,

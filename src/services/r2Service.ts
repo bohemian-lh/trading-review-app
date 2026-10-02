@@ -1,4 +1,4 @@
-import type { StorageFile, UploadProgress, TradingRecord, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType, FieldConfig, Dataset, AnalysisTab } from '@/types';
+import type { StorageFile, UploadProgress, TradingRecord, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType, FieldConfig, Dataset, AnalysisTab, StressSeries } from '@/types';
 import type { RecordsResponse } from '@/types/validation';
 
 const API_BASE_URL = '';
@@ -238,6 +238,36 @@ class R2StorageService {
       return await this.handleResponse(response);
     } catch (error) {
       console.error('Save tabs failed:', error);
+      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  // ============ 压测对比系列管理（dataset 级） ============
+
+  async getStressSeries(datasetId: string): Promise<{
+    success: boolean; series?: StressSeries[]; message?: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/stress-series?dataset=${encodeURIComponent(datasetId)}`, { method: 'GET', headers: this.getHeaders() });
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Get stress series failed:', error);
+      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async saveStressSeries(datasetId: string, series: StressSeries[]): Promise<{
+    success: boolean; message: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/stress-series?dataset=${encodeURIComponent(datasetId)}`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ series }),
+      });
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Save stress series failed:', error);
       return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
