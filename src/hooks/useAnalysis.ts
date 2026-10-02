@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { AnalysisResult, MonthlyAnalysis, TradingRecord } from '@/types';
 import { useRecordsStore } from '@/stores/recordsStore';
-import { calculateProfitRatio, calculateAvgProfitRatio, calculateTotalProfit, calculateAverageHoldDays, calculateTradingTypeRatios, calculateTrendFeatureRatios, calculateAggregateRatios, calculateTheoreticalProfitRatios } from '@/utils/calculations';
+import { calculateProfitRatio, calculateAvgProfitRatio, calculateTotalProfit, computeAnalysisResult } from '@/utils/calculations';
 import { extractMonth } from '@/utils/dateUtils';
 
 export function useAnalysisResult(): AnalysisResult {
@@ -11,20 +11,7 @@ export function useAnalysisResult(): AnalysisResult {
 
   return useMemo(() => {
     if (customAnalysis.useCustom) return customAnalysis.data;
-    return {
-      systemProfitRatio: calculateProfitRatio(records, '是'),
-      systemNoMistakeProfitRatio: calculateProfitRatio(records, '是', '否'),
-      systemWithMistakeProfitRatio: calculateProfitRatio(records, '是', '是'),
-      nonSystemProfitRatio: calculateProfitRatio(records, '否'),
-      systemProfitAvgHoldDays: calculateAverageHoldDays(records, '是', 'positive'),
-      systemLossAvgHoldDays: calculateAverageHoldDays(records, '是', 'negative'),
-      nonSystemProfitAvgHoldDays: calculateAverageHoldDays(records, '否', 'positive'),
-      nonSystemLossAvgHoldDays: calculateAverageHoldDays(records, '否', 'negative'),
-      tradingTypeRatios: calculateTradingTypeRatios(records, fieldConfig.tradingTypes),
-      trendFeatureRatios: calculateTrendFeatureRatios(records, fieldConfig.trendFeatures),
-      aggregateRatios: calculateAggregateRatios(records, fieldConfig.aggregateRules),
-      theoreticalProfitRatios: calculateTheoreticalProfitRatios(records, fieldConfig.theoreticalDimensions),
-    };
+    return computeAnalysisResult(records, fieldConfig);
   }, [records, customAnalysis, fieldConfig]);
 }
 

@@ -1,4 +1,4 @@
-import type { TradingRecord, YesNo, AggregateRule, TheoreticalDimension } from '@/types';
+import type { TradingRecord, YesNo, AggregateRule, TheoreticalDimension, FieldConfig, AnalysisResult } from '@/types';
 
 // 盈亏比计算规则 (v3):
 // - 总盈利绝对值 > 总亏损绝对值: 盈亏比 = 总盈利绝对值 / 总亏损绝对值 (正)
@@ -261,5 +261,147 @@ export function calculateAggregateRatios(
   for (const rule of rules) {
     result[rule.name] = calculateProfitRatioByMultipleTypes(records, rule.includedTypes);
   }
+  return result;
+}
+
+// ============ 单次遍历聚合（O(n)：一次扫描产出所有维度，替代逐维度全表扫描） ============
+// 说明：以下 ratioV3 / ratioV2 与上方 calculateProfitRatio / calculateProfitRatioByType
+// 的公式严格一致，仅供聚合函数复用；上方函数保留给其它调用点与既有测试。
+
+interface AccV3 { sp: number; sn: number } // sp=总盈利(带符号+)，sn=总亏损(带符号-)
+interface AccV2 { profit: number; loss: number } // loss 为绝对值
+interface HoldAcc { sum: number; count: number }
+
+function addV3(acc: AccV3, v: number): void {
+  if (v > 0) acc.sp += v;
+  else if (v < 0) acc.sn += v;
+}
+
+function addV2(acc: AccV2, v: number): void {
+  if (v > 0) acc.profit += v;
+  else if (v < 0) acc.loss += Math.abs(v);
+}
+
+/** v3 盈亏比：由带符号的盈利/亏损总和求比例（与 calculateProfitRatio 一致） */
+function ratioV3(sumPositive: number, sumNegative: number): number | 'N/A' {
+  const absProfit = Math.abs(sumPositive);
+  const absLoss = Math.abs(sumNegative);
+
+  if (absProfit === 0 && absLoss === 0) return 'N/A';
+  if (absProfit > 0 && absLoss === 0) return parseFloat((absProfit / 1).toFixed(2));
+  if (absProfit === 0 && absLoss > 0) return parseFloat((-absLoss / 1).toFixed(2));
+
+  let ratio: number;
+  if (absProfit > absLoss) ratio = absProfit / absLoss;
+  else if (absProfit < absLoss) ratio = -(absLoss / absProfit);
+  else ratio = sumPositive > 0 ? 1.0 : -1.0;
+
+  return parseFloat(ratio.toFixed(2));
+}
+
+/** v2 盈亏比：由盈利/亏损绝对值求比例（与 calculateProfitRatioByType 一致） */
+function ratioV2(profitSum: number, lossSum: number): number {
+  if (profitSum === 0 && lossSum === 0) return 0;
+  if (profitSum > 0 && lossSum === 0) return parseFloat((profitSum / 1).toFixed(2));
+  if (profitSum === 0 && lossSum > 0) return parseFloat((-lossSum / 1).toFixed(2));
+
+  const larger = Math.max(profitSum, lossSum);
+  const smaller = Math.min(profitSum, lossSum);
+  const ratio = parseFloat((larger / smaller).toFixed(2));
+  return profitSum > lossSum ? ratio : -ratio;
+}
+
+function holdAvg(acc: HoldAcc): number | 'N/A' {
+  if (acc.count === 0) return 'N/A';
+  return Math.round((acc.sum / acc.count) * 100) / 100;
+}
+
+/**
+ * 一次遍历 records 计算完整分析结果（含所有 fieldConfig 驱动维度）。
+ * 相比逐维度调用 calculate*（每次全表扫描），复杂度从 O(K·n) 降到 O(n + K)。
+ */
+export function computeAnalysisResult(records: TradingRecord[], config: FieldConfig): AnalysisResult {
+  const system: AccV3 = { sp: 0, sn: 0 };
+  const systemNoMistake: AccV3 = { sp: 0, sn: 0 };
+  const systemWithMistake: AccV3 = { sp: 0, sn: 0 };
+  const nonSystem: AccV3 = { sp: 0, sn: 0 };
+
+  const holdSysProfit: HoldAcc = { sum: 0, count: 0 };
+  const holdSysLoss: HoldAcc = { sum: 0, count: 0 };
+  const holdNonProfit: HoldAcc = { sum: 0, count: 0 };
+  const holdNonLoss: HoldAcc = { sum: 0, count: 0 };
+
+  const tradingAcc = new Map<string, AccV2>();
+  for (const t of config.tradingTypes) if (t !== '未知') tradingAcc.set(t, { profit: 0, loss: 0 });
+
+  const trendAcc = new Map<string, AccV2>();
+  for (const f of config.trendFeatures) if (f !== '未知') trendAcc.set(f, { profit: 0, loss: 0 });
+
+  const aggregateAcc = new Map<string, AccV2>();
+  for (const rule of config.aggregateRules) aggregateAcc.set(rule.name, { profit: 0, loss: 0 });
+
+  const theoreticalAcc = new Map<string, AccV3>();
+  for (const d of config.theoreticalDimensions) theoreticalAcc.set(d.id, { sp: 0, sn: 0 });
+
+  for (const r of records) {
+    const profit = r.profitPercent;
+    const isSystem = r.patternFeatures.includes('系统');
+    const isNonSystem = r.patternFeatures.includes('非系统');
+
+    if (isSystem) {
+      addV3(system, profit);
+      if (r.hasMistake === '否') addV3(systemNoMistake, profit);
+      else if (r.hasMistake === '是') addV3(systemWithMistake, profit);
+
+      if (profit > 0) { holdSysProfit.sum += r.holdDays; holdSysProfit.count++; }
+      else if (profit < 0) { holdSysLoss.sum += r.holdDays; holdSysLoss.count++; }
+    }
+    if (isNonSystem) {
+      addV3(nonSystem, profit);
+      if (profit > 0) { holdNonProfit.sum += r.holdDays; holdNonProfit.count++; }
+      else if (profit < 0) { holdNonLoss.sum += r.holdDays; holdNonLoss.count++; }
+    }
+
+    const ta = tradingAcc.get(r.tradingType);
+    if (ta) addV2(ta, profit);
+
+    for (const f of new Set(r.trendFeatures)) {
+      const fa = trendAcc.get(f);
+      if (fa) addV2(fa, profit);
+    }
+
+    for (const rule of config.aggregateRules) {
+      if (rule.includedTypes.includes(r.tradingType)) {
+        addV2(aggregateAcc.get(rule.name)!, profit);
+      }
+    }
+
+    if (isSystem) {
+      for (const d of config.theoreticalDimensions) {
+        addV3(theoreticalAcc.get(d.id)!, getTheoreticalRatio(r, d.id));
+      }
+    }
+  }
+
+  const result: AnalysisResult = {
+    systemProfitRatio: ratioV3(system.sp, system.sn),
+    systemNoMistakeProfitRatio: ratioV3(systemNoMistake.sp, systemNoMistake.sn),
+    systemWithMistakeProfitRatio: ratioV3(systemWithMistake.sp, systemWithMistake.sn),
+    nonSystemProfitRatio: ratioV3(nonSystem.sp, nonSystem.sn),
+    systemProfitAvgHoldDays: holdAvg(holdSysProfit),
+    systemLossAvgHoldDays: holdAvg(holdSysLoss),
+    nonSystemProfitAvgHoldDays: holdAvg(holdNonProfit),
+    nonSystemLossAvgHoldDays: holdAvg(holdNonLoss),
+    tradingTypeRatios: {},
+    trendFeatureRatios: {},
+    aggregateRatios: {},
+    theoreticalProfitRatios: {},
+  };
+
+  for (const [k, acc] of tradingAcc) result.tradingTypeRatios[k] = ratioV2(acc.profit, acc.loss);
+  for (const [k, acc] of trendAcc) result.trendFeatureRatios[k] = ratioV2(acc.profit, acc.loss);
+  for (const [k, acc] of aggregateAcc) result.aggregateRatios[k] = ratioV2(acc.profit, acc.loss);
+  for (const [k, acc] of theoreticalAcc) result.theoreticalProfitRatios[k] = ratioV3(acc.sp, acc.sn);
+
   return result;
 }

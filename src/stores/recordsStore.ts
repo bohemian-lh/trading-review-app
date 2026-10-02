@@ -111,11 +111,17 @@ export const useRecordsStore = create<RecordsState>((set, get) => ({
     const statTypes = buildStatTypes(state.fieldConfig);
 
     if (hasValueChange && !hasTypeChange && oldRecord.hasCycleStats) {
+      // 预构建 id→record 映射并替换为更新后的记录，避免每个命中周期都全表重建
+      const idToRecord = new Map<string, TradingRecord>(state.records.map(r => [r.id, r]));
+      idToRecord.set(id, newRecord);
       for (const statType of statTypes) {
         const cycles = newCycleStats[statType] || [];
         for (let i = 0; i < cycles.length; i++) {
           if (cycles[i].recordIds.includes(id)) {
-            newCycleStats[statType][i] = recalculateSingleCycle(cycles[i], [newRecord, ...state.records.filter(r => r.id !== id)]);
+            const cycleRecords = cycles[i].recordIds
+              .map(rid => idToRecord.get(rid))
+              .filter((r): r is TradingRecord => r !== undefined);
+            newCycleStats[statType][i] = recalculateSingleCycle(cycles[i], cycleRecords);
           }
         }
       }

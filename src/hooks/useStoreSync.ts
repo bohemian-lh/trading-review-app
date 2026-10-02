@@ -5,7 +5,7 @@ import { useDatasetStore } from '@/stores/datasetStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useAnalysisTabStore } from '@/stores/analysisTabStore';
 import { useStressTestStore } from '@/stores/stressTestStore';
-import { DEFAULT_FIELD_CONFIG, migrateFieldConfig, migrateProfitSource, type AnalysisTab, type StressSeries } from '@/types';
+import { DEFAULT_FIELD_CONFIG, migrateFieldConfig, migrateAnalysisTabGroups, type AnalysisTab, type StressSeries } from '@/types';
 import { generateCycleStats } from '@/services/cycleStatsService';
 
 /**
@@ -122,14 +122,14 @@ async function loadDatasetData(datasetId: string): Promise<void> {
 
     useAnalysisTabStore.getState().setTabs(
       tabsResult.success
-        ? (tabsResult.tabs || []).map((t: AnalysisTab) => ({ ...t, source: migrateProfitSource(t.source) }))
+        ? (tabsResult.tabs || []).map((t: AnalysisTab) => ({ ...t, groups: migrateAnalysisTabGroups(t) }))
         : []
     );
     useAnalysisTabStore.getState().setActiveTabId(null);
 
     useStressTestStore.getState().setSeries(
       stressResult.success
-        ? (stressResult.series || []).map((s: StressSeries) => ({ ...s, source: migrateProfitSource(s.source) }))
+        ? (stressResult.series || []).map((s: StressSeries) => ({ ...s, groups: migrateAnalysisTabGroups(s) }))
         : []
     );
 

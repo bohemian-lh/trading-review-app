@@ -102,22 +102,22 @@ function createCycleStats(
   isComplete: boolean,
   existingStats: CycleStats[] = []
 ): CycleStats {
-  const sortedRecords = [...records].sort((a, b) => a.openDate.localeCompare(b.openDate));
-  const { profitRatio, profitSum, lossSum } = calculateProfitRatio(sortedRecords);
+  // records 已按开单时间排序（由 generateCycleStats 传入有序 batch），无需重复 sort
+  const { profitRatio, profitSum, lossSum } = calculateProfitRatio(records);
   const now = Date.now();
   const existingIncomplete = existingStats.find(s => s.statType === statType && !s.isComplete);
 
   return {
     cycleId: existingIncomplete?.cycleId || generateId(),
     statType,
-    startDate: sortedRecords[0].openDate,
-    endDate: sortedRecords[sortedRecords.length - 1].openDate,
-    recordCount: sortedRecords.length,
+    startDate: records[0].openDate,
+    endDate: records[records.length - 1].openDate,
+    recordCount: records.length,
     isComplete,
     profitSum,
     lossSum,
     profitRatio,
-    recordIds: sortedRecords.map(r => r.id),
+    recordIds: records.map(r => r.id),
     createdAt: existingIncomplete?.createdAt || now,
     updatedAt: now
   };
@@ -141,11 +141,11 @@ export function generateCycleStats(
   const result: Record<string, CycleStats[]> = {};
   const updatedRecords = [...records];
   const recordIdToIndex = new Map(updatedRecords.map((r, i) => [r.id, i]));
+  // 先全量排序一次；各维度 filter 保序，避免每维度重复 sort
+  const sortedRecords = [...updatedRecords].sort((a, b) => a.openDate.localeCompare(b.openDate));
 
   for (const statType of statTypes) {
-    const eligibleRecords = updatedRecords
-      .filter(r => matchesStatType(r, statType, config))
-      .sort((a, b) => a.openDate.localeCompare(b.openDate));
+    const eligibleRecords = sortedRecords.filter(r => matchesStatType(r, statType, config));
 
     if (eligibleRecords.length === 0) {
       result[statType] = existingStats[statType] || [];
@@ -158,8 +158,9 @@ export function generateCycleStats(
 
     if (existingIncomplete.length > 0) {
       const incomplete = existingIncomplete[0];
-      const existingRecs = updatedRecords.filter(r => incomplete.recordIds.includes(r.id));
-      const newRecs = eligibleRecords.filter(r => !incomplete.recordIds.includes(r.id));
+      const incompleteIds = new Set(incomplete.recordIds);
+      const existingRecs = updatedRecords.filter(r => incompleteIds.has(r.id));
+      const newRecs = eligibleRecords.filter(r => !incompleteIds.has(r.id));
       const mergedRecords = [...existingRecs, ...newRecs].sort((a, b) => a.openDate.localeCompare(b.openDate));
 
       let index = 0;
@@ -209,7 +210,8 @@ export function generateCycleStats(
 }
 
 export function recalculateSingleCycle(cycle: CycleStats, records: TradingRecord[]): CycleStats {
-  const cycleRecords = records.filter(r => cycle.recordIds.includes(r.id));
+  const idSet = new Set(cycle.recordIds);
+  const cycleRecords = records.filter(r => idSet.has(r.id));
   const { profitRatio, profitSum, lossSum } = calculateProfitRatio(cycleRecords);
   return { ...cycle, profitSum, lossSum, profitRatio, updatedAt: Date.now() };
 }

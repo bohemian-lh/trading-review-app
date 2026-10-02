@@ -1,4 +1,4 @@
-import type { TradingRecord, FieldConfig, ProfitSource, AnalysisTabFilter } from '@/types';
+import type { TradingRecord, FieldConfig, ProfitSource, AnalysisTabFilter, AnalysisTabGroup } from '@/types';
 import { extractMonth } from '@/utils/dateUtils';
 
 // ============ 信源取值 ============
@@ -23,19 +23,34 @@ export function filterRecords(records: TradingRecord[], filter: AnalysisTabFilte
   });
 }
 
+// ============ 多组合并（并集） ============
+
+export interface MergedSeriesItem {
+  record: TradingRecord;
+  value: number; // 解析后的信源值
+}
+
+/**
+ * 多组合并：各组筛选结果取记录并集（按 record.id 去重），
+ * 信源按组独立解析；同一记录命中多组时以先出现组为准。
+ * 结果按开单时间升序返回。
+ */
+export function mergeGroupRecords(records: TradingRecord[], groups: AnalysisTabGroup[]): MergedSeriesItem[] {
+  const map = new Map<string, MergedSeriesItem>();
+  for (const g of groups) {
+    for (const r of filterRecords(records, g.filter)) {
+      if (!map.has(r.id)) {
+        map.set(r.id, { record: r, value: getSourceValue(r, g.source) });
+      }
+    }
+  }
+  return [...map.values()].sort((a, b) => a.record.openDate.localeCompare(b.record.openDate));
+}
+
 // ============ 盈亏比（按信源，沿用现有 v3 公式） ============
 
-export function computeProfitRatio(records: TradingRecord[], source: ProfitSource): number | 'N/A' {
-  let sumPositive = 0;
-  let sumNegative = 0;
-
-  for (const r of records) {
-    const v = getSourceValue(r, source);
-    if (v === null) continue; // null 跳过
-    if (v > 0) sumPositive += v;
-    else if (v < 0) sumNegative += v;
-  }
-
+/** 由累计盈利/亏损总和直接求盈亏比（v3 公式，O(1)） */
+function ratioFromSums(sumPositive: number, sumNegative: number): number | 'N/A' {
   const absProfit = Math.abs(sumPositive);
   const absLoss = Math.abs(sumNegative);
 
@@ -49,6 +64,24 @@ export function computeProfitRatio(records: TradingRecord[], source: ProfitSourc
   else ratio = sumPositive > 0 ? 1.0 : -1.0;
 
   return parseFloat(ratio.toFixed(2));
+}
+
+/** 值域版盈亏比公式（v3）：基于一组已解析的数值 */
+function computeProfitRatioFromValues(values: number[]): number | 'N/A' {
+  let sumPositive = 0;
+  let sumNegative = 0;
+
+  for (const v of values) {
+    if (v === null || v === undefined) continue; // 空值跳过
+    if (v > 0) sumPositive += v;
+    else if (v < 0) sumNegative += v;
+  }
+
+  return ratioFromSums(sumPositive, sumNegative);
+}
+
+export function computeProfitRatio(records: TradingRecord[], source: ProfitSource): number | 'N/A' {
+  return computeProfitRatioFromValues(records.map(r => getSourceValue(r, source)));
 }
 
 // ============ 排序（按开单时间升序） ============
@@ -96,8 +129,49 @@ export function computeCycleProfitRatios(records: TradingRecord[], source: Profi
 
 export function computeGrowthProfitRatios(records: TradingRecord[], source: ProfitSource): Point[] {
   const sorted = sortByOpenDate(records);
-  return sorted.map((_, i) => {
-    const ratio = computeProfitRatio(sorted.slice(0, i + 1), source);
+  let sumPositive = 0;
+  let sumNegative = 0;
+  return sorted.map((r, i) => {
+    const v = getSourceValue(r, source);
+    if (v !== null && v !== undefined) {
+      if (v > 0) sumPositive += v;
+      else if (v < 0) sumNegative += v;
+    }
+    const ratio = ratioFromSums(sumPositive, sumNegative);
+    return { index: i + 1, value: ratio === 'N/A' ? null : ratio };
+  });
+}
+
+// ============ 值域版计算（基于合并后的 { record, value } 序列，已按开单时间排序） ============
+
+export function computeCumulativeProfitFromItems(items: MergedSeriesItem[]): Point[] {
+  let cum = 0;
+  return items.map((it, i) => {
+    if (it.value !== null && it.value !== undefined) cum += it.value;
+    return { index: i + 1, value: parseFloat(cum.toFixed(2)) };
+  });
+}
+
+export function computeCycleProfitRatiosFromItems(items: MergedSeriesItem[], cycleSize = 30): PeriodPoint[] {
+  const result: PeriodPoint[] = [];
+  for (let i = 0; i < items.length; i += cycleSize) {
+    const chunk = items.slice(i, i + cycleSize).map(it => it.value);
+    const ratio = computeProfitRatioFromValues(chunk);
+    result.push({ period: `第${Math.floor(i / cycleSize) + 1}周期`, value: ratio === 'N/A' ? null : ratio });
+  }
+  return result;
+}
+
+export function computeGrowthProfitRatiosFromItems(items: MergedSeriesItem[]): Point[] {
+  let sumPositive = 0;
+  let sumNegative = 0;
+  return items.map((it, i) => {
+    const v = it.value;
+    if (v !== null && v !== undefined) {
+      if (v > 0) sumPositive += v;
+      else if (v < 0) sumNegative += v;
+    }
+    const ratio = ratioFromSums(sumPositive, sumNegative);
     return { index: i + 1, value: ratio === 'N/A' ? null : ratio };
   });
 }

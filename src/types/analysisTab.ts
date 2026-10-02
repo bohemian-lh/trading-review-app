@@ -36,11 +36,16 @@ export interface AnalysisTabFilter {
   hasMistake: MistakeStatus[]; // 多选，空=不限
 }
 
+/** 一组「完整筛选条件 + 独立信源」，多组合并 = 记录并集 */
+export interface AnalysisTabGroup {
+  filter: AnalysisTabFilter;
+  source: ProfitSource;
+}
+
 export interface AnalysisTab {
   id: string;
   name: string;
-  filter: AnalysisTabFilter;
-  source: ProfitSource;
+  groups: AnalysisTabGroup[]; // 至少 1 组，多组合并
   createdAt: number;
 }
 
@@ -50,7 +55,32 @@ export interface AnalysisTab {
 export interface StressSeries {
   id: string;
   name: string;
-  filter: AnalysisTabFilter;
-  source: ProfitSource;
+  groups: AnalysisTabGroup[];
   createdAt: number;
+}
+
+// ============ 迁移 ============
+
+function migrateFilter(raw: unknown): AnalysisTabFilter {
+  const f = (raw ?? {}) as Partial<AnalysisTabFilter>;
+  return {
+    startDate: typeof f.startDate === 'string' ? f.startDate : undefined,
+    endDate: typeof f.endDate === 'string' ? f.endDate : undefined,
+    tradingTypes: Array.isArray(f.tradingTypes) ? f.tradingTypes : [],
+    trendFeatures: Array.isArray(f.trendFeatures) ? f.trendFeatures : [],
+    patternFeatures: Array.isArray(f.patternFeatures) ? f.patternFeatures : [],
+    hasMistake: Array.isArray(f.hasMistake) ? f.hasMistake : [],
+  };
+}
+
+/** 迁移页签/系列的 groups：兼容旧的 { filter, source } 结构 */
+export function migrateAnalysisTabGroups(raw: unknown): AnalysisTabGroup[] {
+  const r = (raw ?? {}) as { groups?: unknown[]; filter?: unknown; source?: unknown };
+  if (Array.isArray(r.groups) && r.groups.length > 0) {
+    return r.groups.map(g => {
+      const gg = (g ?? {}) as { filter?: unknown; source?: unknown };
+      return { filter: migrateFilter(gg.filter), source: migrateProfitSource(gg.source) };
+    });
+  }
+  return [{ filter: migrateFilter(r.filter), source: migrateProfitSource(r.source) }];
 }

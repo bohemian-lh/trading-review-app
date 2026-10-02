@@ -13,36 +13,58 @@ function median(values: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-/** 样本偏度（Fisher-Pearson 调整） */
-export function computeSkewness(values: number[]): number {
+interface Moments { n: number; m2: number; m3: number; m4: number }
+
+/** 一次遍历计算中心矩（m2/m3/m4），供偏度/峰度/JB 复用，避免多次全量扫描 */
+function computeMoments(values: number[]): Moments {
   const n = values.length;
-  if (n < 3) return 0;
+  if (n === 0) return { n: 0, m2: 0, m3: 0, m4: 0 };
   const m = mean(values);
-  const m2 = values.reduce((a, b) => a + (b - m) ** 2, 0) / n;
-  const m3 = values.reduce((a, b) => a + (b - m) ** 3, 0) / n;
+  let m2 = 0;
+  let m3 = 0;
+  let m4 = 0;
+  for (const v of values) {
+    const d = v - m;
+    m2 += d ** 2;
+    m3 += d ** 3;
+    m4 += d ** 4;
+  }
+  return { n, m2: m2 / n, m3: m3 / n, m4: m4 / n };
+}
+
+function skewnessFromMoments(n: number, m2: number, m3: number): number {
+  if (n < 3) return 0;
   if (m2 === 0) return 0;
   const g1 = m3 / m2 ** 1.5;
   return (Math.sqrt(n * (n - 1)) / (n - 2)) * g1;
 }
 
-/** 样本超额峰度（excess kurtosis，正态分布为 0） */
-export function computeKurtosis(values: number[]): number {
-  const n = values.length;
+function kurtosisFromMoments(n: number, m2: number, m4: number): number {
   if (n < 4) return 0;
-  const m = mean(values);
-  const m2 = values.reduce((a, b) => a + (b - m) ** 2, 0) / n;
-  const m4 = values.reduce((a, b) => a + (b - m) ** 4, 0) / n;
   if (m2 === 0) return 0;
   const g2 = m4 / m2 ** 2 - 3;
   return ((n - 1) / ((n - 2) * (n - 3))) * ((n + 1) * g2 + 6);
+}
+
+/** 样本偏度（Fisher-Pearson 调整） */
+export function computeSkewness(values: number[]): number {
+  const { n, m2, m3 } = computeMoments(values);
+  return skewnessFromMoments(n, m2, m3);
+}
+
+/** 样本超额峰度（excess kurtosis，正态分布为 0） */
+export function computeKurtosis(values: number[]): number {
+  const { n, m2, m4 } = computeMoments(values);
+  return kurtosisFromMoments(n, m2, m4);
 }
 
 /** Jarque-Bera 正态性检验（2 自由度卡方近似） */
 export function computeJarqueBera(values: number[]): { jb: number; pValue: number } {
   const n = values.length;
   if (n < 3) return { jb: 0, pValue: 1 };
-  const S = computeSkewness(values);
-  const K = computeKurtosis(values);
+  const { m2, m3, m4 } = computeMoments(values);
+  const S = skewnessFromMoments(n, m2, m3);
+  const K = kurtosisFromMoments(n, m2, m4);
   const jb = (n / 6) * (S ** 2 + (K ** 2) / 4);
   const pValue = Math.exp(-jb / 2);
   return { jb, pValue };

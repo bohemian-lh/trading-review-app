@@ -1,23 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { useRecordsStore, useAnalysisResult, useAnalysisTabStore } from '@/stores';
+import { useRecordsStore, useAnalysisResult, useAnalysisTabStore, useDatasetStore } from '@/stores';
 import { saveTabsToR2 } from '@/hooks/useStoreSync';
 import { useChartConfig } from '@/hooks/useChartConfig';
-import type { AnalysisTab, ProfitSource } from '@/types';
-import { getProfitSourceLabel } from '@/types';
+import { useOnDemandCompute } from '@/hooks/useOnDemandCompute';
+import type { AnalysisTab } from '@/types';
 import {
-  filterRecords, buildDimensions, getDimensionRecords,
+  buildDimensions, getDimensionRecords, mergeGroupRecords,
   computeCumulativeProfit, computeCycleProfitRatios, computeGrowthProfitRatios,
+  computeCumulativeProfitFromItems, computeCycleProfitRatiosFromItems, computeGrowthProfitRatiosFromItems,
   type DimensionDef,
 } from '@/services/analysisTabService';
 import { SeriesLineChart } from './SeriesLineChart';
 import { CreateAnalysisTabModal } from './CreateAnalysisTabModal';
-
-interface SeriesInput {
-  key: string;
-  label: string;
-  color: string;
-  records: ReturnType<typeof getDimensionRecords>;
-}
 
 const DimensionSelector: React.FC<{
   dimensions: DimensionDef[];
@@ -54,13 +48,27 @@ export const AnalysisTabsView: React.FC = () => {
   const dimensions = useMemo(() => buildDimensions(fieldConfig), [fieldConfig]);
   const activeTab = useMemo(() => tabs.find(t => t.id === activeTabId) ?? null, [tabs, activeTabId]);
   const isDefault = !activeTab;
-
-  const source: ProfitSource = activeTab?.source ?? 'profitPercent';
-  const baseRecords = useMemo(
-    () => (activeTab ? filterRecords(records, activeTab.filter) : records),
-    [records, activeTab],
-  );
+  const currentDatasetId = useDatasetStore(s => s.currentDatasetId);
   const tabSuffix = activeTab ? ` · ${activeTab.name}` : '';
+
+  // 自定义页签：结果快照 + 手动更新（不随 records 变化实时重算）
+  const tabKey = activeTab ? `${currentDatasetId}:tab:${activeTab.id}` : null;
+  const { result: tabResult, refresh: refreshTab, isStale: tabStale } = useOnDemandCompute(
+    tabKey,
+    [records],
+    () => {
+      const store = useAnalysisTabStore.getState();
+      const tab = store.tabs.find(t => t.id === store.activeTabId);
+      if (!tab) return null;
+      const merged = mergeGroupRecords(useRecordsStore.getState().records, tab.groups);
+      return {
+        cumulative: computeCumulativeProfitFromItems(merged).map(p => p.value),
+        cycle: computeCycleProfitRatiosFromItems(merged).map(p => p.value),
+        growth: computeGrowthProfitRatiosFromItems(merged).map(p => p.value),
+        count: merged.length,
+      };
+    },
+  );
 
   // 每张图独立的维度选择（localStorage 持久化，默认全选）
   const dimensionKeys = useMemo(() => dimensions.map(d => d.key), [dimensions]);
@@ -73,33 +81,33 @@ export const AnalysisTabsView: React.FC = () => {
   const cycleSelected = cycleReady ? cycleDims : dimensionKeys;
   const growthSelected = growthReady ? growthDims : dimensionKeys;
 
-  const buildSeriesInputs = (selected: string[]): SeriesInput[] => {
-    if (activeTab) {
-      return [{ key: 'main', label: activeTab.name, color: '#0ea5e9', records: baseRecords }];
-    }
-    return dimensions
-      .filter(d => selected.includes(d.key))
-      .map(d => ({ key: d.key, label: d.label, color: d.color, records: getDimensionRecords(records, d.key) }));
-  };
+  const buildDefaultSeries = (selected: string[], kind: 'cumulative' | 'cycle' | 'growth') => dimensions
+    .filter(d => selected.includes(d.key))
+    .map(d => {
+      const recs = getDimensionRecords(records, d.key);
+      const points = kind === 'cumulative'
+        ? computeCumulativeProfit(recs, 'profitPercent')
+        : kind === 'cycle'
+          ? computeCycleProfitRatios(recs, 'profitPercent')
+          : computeGrowthProfitRatios(recs, 'profitPercent');
+      return { key: d.key, label: d.label, color: d.color, values: points.map(p => p.value) };
+    });
 
-  const cumulativeInputs = useMemo(() => buildSeriesInputs(cumulativeSelected), [cumulativeSelected, activeTab, baseRecords, dimensions, records]);
-  const cycleInputs = useMemo(() => buildSeriesInputs(cycleSelected), [cycleSelected, activeTab, baseRecords, dimensions, records]);
-  const growthInputs = useMemo(() => buildSeriesInputs(growthSelected), [growthSelected, activeTab, baseRecords, dimensions, records]);
-
-  const cumulativeSeries = useMemo(() => cumulativeInputs.map(s => ({
-    key: s.key, label: s.label, color: s.color,
-    values: computeCumulativeProfit(s.records, source).map(p => p.value),
-  })), [cumulativeInputs, source]);
-
-  const cycleSeries = useMemo(() => cycleInputs.map(s => ({
-    key: s.key, label: s.label, color: s.color,
-    values: computeCycleProfitRatios(s.records, source).map(p => p.value),
-  })), [cycleInputs, source]);
-
-  const growthSeries = useMemo(() => growthInputs.map(s => ({
-    key: s.key, label: s.label, color: s.color,
-    values: computeGrowthProfitRatios(s.records, source).map(p => p.value),
-  })), [growthInputs, source]);
+  const cumulativeSeries = useMemo(() => (
+    activeTab
+      ? [{ key: 'main', label: activeTab.name, color: '#0ea5e9', values: tabResult?.cumulative ?? [] }]
+      : buildDefaultSeries(cumulativeSelected, 'cumulative')
+  ), [activeTab, tabResult, cumulativeSelected, dimensions, records]);
+  const cycleSeries = useMemo(() => (
+    activeTab
+      ? [{ key: 'main', label: activeTab.name, color: '#0ea5e9', values: tabResult?.cycle ?? [] }]
+      : buildDefaultSeries(cycleSelected, 'cycle')
+  ), [activeTab, tabResult, cycleSelected, dimensions, records]);
+  const growthSeries = useMemo(() => (
+    activeTab
+      ? [{ key: 'main', label: activeTab.name, color: '#0ea5e9', values: tabResult?.growth ?? [] }]
+      : buildDefaultSeries(growthSelected, 'growth')
+  ), [activeTab, tabResult, growthSelected, dimensions, records]);
 
   const cumulativeX = useMemo(() => Array.from({ length: Math.max(...cumulativeSeries.map(s => s.values.length), 0) }, (_, i) => String(i + 1)), [cumulativeSeries]);
   const cycleX = useMemo(() => Array.from({ length: Math.max(...cycleSeries.map(s => s.values.length), 0) }, (_, i) => `第${i + 1}周期`), [cycleSeries]);
@@ -165,8 +173,19 @@ export const AnalysisTabsView: React.FC = () => {
 
       {/* 自定义页签信源提示 */}
       {activeTab && (
-        <div className="text-xs text-gray-500">
-          数据范围已固定 · 盈亏比信源：{getProfitSourceLabel(activeTab.source, fieldConfig)} · 记录数：{baseRecords.length}
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>
+            数据范围已固定 · 合并序列数：{activeTab.groups.length} · 记录数：{tabResult?.count ?? 0}（并集去重）
+          </span>
+          <span className="flex items-center gap-2">
+            {tabStale && <span className="text-amber-600">数据已更新</span>}
+            <button
+              onClick={refreshTab}
+              className="px-2 py-1 text-blue-600 border border-blue-300 rounded hover:bg-blue-50"
+            >
+              更新
+            </button>
+          </span>
         </div>
       )}
 

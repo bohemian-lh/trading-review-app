@@ -3,11 +3,13 @@ import { Plus, Pencil, Trash2, Play, Loader2 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
-import { useRecordsStore, useStressTestStore } from '@/stores';
+import { useRecordsStore, useStressTestStore, useDatasetStore } from '@/stores';
 import { saveStressSeriesToR2 } from '@/hooks/useStoreSync';
+import { useOnDemandCompute } from '@/hooks/useOnDemandCompute';
 import type { StressSeries } from '@/types';
 import {
-  filterRecords, getSourceValue, computeCumulativeProfit, computeGrowthProfitRatios,
+  mergeGroupRecords, computeCumulativeProfitFromItems, computeGrowthProfitRatiosFromItems,
+  type MergedSeriesItem,
 } from '@/services/analysisTabService';
 import {
   computeSkewness, computeKurtosis, computeJarqueBera,
@@ -20,12 +22,17 @@ const SERIES_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#
 
 const fmtSigned = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`;
 
-interface LineInput {
+interface ComputedSeries {
   key: string;
   label: string;
   color: string;
-  records: ReturnType<typeof filterRecords>;
-  source: StressSeries['source'];
+  count: number;
+  merged: MergedSeriesItem[];
+  cumulative: (number | null)[];
+  growth: (number | null)[];
+  skewness: number;
+  kurtosis: number;
+  jb: { jb: number; pValue: number };
 }
 
 const KV: React.FC<{ label: string; value: string }> = ({ label, value }) => (
@@ -124,34 +131,50 @@ const StressTestPage: React.FC = () => {
   const [mcRunning, setMcRunning] = useState<string | null>(null);
   const [mcError, setMcError] = useState<string | null>(null);
 
-  const lineInputs = useMemo<LineInput[]>(() => series.map((s, i) => ({
-    key: s.id,
-    label: s.name,
-    color: SERIES_COLORS[i % SERIES_COLORS.length],
-    records: filterRecords(records, s.filter),
-    source: s.source,
-  })), [series, records]);
+  const currentDatasetId = useDatasetStore(s => s.currentDatasetId);
+  const stressKey = series.length > 0 ? `${currentDatasetId}:stress` : null;
+  const { result: stressResult, refresh: refreshStress, isStale: stressStale } = useOnDemandCompute(
+    stressKey,
+    [records, series],
+    () => {
+      const latestSeries = useStressTestStore.getState().series;
+      const latestRecords = useRecordsStore.getState().records;
+      return latestSeries.map((s, i): ComputedSeries => {
+        const merged = mergeGroupRecords(latestRecords, s.groups);
+        const vals = merged.map(it => it.value);
+        return {
+          key: s.id,
+          label: s.name,
+          color: SERIES_COLORS[i % SERIES_COLORS.length],
+          count: merged.length,
+          merged,
+          cumulative: computeCumulativeProfitFromItems(merged).map(p => p.value),
+          growth: computeGrowthProfitRatiosFromItems(merged).map(p => p.value),
+          skewness: computeSkewness(vals),
+          kurtosis: computeKurtosis(vals),
+          jb: computeJarqueBera(vals),
+        };
+      });
+    },
+  );
 
-  const cumulativeSeries = useMemo(() => lineInputs.map(x => ({
-    key: x.key, label: x.label, color: x.color,
-    values: computeCumulativeProfit(x.records, x.source).map(p => p.value),
-  })), [lineInputs]);
+  const computedSeries = stressResult ?? [];
 
-  const growthSeries = useMemo(() => lineInputs.map(x => ({
-    key: x.key, label: x.label, color: x.color,
-    values: computeGrowthProfitRatios(x.records, x.source).map(p => p.value),
-  })), [lineInputs]);
+  const cumulativeSeries = useMemo(() => computedSeries.map(x => ({
+    key: x.key, label: x.label, color: x.color, values: x.cumulative,
+  })), [computedSeries]);
+
+  const growthSeries = useMemo(() => computedSeries.map(x => ({
+    key: x.key, label: x.label, color: x.color, values: x.growth,
+  })), [computedSeries]);
 
   const cumulativeX = useMemo(() => Array.from({ length: Math.max(...cumulativeSeries.map(s => s.values.length), 0) }, (_, i) => String(i + 1)), [cumulativeSeries]);
   const growthX = useMemo(() => Array.from({ length: Math.max(...growthSeries.map(s => s.values.length), 0) }, (_, i) => String(i + 1)), [growthSeries]);
 
-  const skewKurt = useMemo(() => lineInputs.map(x => {
-    const vals = x.records.map(r => getSourceValue(r, x.source));
-    return {
-      key: x.key, name: x.label, color: x.color, count: vals.length,
-      skewness: computeSkewness(vals), kurtosis: computeKurtosis(vals), jb: computeJarqueBera(vals),
-    };
-  }), [lineInputs]);
+  const skewKurt = useMemo(() => computedSeries.map(x => ({
+    key: x.key, name: x.label, color: x.color, count: x.count,
+    skewness: x.skewness, kurtosis: x.kurtosis, jb: x.jb,
+  })), [computedSeries]);
 
   const handleSaveSeries = async (s: StressSeries) => {
     const store = useStressTestStore.getState();
@@ -170,10 +193,10 @@ const StressTestPage: React.FC = () => {
   };
 
   const runMonteCarlo = (seriesId: string, mode: 'with' | 'without') => {
-    const input = lineInputs.find(x => x.key === seriesId);
-    if (!input || input.records.length === 0) return;
-    const returns = input.records.map(r => getSourceValue(r, input.source));
-    const positions = input.records.map(r => (typeof r.positionSize === 'number' ? Math.min(100, Math.max(0, r.positionSize)) : 33));
+    const input = computedSeries.find(x => x.key === seriesId);
+    if (!input || input.merged.length === 0) return;
+    const returns = input.merged.map(it => it.value);
+    const positions = input.merged.map(it => (typeof it.record.positionSize === 'number' ? Math.min(100, Math.max(0, it.record.positionSize)) : 33));
     const seed = seedInput.trim() !== '' ? parseInt(seedInput, 10) : Math.floor(Math.random() * 0x7fffffff);
     const config: MonteCarloConfig = {
       initialCapital,
@@ -224,6 +247,13 @@ const StressTestPage: React.FC = () => {
             <p className="text-sm text-gray-500 mt-1">用多条独立筛选的对比系列，对盈亏曲线、盈亏比成长、偏度/峰度与蒙特卡洛模拟进行并排比较。</p>
           </div>
           <div className="flex items-center gap-3">
+            {stressStale && <span className="text-xs text-amber-600">数据已更新</span>}
+            <button
+              onClick={refreshStress}
+              className="px-2 py-1 text-xs text-blue-600 border border-blue-300 rounded hover:bg-blue-50"
+            >
+              更新
+            </button>
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" checked={overlay} onChange={e => setOverlay(e.target.checked)} className="rounded" />
               曲线叠加显示
@@ -370,14 +400,14 @@ const StressTestPage: React.FC = () => {
 
             {mcError && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded">{mcError}</div>}
 
-            {lineInputs.map(x => {
+            {computedSeries.map(x => {
               const res = mcResults[x.key] ?? { with: null, without: null };
               return (
                 <div key={x.key} className="mb-6">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: x.color }} />
                     <span className="font-medium text-gray-900">{x.label}</span>
-                    <span className="text-xs text-gray-500">（{x.records.length} 笔）</span>
+                    <span className="text-xs text-gray-500">（{x.merged.length} 笔）</span>
                   </div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <McResultCard title="有放回（Bootstrap）" result={res.with} running={mcRunning === `${x.key}:with`} onRun={() => runMonteCarlo(x.key, 'with')} />
