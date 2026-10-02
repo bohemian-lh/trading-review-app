@@ -10,6 +10,7 @@ const DEFAULT_CONFIG: FieldConfig = {
     { name: '齐飞水底总', includedTypes: ['齐飞水底', '齐飞水底三等量', '齐飞前多踩MA'] },
     { name: '转一致', includedTypes: ['风险释放平台转一致', '双阳平台转一致'] },
   ],
+  theoreticalDimensions: [],
 };
 
 function makeRecord(overrides: Partial<TradingRecord> = {}): TradingRecord {
@@ -25,8 +26,8 @@ function makeRecord(overrides: Partial<TradingRecord> = {}): TradingRecord {
 describe('buildStatTypes', () => {
   it('默认配置生成正确数量的类型', () => {
     const types = buildStatTypes(DEFAULT_CONFIG);
-    // 4固定 + 4理论固定 + 6 tradingType(排除未知) + 6 理论tradingType(排除未知) + 3 trendFeature(排除未知) + 2 aggregate
-    expect(types).toHaveLength(25);
+    // 4固定 + 6 tradingType(排除未知) + 3 trendFeature(排除未知) + 2 aggregate
+    expect(types).toHaveLength(15);
   });
 
   it('包含4个固定维度', () => {
@@ -51,10 +52,9 @@ describe('buildStatTypes', () => {
   });
 
   it('空配置只返回固定维度', () => {
-    const types = buildStatTypes({ tradingTypes: [], trendFeatures: [], patternFeatures: [], aggregateRules: [] });
+    const types = buildStatTypes({ tradingTypes: [], trendFeatures: [], patternFeatures: [], aggregateRules: [], theoreticalDimensions: [] });
     expect(types).toEqual([
       '系统', '系统无失误', '系统有失误', '非系统',
-      '理论-系统', '理论-系统无失误', '理论-系统有失误', '理论-非系统',
     ]);
   });
 });
