@@ -3,7 +3,8 @@ import { r2StorageService } from '@/services/r2Service';
 import { useRecordsStore, migrateRecord } from '@/stores/recordsStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { useUIStore } from '@/stores/uiStore';
-import { DEFAULT_FIELD_CONFIG, migrateFieldConfig } from '@/types';
+import { useAnalysisTabStore } from '@/stores/analysisTabStore';
+import { DEFAULT_FIELD_CONFIG, migrateFieldConfig, type AnalysisTab } from '@/types';
 import { generateCycleStats } from '@/services/cycleStatsService';
 
 /**
@@ -112,9 +113,13 @@ async function loadDatasetData(datasetId: string): Promise<void> {
   try {
     const result = await r2StorageService.getRecords(datasetId) as any;
     const configResult = await r2StorageService.getConfig(datasetId);
+    const tabsResult = await r2StorageService.getTabs(datasetId);
     const fieldConfig = configResult.success && configResult.config
       ? migrateFieldConfig(configResult.config)
       : { ...DEFAULT_FIELD_CONFIG };
+
+    useAnalysisTabStore.getState().setTabs(tabsResult.success ? (tabsResult.tabs || []) : []);
+    useAnalysisTabStore.getState().setActiveTabId(null);
 
     if (result.success) {
       const migrated = (result.records || []).map(migrateRecord);
@@ -151,6 +156,22 @@ export async function saveFieldConfigToR2(config: any): Promise<{ success: boole
   }
   try {
     await r2StorageService.saveConfig(datasetId, config);
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || '保存失败' };
+  }
+}
+
+/**
+ * 保存分析页签到 R2
+ */
+export async function saveTabsToR2(tabs: AnalysisTab[]): Promise<{ success: boolean; error?: string }> {
+  const datasetId = useDatasetStore.getState().currentDatasetId;
+  if (!datasetId) {
+    return { success: false, error: '未选择数据集' };
+  }
+  try {
+    await r2StorageService.saveTabs(datasetId, tabs);
     return { success: true };
   } catch (e: any) {
     return { success: false, error: e.message || '保存失败' };

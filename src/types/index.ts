@@ -7,6 +7,7 @@ export * from './fieldConfig';
 export * from './journal';
 export * from './mindset';
 export * from './decision';
+export * from './analysisTab';
 
 export interface ValidationResult {
   isValid: boolean;

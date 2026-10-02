@@ -1,4 +1,4 @@
-import type { StorageFile, UploadProgress, TradingRecord, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType, FieldConfig, Dataset } from '@/types';
+import type { StorageFile, UploadProgress, TradingRecord, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType, FieldConfig, Dataset, AnalysisTab } from '@/types';
 import type { RecordsResponse } from '@/types/validation';
 
 const API_BASE_URL = '';
@@ -208,6 +208,36 @@ class R2StorageService {
       return await this.handleResponse(response);
     } catch (error) {
       console.error('Save config failed:', error);
+      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  // ============ 分析页签管理（dataset 级） ============
+
+  async getTabs(datasetId: string): Promise<{
+    success: boolean; tabs?: AnalysisTab[]; message?: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tabs?dataset=${encodeURIComponent(datasetId)}`, { method: 'GET', headers: this.getHeaders() });
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Get tabs failed:', error);
+      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async saveTabs(datasetId: string, tabs: AnalysisTab[]): Promise<{
+    success: boolean; message: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tabs?dataset=${encodeURIComponent(datasetId)}`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ tabs }),
+      });
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Save tabs failed:', error);
       return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
     }
   }

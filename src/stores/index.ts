@@ -3,4 +3,5 @@ export type { emptyCycleStats } from './recordsStore';
 export { useDatasetStore } from './datasetStore';
 export { useUIStore } from './uiStore';
 export { useHeaderKeywordsStore } from './headerKeywordsStore';
+export { useAnalysisTabStore } from './analysisTabStore';
 export { useAnalysisResult, useMonthlyAnalysis } from '../hooks/useAnalysis';
