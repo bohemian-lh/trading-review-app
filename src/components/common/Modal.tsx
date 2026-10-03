@@ -9,6 +9,11 @@ interface ModalProps {
   title?: string;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  /**
+   * 渲染在 Dialog 内部、Panel 之外的浮层插槽。
+   * 放在 Dialog 内可让浮层成为嵌套 Portal（headlessui），从而被 Dialog 的焦点锁视为合法容器。
+   */
+  overlay?: React.ReactNode;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -17,6 +22,7 @@ export const Modal: React.FC<ModalProps> = ({
   title,
   children,
   size = 'md',
+  overlay,
 }) => {
   const sizeStyles = {
     sm: 'max-w-md',
@@ -80,6 +86,8 @@ export const Modal: React.FC<ModalProps> = ({
             </Transition.Child>
           </div>
         </div>
+
+        {overlay}
       </Dialog>
     </Transition>
   );

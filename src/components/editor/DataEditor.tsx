@@ -184,6 +184,9 @@ export const DataEditor: React.FC = () => {
         onClose={recordEditor.closeRecordModal}
         onClipboardPaste={recordEditor.pasteImagesFromClipboard}
         onClearImages={recordEditor.clearImages}
+        overlay={
+          <QuickProfitCalculator isOpen={isQuickCalcOpen} onClose={() => setIsQuickCalcOpen(false)} />
+        }
       />
 
       <MonthlyAnalysisModal
@@ -201,7 +204,12 @@ export const DataEditor: React.FC = () => {
         onImport={recordEditor.importRecordFromParsed}
       />
 
-      <QuickProfitCalculator isOpen={isQuickCalcOpen} onClose={() => setIsQuickCalcOpen(false)} />
+      {/* 记录弹窗打开时，浮层由 RecordModal 的 overlay 承载（位于 Dialog 内，可注册为嵌套 Portal，
+          逃逸 Dialog 对 #root 的 inert 与焦点锁）；此处仅在记录弹窗关闭时独立挂载 */}
+      <QuickProfitCalculator
+        isOpen={isQuickCalcOpen && !recordEditor.isModalOpen}
+        onClose={() => setIsQuickCalcOpen(false)}
+      />
 
       <ImagePreviewModal
         images={imagePreviewImages}

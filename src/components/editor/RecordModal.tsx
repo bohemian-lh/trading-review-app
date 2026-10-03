@@ -31,6 +31,8 @@ interface RecordModalProps {
   onClose: () => void;
   onClipboardPaste: () => Promise<void>;
   onClearImages: () => void;
+  /** 叠加在记录弹窗之上的浮层（如快捷计算盈亏率），由 Modal 渲染在 Dialog 内部 */
+  overlay?: React.ReactNode;
 }
 
 export const RecordModal: React.FC<RecordModalProps> = ({
@@ -46,6 +48,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
   onClose,
   onClipboardPaste,
   onClearImages,
+  overlay,
 }) => {
   const [imagePreviewImages, setImagePreviewImages] = useState<string[]>([]);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
@@ -71,7 +74,13 @@ export const RecordModal: React.FC<RecordModalProps> = ({
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title={editingRecord ? '编辑记录' : '添加记录'} size="2xl">
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={editingRecord ? '编辑记录' : '添加记录'}
+        size="2xl"
+        overlay={overlay}
+      >
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
             {/* 开单时间 */}

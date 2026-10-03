@@ -1,4 +1,5 @@
 import React, { useState, useRef, useLayoutEffect } from 'react';
+import { Portal } from '@headlessui/react';
 import { X, GripHorizontal } from 'lucide-react';
 import { Input } from '@/components/common';
 
@@ -174,88 +175,100 @@ export const QuickProfitCalculator: React.FC<QuickProfitCalculatorProps> = ({ is
     }, 0);
   }
 
+  // headlessui Portal：把浮层渲染到 body 级的 portal 容器，避免被记录弹窗（Dialog）对 #root
+  // 施加的 inert 禁用交互；同时当浮层位于记录弹窗内部时，Portal 会注册为嵌套 Portal，
+  // 从而被弹窗的焦点锁（FocusLock）视为合法容器，输入框可正常聚焦。
   return (
-    <div
-      ref={panelRef}
-      // margin: 0 —— 固定定位下祖容器的间距类（如 space-y-*）会给本元素加 margin-top，
-      // 使 left/top 与视觉位置错位，这里显式清零
-      style={{ left: pos.x, top: pos.y, margin: 0 }}
-      className="fixed z-[60] w-[376px] bg-white rounded-lg shadow-2xl border border-gray-200"
-    >
+    <Portal>
       <div
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        className="flex items-center justify-between px-3 py-2 border-b border-gray-200 cursor-move select-none touch-none"
+        ref={panelRef}
+        // margin: 0 —— 固定定位下祖容器的间距类（如 space-y-*）会给本元素加 margin-top，
+        // 使 left/top 与视觉位置错位，这里显式清零
+        style={{ left: pos.x, top: pos.y, margin: 0 }}
+        className="fixed z-[10001] w-[376px] bg-white rounded-lg shadow-2xl border border-gray-200"
       >
-        <span className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-          <GripHorizontal className="h-4 w-4 text-gray-400" />
-          快捷计算盈亏率
-        </span>
-        <button onClick={handleClose} className="text-gray-400 hover:text-gray-600" title="关闭">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      <div className="px-3 py-3 space-y-2">
-        <div className="flex items-center gap-2">
-          <label className="w-16 shrink-0 text-xs text-gray-500">买入序列</label>
-          <Input value={buyText} onChange={e => setBuyText(e.target.value)} placeholder="例如: 10.00, 11.50" />
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="w-16 shrink-0 text-xs text-gray-500">卖出序列</label>
-          <Input value={sellText} onChange={e => setSellText(e.target.value)} placeholder="例如: 11.00, 11.20" />
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="w-16 shrink-0 text-xs text-gray-500">系数</label>
-          <Input
-            value={coefText}
-            onChange={e => setCoefText(e.target.value)}
-            placeholder="按组数空格分隔，如 1/2 1/2"
-          />
-        </div>
-        {groupCount > 0 && (
-          <p className="text-xs text-gray-400">
-            共 {groupCount} 组，需 {groupCount} 个系数（默认 1/2），用空格分隔
-          </p>
-        )}
-
-        {coefError && <p className="text-xs text-red-600">{coefError}</p>}
-
-        <button
-          onClick={handleConfirm}
-          className="w-full py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded"
+        <div
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          className="flex items-center justify-between px-3 py-2 border-b border-gray-200 cursor-move select-none touch-none"
         >
-          确定
-        </button>
+          <span className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+            <GripHorizontal className="h-4 w-4 text-gray-400" />
+            快捷计算盈亏率
+          </span>
+          <button
+            onClick={handleClose}
+            // 阻止冒泡：避免标题栏 onPointerDown 触发 setPointerCapture，把后续 click 重定向到
+            // 标题栏，导致关闭按钮的 onClick 不触发（表现为「关不掉」）
+            onPointerDown={e => e.stopPropagation()}
+            className="text-gray-400 hover:text-gray-600"
+            title="关闭"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
 
-        {error && <p className="text-xs text-red-600">{error}</p>}
-
-        {resultReady && groups && (
-          <div className="border-t border-gray-200 pt-2 space-y-1">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">参考盈亏率（各组 × 对应系数 后相加）</span>
-              <span className={`font-semibold ${totalRate >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                {fmtRate(totalRate)}
-              </span>
-            </div>
-            <div className="max-h-40 overflow-y-auto space-y-0.5">
-              {groups.map((g, i) => {
-                const c = coefValues[i];
-                const scaled = c === null ? 0 : g.rate * c;
-                return (
-                  <div key={i} className="flex items-center justify-between text-xs text-gray-500">
-                    <span>
-                      第{i + 1}组 {g.buy} → {g.sell} × {coefTokens[i]}
-                    </span>
-                    <span className={scaled >= 0 ? 'text-red-600' : 'text-green-600'}>{fmtRate(scaled)}</span>
-                  </div>
-                );
-              })}
-            </div>
+        <div className="px-3 py-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <label className="w-16 shrink-0 text-xs text-gray-500">买入序列</label>
+            <Input value={buyText} onChange={e => setBuyText(e.target.value)} placeholder="例如: 10.00, 11.50" />
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            <label className="w-16 shrink-0 text-xs text-gray-500">卖出序列</label>
+            <Input value={sellText} onChange={e => setSellText(e.target.value)} placeholder="例如: 11.00, 11.20" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="w-16 shrink-0 text-xs text-gray-500">系数</label>
+            <Input
+              value={coefText}
+              onChange={e => setCoefText(e.target.value)}
+              placeholder="按组数空格分隔，如 1/2 1/2"
+            />
+          </div>
+          {groupCount > 0 && (
+            <p className="text-xs text-gray-400">
+              共 {groupCount} 组，需 {groupCount} 个系数（默认 1/2），用空格分隔
+            </p>
+          )}
+
+          {coefError && <p className="text-xs text-red-600">{coefError}</p>}
+
+          <button
+            onClick={handleConfirm}
+            className="w-full py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded"
+          >
+            确定
+          </button>
+
+          {error && <p className="text-xs text-red-600">{error}</p>}
+
+          {resultReady && groups && (
+            <div className="border-t border-gray-200 pt-2 space-y-1">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">参考盈亏率（各组 × 对应系数 后相加）</span>
+                <span className={`font-semibold ${totalRate >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {fmtRate(totalRate)}
+                </span>
+              </div>
+              <div className="max-h-40 overflow-y-auto space-y-0.5">
+                {groups.map((g, i) => {
+                  const c = coefValues[i];
+                  const scaled = c === null ? 0 : g.rate * c;
+                  return (
+                    <div key={i} className="flex items-center justify-between text-xs text-gray-500">
+                      <span>
+                        第{i + 1}组 {g.buy} → {g.sell} × {coefTokens[i]}
+                      </span>
+                      <span className={scaled >= 0 ? 'text-red-600' : 'text-green-600'}>{fmtRate(scaled)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 };
