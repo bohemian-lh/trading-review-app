@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Table2, BarChart3, Calendar, TrendingUp } from 'lucide-react';
+import { Table2, BarChart3, Calendar, TrendingUp, Calculator } from 'lucide-react';
 import { ImagePreviewModal } from '@/components/editor/ImagePreviewModal';
 import { TradeRecordTable } from '@/components/editor/TradeRecordTable';
 import { AnalysisPanel } from '@/components/editor/AnalysisPanel';
@@ -9,6 +9,7 @@ import { RecordModal } from '@/components/editor/RecordModal';
 import { MonthlyAnalysisModal } from '@/components/editor/MonthlyAnalysisModal';
 import { useDataEditor } from '@/hooks/useDataEditor';
 import { ImportModal } from './ImportModal';
+import { QuickProfitCalculator } from './QuickProfitCalculator';
 
 interface Filters {
   month: string;
@@ -30,6 +31,7 @@ export const DataEditor: React.FC = () => {
   const [filters, setFilters] = useState<Filters>({ month: '', tradingType: '', trendFeatures: '', patternFeatures: '' });
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'openDate', direction: 'desc' });
   const [isImageImportModalOpen, setIsImageImportModalOpen] = useState(false);
+  const [isQuickCalcOpen, setIsQuickCalcOpen] = useState(false);
   const [imagePreviewImages, setImagePreviewImages] = useState<string[]>([]);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -81,7 +83,7 @@ export const DataEditor: React.FC = () => {
   // ---- render ----
   return (
     <div className="space-y-6">
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200 flex items-center justify-between">
         <nav className="flex space-x-8">
           {([
             ['table1', Table2, '表1 - 交易记录'],
@@ -101,6 +103,13 @@ export const DataEditor: React.FC = () => {
             </button>
           ))}
         </nav>
+        <button
+          onClick={() => setIsQuickCalcOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded"
+        >
+          <Calculator className="h-4 w-4" />
+          快捷计算盈亏率
+        </button>
       </div>
 
       {activeTab === 'table1' && (
@@ -191,6 +200,8 @@ export const DataEditor: React.FC = () => {
         onClose={() => setIsImageImportModalOpen(false)}
         onImport={recordEditor.importRecordFromParsed}
       />
+
+      <QuickProfitCalculator isOpen={isQuickCalcOpen} onClose={() => setIsQuickCalcOpen(false)} />
 
       <ImagePreviewModal
         images={imagePreviewImages}

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { AnalysisTabGroup, AnalysisTabFilter, ProfitSource, MistakeStatus } from '@/types';
+import type { AnalysisTabGroup, AnalysisTabFilter, ProfitSource, MistakeStatus, SeriesGroupMode } from '@/types';
 import { useRecordsStore } from '@/stores';
 
 interface SeriesFormModalProps {
@@ -28,6 +28,7 @@ function toMonthInput(v?: string): string {
 }
 
 interface GroupDraft {
+  mode: SeriesGroupMode;
   source: ProfitSource;
   startDate: string;
   endDate: string;
@@ -37,7 +38,8 @@ interface GroupDraft {
   hasMistake: MistakeStatus[];
 }
 
-const emptyGroup = (): GroupDraft => ({
+const emptyGroup = (mode: SeriesGroupMode): GroupDraft => ({
+  mode,
   source: 'profitPercent',
   startDate: '',
   endDate: '',
@@ -49,6 +51,7 @@ const emptyGroup = (): GroupDraft => ({
 
 function toDraft(g: AnalysisTabGroup): GroupDraft {
   return {
+    mode: g.mode,
     source: g.source,
     startDate: toMonthInput(g.filter.startDate),
     endDate: toMonthInput(g.filter.endDate),
@@ -73,7 +76,20 @@ const GroupEditor: React.FC<{
   return (
     <div className="border border-gray-200 rounded-lg p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-gray-800">序列 {index + 1}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-gray-800">序列 {index + 1}</span>
+          <button
+            onClick={() => onChange({ mode: draft.mode === 'exclude' ? 'merge' : 'exclude' })}
+            title="点击切换：合并 / 排除"
+            className={`px-2 py-0.5 rounded text-xs border ${
+              draft.mode === 'exclude'
+                ? 'bg-red-50 text-red-600 border-red-200'
+                : 'bg-blue-50 text-blue-600 border-blue-200'
+            }`}
+          >
+            {draft.mode === 'exclude' ? '排除' : '合并'}
+          </button>
+        </div>
         {total > 1 && (
           <button onClick={onRemove} className="text-xs text-red-500 hover:text-red-700">删除本序列</button>
         )}
@@ -175,7 +191,7 @@ export const SeriesFormModal: React.FC<SeriesFormModalProps> = ({
   ], [fieldConfig.theoreticalDimensions]);
 
   const [groups, setGroups] = useState<GroupDraft[]>(() => {
-    const fallback: AnalysisTabGroup[] = [{ source: 'profitPercent', filter: {} as AnalysisTabFilter }];
+    const fallback: AnalysisTabGroup[] = [{ mode: 'merge', source: 'profitPercent', filter: {} as AnalysisTabFilter }];
     const init = initialGroups && initialGroups.length > 0 ? initialGroups : fallback;
     return init.map(g => toDraft(g));
   });
@@ -184,11 +200,12 @@ export const SeriesFormModal: React.FC<SeriesFormModalProps> = ({
     setGroups(prev => prev.map((g, idx) => (idx === i ? { ...g, ...patch } : g)));
   };
 
-  const addGroup = () => setGroups(prev => [...prev, emptyGroup()]);
+  const addGroup = (mode: SeriesGroupMode) => setGroups(prev => [...prev, emptyGroup(mode)]);
   const removeGroup = (i: number) => setGroups(prev => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
 
   const handleSave = () => {
     const result: AnalysisTabGroup[] = groups.map(g => ({
+      mode: g.mode,
       source: g.source,
       filter: {
         startDate: fromMonthInput(g.startDate),
@@ -238,12 +255,23 @@ export const SeriesFormModal: React.FC<SeriesFormModalProps> = ({
             />
           ))}
 
-          <button
-            onClick={addGroup}
-            className="w-full py-2 text-sm text-blue-600 border border-dashed border-blue-300 rounded hover:bg-blue-50"
-          >
-            + 合并其他序列
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => addGroup('merge')}
+              className="flex-1 py-2 text-sm text-blue-600 border border-dashed border-blue-300 rounded hover:bg-blue-50"
+            >
+              + 合并其他序列
+            </button>
+            <button
+              onClick={() => addGroup('exclude')}
+              className="flex-1 py-2 text-sm text-red-600 border border-dashed border-red-300 rounded hover:bg-red-50"
+            >
+              + 排除其他序列
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">
+            合并 = 各序列筛选结果取并集；排除 = 从并集结果中剔除该序列命中的记录。点击序列旁的标签可随时切换。
+          </p>
         </div>
 
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">

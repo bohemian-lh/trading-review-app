@@ -36,10 +36,14 @@ export interface AnalysisTabFilter {
   hasMistake: MistakeStatus[]; // 多选，空=不限
 }
 
-/** 一组「完整筛选条件 + 独立信源」，多组合并 = 记录并集 */
+/** 序列在页签中的角色：merge = 并入结果，exclude = 从结果中剔除 */
+export type SeriesGroupMode = 'merge' | 'exclude';
+
+/** 一组「完整筛选条件 + 独立信源」；merge 组取并集，exclude 组从并集中剔除 */
 export interface AnalysisTabGroup {
   filter: AnalysisTabFilter;
   source: ProfitSource;
+  mode: SeriesGroupMode;
 }
 
 export interface AnalysisTab {
@@ -76,11 +80,16 @@ function migrateFilter(raw: unknown): AnalysisTabFilter {
 /** 迁移页签/系列的 groups：兼容旧的 { filter, source } 结构 */
 export function migrateAnalysisTabGroups(raw: unknown): AnalysisTabGroup[] {
   const r = (raw ?? {}) as { groups?: unknown[]; filter?: unknown; source?: unknown };
+  const toGroup = (g: unknown): AnalysisTabGroup => {
+    const gg = (g ?? {}) as { filter?: unknown; source?: unknown; mode?: unknown };
+    return {
+      filter: migrateFilter(gg.filter),
+      source: migrateProfitSource(gg.source),
+      mode: gg.mode === 'exclude' ? 'exclude' : 'merge',
+    };
+  };
   if (Array.isArray(r.groups) && r.groups.length > 0) {
-    return r.groups.map(g => {
-      const gg = (g ?? {}) as { filter?: unknown; source?: unknown };
-      return { filter: migrateFilter(gg.filter), source: migrateProfitSource(gg.source) };
-    });
+    return r.groups.map(toGroup);
   }
-  return [{ filter: migrateFilter(r.filter), source: migrateProfitSource(r.source) }];
+  return [toGroup(r)];
 }

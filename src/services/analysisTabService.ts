@@ -31,17 +31,25 @@ export interface MergedSeriesItem {
 }
 
 /**
- * 多组合并：各组筛选结果取记录并集（按 record.id 去重），
+ * 多序列合并：merge 组的筛选结果取记录并集（按 record.id 去重），
+ * 再从并集中剔除所有 exclude 组的筛选结果；
  * 信源按组独立解析；同一记录命中多组时以先出现组为准。
  * 结果按开单时间升序返回。
  */
 export function mergeGroupRecords(records: TradingRecord[], groups: AnalysisTabGroup[]): MergedSeriesItem[] {
   const map = new Map<string, MergedSeriesItem>();
   for (const g of groups) {
+    if (g.mode === 'exclude') continue;
     for (const r of filterRecords(records, g.filter)) {
       if (!map.has(r.id)) {
         map.set(r.id, { record: r, value: getSourceValue(r, g.source) });
       }
+    }
+  }
+  for (const g of groups) {
+    if (g.mode !== 'exclude') continue;
+    for (const r of filterRecords(records, g.filter)) {
+      map.delete(r.id);
     }
   }
   return [...map.values()].sort((a, b) => a.record.openDate.localeCompare(b.record.openDate));
