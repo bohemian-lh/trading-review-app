@@ -46,14 +46,6 @@ function saveSettings(s: TableSettings) {
 }
 
 // ─── 列配置 ────────────────────────────────────────────────────────
-const COLUMNS = [
-  { id: 'name', label: '股票名称' },
-  { id: 'g1', label: '' },
-  { id: 'g2', label: '' },
-  { id: 'g3', label: '' },
-  { id: 'g4', label: '' },
-] as const;
-
 const FONT_SIZE_OPTIONS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 24];
 const ROW_SPACING_OPTIONS = [2, 3, 4, 5, 6, 8, 10];
 const ROW_COLORS = ['bg-green-50', 'bg-yellow-50', 'bg-blue-50'];
@@ -203,13 +195,20 @@ export const JournalDrafts: React.FC = () => {
 
   const drafts = journals.filter(j => j.status === 'draft');
 
-  // 策略组 ID 顺序
-  const groupIds = ['g1', 'g2', 'g3', 'g4'];
-  const groupNames = useMemo(() => {
-    const stage = activeStages[0];
-    if (!stage) return ['策略组1', '策略组2', '策略组3', '策略组4'];
-    return stage.strategyGroups.map(g => g.groupName);
+  // 策略组顺序与名称：跟随字段编辑中的配置顺序
+  const groupIds = useMemo(
+    () => activeStages[0]?.strategyGroups.map(g => g.groupId) ?? ['g1', 'g2', 'g3', 'g4'],
+    [activeStages],
+  );
+  const groupNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    activeStages[0]?.strategyGroups.forEach(g => { map[g.groupId] = g.groupName; });
+    return map;
   }, [activeStages]);
+  const groupNames = useMemo(
+    () => groupIds.map(gid => groupNameById[gid] || gid),
+    [groupIds, groupNameById],
+  );
 
   // 导出/预览用的行数据（过滤无策略内容的行）
   const exportRows = useMemo<JournalRow[]>(() => {
@@ -603,8 +602,11 @@ export const JournalDrafts: React.FC = () => {
     );
   };
 
-  // ─── 可见列 ───────────────────────────────────────────────────
-  const visibleCols = COLUMNS;
+  // ─── 可见列（顺序跟随字段编辑中的策略组配置）───────────────────
+  const visibleCols = useMemo(
+    () => [{ id: 'name', label: '股票名称' }, ...groupIds.map(gid => ({ id: gid, label: '' }))],
+    [groupIds],
+  );
 
   if (drafts.length === 0) {
     return (
@@ -661,7 +663,7 @@ export const JournalDrafts: React.FC = () => {
 
               <div className="border-t pt-2">
                 <div className="text-xs text-gray-500 mb-2">每列字号</div>
-                {[{ id: 'name', label: '股票名称' }, { id: 'g1', label: groupNames[0] }, { id: 'g2', label: groupNames[1] }, { id: 'g3', label: groupNames[2] }, { id: 'g4', label: groupNames[3] }].map(col => (
+                {[{ id: 'name', label: '股票名称' }, ...groupIds.map(gid => ({ id: gid, label: groupNameById[gid] || gid }))].map(col => (
                   <div key={col.id} className="flex items-center justify-between mb-1.5">
                     <span className="text-xs text-gray-500 truncate mr-2 max-w-[120px]">{col.label}</span>
                     <select
@@ -679,7 +681,7 @@ export const JournalDrafts: React.FC = () => {
 
               <div className="border-t pt-2">
                 <div className="text-xs text-gray-500 mb-2">策略组行距</div>
-                {[{ id: 'g1', label: groupNames[0] }, { id: 'g2', label: groupNames[1] }, { id: 'g3', label: groupNames[2] }, { id: 'g4', label: groupNames[3] }].map(col => (
+                {groupIds.map(gid => ({ id: gid, label: groupNameById[gid] || gid })).map(col => (
                   <div key={col.id} className="flex items-center justify-between mb-1.5">
                     <span className="text-xs text-gray-500 truncate mr-2 max-w-[120px]">{col.label}</span>
                     <select
@@ -754,7 +756,7 @@ export const JournalDrafts: React.FC = () => {
           <thead>
             <tr className="bg-gray-50 relative">
               {visibleCols.map(col => {
-                const colName = col.id === 'name' ? col.label : (groupNames[parseInt(col.id.slice(1)) - 1] || col.id);
+                const colName = col.id === 'name' ? col.label : (groupNameById[col.id] || col.id);
                 const width = settings.colWidths[col.id] || 120;
                 return (
                   <th

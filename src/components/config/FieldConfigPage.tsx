@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Settings, Plus, Trash2, Save, X } from 'lucide-react';
+import { Settings, Plus, Trash2, Save, X, GripVertical } from 'lucide-react';
 import { useRecordsStore, useAnalysisTabStore } from '@/stores';
 import { saveFieldConfigToR2, saveTabsToR2 } from '@/hooks/useStoreSync';
 import { generateId } from '@/utils';
@@ -49,8 +49,13 @@ export const FieldConfigPage: React.FC = () => {
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [dragType, setDragType] = useState<'trading' | 'trend' | null>(null);
+  const [dragType, setDragType] = useState<'trading' | 'trend' | 'pattern' | null>(null);
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
+  const [groupDrag, setGroupDrag] = useState<
+    | { kind: 'group'; from: number }
+    | { kind: 'strategy'; groupIndex: number; from: number }
+    | null
+  >(null);
 
   // 重置为 store 中的当前值
   const resetFromStore = useCallback(() => {
@@ -104,22 +109,62 @@ export const FieldConfigPage: React.FC = () => {
   };
 
   // ---------- 拖动排序 ----------
-  const handleDragStart = (type: 'trading' | 'trend', index: number) => {
+  const handleDragStart = (type: 'trading' | 'trend' | 'pattern', index: number) => {
     setDragType(type);
     setDragFromIndex(index);
   };
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
-  const handleDrop = (type: 'trading' | 'trend', toIndex: number) => {
+  const handleDrop = (type: 'trading' | 'trend' | 'pattern', toIndex: number) => {
     if (dragType !== type || dragFromIndex === null || dragFromIndex === toIndex) {
       setDragType(null); setDragFromIndex(null); return;
     }
+    const from = dragFromIndex;
     setPending(p => {
-      const list = type === 'trading' ? [...p.tradingTypes] : [...p.trendFeatures];
-      const [moved] = list.splice(dragFromIndex, 1);
+      const list = type === 'trading' ? [...p.tradingTypes]
+        : type === 'trend' ? [...p.trendFeatures]
+        : [...p.patternFeatures];
+      const [moved] = list.splice(from, 1);
       list.splice(toIndex, 0, moved);
-      return type === 'trading' ? { ...p, tradingTypes: list } : { ...p, trendFeatures: list };
+      if (type === 'trading') return { ...p, tradingTypes: list };
+      if (type === 'trend') return { ...p, trendFeatures: list };
+      return { ...p, patternFeatures: list };
     });
     setDragType(null); setDragFromIndex(null);
+  };
+
+  // ---------- 策略组拖动排序 ----------
+  const handleGroupDragStart = (from: number) => setGroupDrag({ kind: 'group', from });
+  const handleGroupDrop = (to: number) => {
+    if (groupDrag?.kind !== 'group' || groupDrag.from === to) { setGroupDrag(null); return; }
+    const from = groupDrag.from;
+    setPending(p => {
+      const groups = [...p.sharedStrategyGroups];
+      const [moved] = groups.splice(from, 1);
+      groups.splice(to, 0, moved);
+      return { ...p, sharedStrategyGroups: groups };
+    });
+    setGroupDrag(null);
+  };
+
+  const handleGroupStrategyDragStart = (groupIndex: number, from: number) => {
+    setGroupDrag({ kind: 'strategy', groupIndex, from });
+  };
+  const handleGroupStrategyDrop = (groupIndex: number, to: number) => {
+    if (groupDrag?.kind !== 'strategy' || groupDrag.groupIndex !== groupIndex || groupDrag.from === to) {
+      setGroupDrag(null); return;
+    }
+    const from = groupDrag.from;
+    setPending(p => ({
+      ...p,
+      sharedStrategyGroups: p.sharedStrategyGroups.map((g, gi) => {
+        if (gi !== groupIndex) return g;
+        const strategies = [...g.strategies];
+        const [moved] = strategies.splice(from, 1);
+        strategies.splice(to, 0, moved);
+        return { ...g, strategies };
+      }),
+    }));
+    setGroupDrag(null);
   };
 
   const deleteTradingType = (type: string) => {
@@ -461,12 +506,18 @@ export const FieldConfigPage: React.FC = () => {
             <Plus className="h-3.5 w-3.5" /> 新增
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-1 mb-3">「系统」「非系统」为固定标记，不可删除</p>
+        <p className="text-xs text-gray-400 mt-1 mb-3">拖动标签可调整排序，下拉框按此顺序显示；「系统」「非系统」为固定标记，不可删除</p>
         <div className="flex flex-wrap gap-2">
-          {pending.patternFeatures.map((e) => (
+          {pending.patternFeatures.map((e, idx) => (
             <span
               key={e}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-800 rounded-full text-sm select-none"
+              draggable
+              onDragStart={() => handleDragStart('pattern', idx)}
+              onDragOver={handleDragOver}
+              onDrop={() => handleDrop('pattern', idx)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-800 rounded-full text-sm cursor-grab active:cursor-grabbing select-none ${
+                dragType === 'pattern' && dragFromIndex === idx ? 'opacity-40' : ''
+              }`}
             >
               {e}
               {e !== '系统' && e !== '非系统' && (
@@ -589,10 +640,26 @@ export const FieldConfigPage: React.FC = () => {
 
         {/* 策略组配置（共享） */}
         <div className="border-t pt-4">
-          <h4 className="text-sm font-medium text-gray-700 mb-3">策略组配置（所有阶段共用）</h4>
+          <h4 className="text-sm font-medium text-gray-700 mb-1">策略组配置（所有阶段共用）</h4>
+          <p className="text-xs text-gray-400 mb-3">拖动 ⠿ 手柄可调整策略组之间、以及组内策略的顺序</p>
           {pending.sharedStrategyGroups.map((group, gi) => (
-            <div key={group.groupId} className="ml-4 border-l-2 border-blue-200 pl-4 space-y-2 mb-4">
+            <div
+              key={group.groupId}
+              onDragOver={handleDragOver}
+              onDrop={() => handleGroupDrop(gi)}
+              className={`ml-4 border-l-2 border-blue-200 pl-4 space-y-2 mb-4 ${
+                groupDrag?.kind === 'group' && groupDrag.from === gi ? 'opacity-40' : ''
+              }`}
+            >
               <div className="flex items-center gap-2">
+                <span
+                  draggable
+                  onDragStart={() => handleGroupDragStart(gi)}
+                  className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 select-none"
+                  title="拖动调整策略组顺序"
+                >
+                  <GripVertical className="h-3.5 w-3.5" />
+                </span>
                 <span className="text-xs text-gray-500">组名:</span>
                 <input
                   type="text"
@@ -608,7 +675,22 @@ export const FieldConfigPage: React.FC = () => {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {group.strategies.map((strat, stri) => (
-                  <span key={strat.strategyId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-50 rounded text-xs">
+                  <span
+                    key={strat.strategyId}
+                    onDragOver={handleDragOver}
+                    onDrop={() => handleGroupStrategyDrop(gi, stri)}
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 bg-gray-50 rounded text-xs ${
+                      groupDrag?.kind === 'strategy' && groupDrag.groupIndex === gi && groupDrag.from === stri ? 'opacity-40' : ''
+                    }`}
+                  >
+                    <span
+                      draggable
+                      onDragStart={() => handleGroupStrategyDragStart(gi, stri)}
+                      className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 select-none"
+                      title="拖动调整策略顺序"
+                    >
+                      <GripVertical className="h-3 w-3" />
+                    </span>
                     <input
                       type="text"
                       value={strat.text}
