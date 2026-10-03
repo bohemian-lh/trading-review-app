@@ -12,8 +12,18 @@ export interface ParsedTextResult {
   stockName: string;
   holdDays: number | null;
   amountValues: number[];
+  /** 与 amountValues 一一对应的「成交日期 + 发生金额」，用于按时间顺序计算资金峰值 */
+  amountEntries: { date: string; amount: number }[];
   profitPercent: number | null;
 }
+
+// 归一化成交日期为 YYYYMMDD，便于按时间排序
+const normalizeDateKey = (date: string | null): string => {
+  if (!date) return '';
+  if (date.length === 8) return date;
+  if (date.length === 6) return '20' + date;
+  return date;
+};
 
 // 默认的唯一表头关键字
 export const DEFAULT_HEADER_KEYWORDS = {
@@ -100,6 +110,7 @@ export function parseTradeText(text: string): ParsedTextResult {
   const stockCodeValues: string[] = [];
   const stockNameValues: string[] = [];
   const amountValues: number[] = [];
+  const amountEntries: { date: string; amount: number }[] = [];
   
   // 先解析表头行，确定每个字段的位置
   let headerRowIndex = -1;
@@ -205,7 +216,10 @@ export function parseTradeText(text: string): ParsedTextResult {
     if (date) dateValues.push(date);
     if (code) stockCodeValues.push(code);
     if (name) stockNameValues.push(name);
-    if (amount !== null) amountValues.push(amount);
+    if (amount !== null) {
+      amountValues.push(amount);
+      amountEntries.push({ date: normalizeDateKey(date), amount });
+    }
   }
   
   console.log('提取结果:', {
@@ -246,6 +260,7 @@ export function parseTradeText(text: string): ParsedTextResult {
     stockName,
     holdDays,
     amountValues,
+    amountEntries,
     profitPercent: null
   };
 }

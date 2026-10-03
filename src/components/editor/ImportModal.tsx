@@ -5,6 +5,7 @@ import type { ParsedTradeData } from '@/types';
 import { ocrManager } from '@/services/ocr';
 import { parseTradeText, DEFAULT_HEADER_KEYWORDS } from '@/services/text-parser';
 import { useHeaderKeywordsStore } from '@/stores/headerKeywordsStore';
+import { calcCapitalPeak } from '@/utils/calculations';
 
 interface ImportModalProps {
   isOpen: boolean;
@@ -28,7 +29,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [step, setStep] = useState<'upload' | 'parsing' | 'preview'>('upload');
   const [importType, setImportType] = useState<ImportType>('image');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [parsedData, setParsedData] = useState<ParsedTradeData & { amountValues?: number[] } | null>(null);
+  const [parsedData, setParsedData] = useState<ParsedTradeData & {
+    amountValues?: number[];
+    amountEntries?: { date: string; amount: number }[];
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedStrategy, setSelectedStrategy] = useState(ocrManager.getConfig().strategy);
   const [textInput, setTextInput] = useState('');
@@ -45,9 +49,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [editStockCode, setEditStockCode] = useState<string>('');
   const [editStockName, setEditStockName] = useState<string>('');
   const [editHoldDays, setEditHoldDays] = useState<number | null>(null);
-  // 盈亏计算相关的三个输入
+  // 盈亏计算：分子（所有发生金额之和）+ 除数（资金峰值，可手动覆盖）
   const [editAmounts, setEditAmounts] = useState<string>('');
-  const [editNegativeAmounts, setEditNegativeAmounts] = useState<string>('');
+  const [editDivisor, setEditDivisor] = useState<string>('');
   const [calculatedProfit, setCalculatedProfit] = useState<number | null>(null);
   // 最终数据
   const [finalOpenDate, setFinalOpenDate] = useState<string>('');
@@ -89,15 +93,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         ).join(' + ');
         setEditAmounts(allAmountsStr);
         
-        // 第二行：所有负数金额
-        const negativeAmounts = parsedData.amountValues.filter(amount => amount < 0);
-        const negativeAmountsStr = negativeAmounts.map(amount => 
-          `(${amount.toString()})`
-        ).join(' + ');
-        setEditNegativeAmounts(negativeAmountsStr);
+        // 第二行：除数，默认为按成交日期聚合的资金峰值（无日期信息时回退为累计买入成本）
+        const peak = parsedData.amountEntries && parsedData.amountEntries.length > 0
+          ? calcCapitalPeak(parsedData.amountEntries)
+          : Math.abs(parsedData.amountValues.filter(amount => amount < 0).reduce((sum, amount) => sum + amount, 0));
+        const divisorStr = peak > 0 ? peak.toString() : '';
+        setEditDivisor(divisorStr);
         
         // 第三行：自动计算
-        recalculateProfit(allAmountsStr, negativeAmountsStr);
+        recalculateProfit(allAmountsStr, divisorStr);
       }
       
       // 初始化最终数据
@@ -116,25 +120,24 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     setFinalHoldDays(editHoldDays);
   }, [editOpenDate, editStockCode, editStockName, editHoldDays]);
   
-  // 当金额表达式变化时重新计算
+  // 当金额表达式或除数变化时重新计算
   useEffect(() => {
-    recalculateProfit(editAmounts, editNegativeAmounts);
-  }, [editAmounts, editNegativeAmounts]);
+    recalculateProfit(editAmounts, editDivisor);
+  }, [editAmounts, editDivisor]);
   
-  // 从表达式重新计算盈亏
-  const recalculateProfit = (allAmountsStr: string, negativeAmountsStr: string) => {
+  // 从表达式重新计算盈亏：盈亏率 = 所有发生金额之和 / 除数 × 100
+  const recalculateProfit = (allAmountsStr: string, divisorStr: string) => {
     try {
-      // 解析第一行：所有金额的总和
+      // 第一行：所有金额的总和（盈利额）
       const allAmounts = parseAmountsFromString(allAmountsStr);
       const totalSum = allAmounts.reduce((sum, num) => sum + num, 0);
       
-      // 解析第二行：负数金额绝对值总和
-      const negativeAmounts = parseAmountsFromString(negativeAmountsStr);
-      const negativeAbsSum = Math.abs(negativeAmounts.reduce((sum, num) => sum + num, 0));
+      // 第二行：除数（资金峰值，可手动覆盖）
+      const divisor = Math.abs(parseAmountsFromString(divisorStr).reduce((sum, num) => sum + num, 0));
       
       let profit: number | null = null;
-      if (negativeAbsSum !== 0) {
-        profit = (totalSum / negativeAbsSum) * 100;
+      if (divisor !== 0) {
+        profit = (totalSum / divisor) * 100;
         profit = Math.round(profit * 100) / 100; // 乘以100后保留2位小数
       }
       
@@ -683,12 +686,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-500">所有负数金额</label>
+                            <label className="text-xs text-gray-500">除数（资金峰值，自动计算，可修改）</label>
                             <Input
-                              value={editNegativeAmounts}
-                              onChange={(e) => setEditNegativeAmounts(e.target.value)}
-                              placeholder="(-6460.55) + (-3310.28) + (-9870.84)"
+                              value={editDivisor}
+                              onChange={(e) => setEditDivisor(e.target.value)}
+                              placeholder="31488.66"
                             />
+                            <p className="text-xs text-gray-400 mt-1">
+                              按成交日期聚合后累计净投入的最大值；资金反复买卖时不会重复计入已回收的部分
+                            </p>
                           </div>
                           <div>
                             <label className="text-xs text-gray-500">计算盈亏（自动）</label>

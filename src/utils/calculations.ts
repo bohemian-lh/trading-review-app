@@ -405,3 +405,25 @@ export function computeAnalysisResult(records: TradingRecord[], config: FieldCon
 
   return result;
 }
+
+// 资金峰值（盈亏率的分母）计算规则:
+// - 发生金额约定: 买入/加仓为负, 卖出为正
+// - 先按成交日期聚合同日多笔, 消除日内顺序歧义
+// - 再按日期升序累计净投入 (净投入 = -累计发生金额), 取最大值作为分母
+// - 单次建仓(可含加仓)后清仓时结果等于累计买入成本; 资金反复买卖时不会重复计入已回收的资金
+export function calcCapitalPeak(entries: { date: string; amount: number }[]): number {
+  const amountByDate = new Map<string, number>();
+  for (const { date, amount } of entries) {
+    amountByDate.set(date, (amountByDate.get(date) ?? 0) + amount);
+  }
+
+  const dates = [...amountByDate.keys()].sort((a, b) => a.localeCompare(b));
+  let cumulative = 0;
+  let peak = 0;
+  for (const date of dates) {
+    cumulative += amountByDate.get(date)!;
+    peak = Math.max(peak, -cumulative);
+  }
+
+  return Math.round(peak * 100) / 100;
+}
