@@ -19,6 +19,9 @@ const PRICE_LEVELS = [
 
 const ROW_COLORS = ['bg-green-50', 'bg-yellow-50', 'bg-blue-50'];
 
+// 开单时间按天比较：统一取前 8 位数字（YYYYMMDD），兼容 'YYYY-MM-DD' 等写法
+const toDayKey = (v: string) => v.replace(/\D/g, '').slice(0, 8);
+
 // ─── localStorage 列宽 ─────────────────────────────────────────────
 const COL_PREFIX = 'journal_viewer_';
 
@@ -159,7 +162,9 @@ export const JournalViewer: React.FC = () => {
   const { journals, snapshots, activeStages, deleteJournal, updateJournalRecordId, revertJournal } = useJournalStore();
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
-  const [filterDate, setFilterDate] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [filterCode, setFilterCode] = useState('');
   const [matchingJournalId, setMatchingJournalId] = useState<string | null>(null);
   const [matchAnchor, setMatchAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -209,22 +214,37 @@ export const JournalViewer: React.FC = () => {
     document.body.style.userSelect = 'none';
   };
 
-  // 策略组 ID 顺序
-  const groupIds = ['g1', 'g2', 'g3', 'g4'];
-  const groupNames = useMemo(() => {
-    const stage = activeStages[0];
-    if (!stage) return ['策略组1', '策略组2', '策略组3', '策略组4'];
-    return stage.strategyGroups.map(g => g.groupName);
+  // 策略组顺序与名称：跟随字段编辑中的配置顺序
+  const groupIds = useMemo(
+    () => activeStages[0]?.strategyGroups.map(g => g.groupId) ?? ['g1', 'g2', 'g3', 'g4'],
+    [activeStages],
+  );
+  const groupNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    activeStages[0]?.strategyGroups.forEach(g => { map[g.groupId] = g.groupName; });
+    return map;
   }, [activeStages]);
 
   const filtered = useMemo(() => {
-    return journals.filter(j => {
+    const from = toDayKey(dateFrom);
+    const to = toDayKey(dateTo);
+    const result = journals.filter(j => {
       if (j.status !== 'submitted') return false;
-      if (filterDate && !j.openDate.includes(filterDate.replace(/-/g, ''))) return false;
+      // 开单时间区间：含首含尾，按天比较
+      if (from || to) {
+        const day = toDayKey(j.openDate);
+        if (!day) return false;
+        if (from && day < from) return false;
+        if (to && day > to) return false;
+      }
       if (filterCode && !j.stockCode.includes(filterCode)) return false;
       return true;
     });
-  }, [journals, filterDate, filterCode]);
+    return result.sort((a, b) => {
+      const cmp = toDayKey(a.openDate).localeCompare(toDayKey(b.openDate));
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [journals, dateFrom, dateTo, filterCode, sortDir]);
 
   const handleDelete = async (journalId: string) => {
     if (!confirm('确认删除此条日志？')) return;
@@ -301,57 +321,34 @@ export const JournalViewer: React.FC = () => {
   // 列配置
   const columns = [
     { id: 'name', label: '股票名称' },
-    ...groupIds.map((gid, i) => ({ id: gid, label: groupNames[i] || gid })),
+    ...groupIds.map(gid => ({ id: gid, label: groupNameById[gid] || gid })),
     { id: 'ops', label: '操作' },
   ];
-
-  if (filtered.length === 0) {
-    return (
-      <div>
-        <div className="flex gap-4 mb-6">
-          <div className="flex-1">
-            <input
-              type="text"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              placeholder="按开单时间筛选 (如: 20250101)"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="flex-1">
-            <input
-              type="text"
-              value={filterCode}
-              onChange={(e) => setFilterCode(e.target.value)}
-              placeholder="按股票代码筛选 (如: 600519)"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="text-sm text-gray-400 flex items-center">
-            共 {filtered.length} 条
-          </div>
-        </div>
-        <div className="text-center py-12 text-gray-400">
-          {journals.filter(j => j.status === 'submitted').length === 0 ? '暂无已提交的日志' : '无匹配结果'}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-3">
       {/* 筛选 */}
-      <div className="flex gap-4">
-        <div className="flex-1">
+      <div className="flex flex-wrap items-end gap-4">
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">开单时间（起）</label>
           <input
-            type="text"
-            value={filterDate}
-            onChange={(e) => setFilterDate(e.target.value)}
-            placeholder="按开单时间筛选 (如: 20250101)"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
-        <div className="flex-1">
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">开单时间（止）</label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-xs text-gray-500 mb-1">股票代码</label>
           <input
             type="text"
             value={filterCode}
@@ -360,12 +357,27 @@ export const JournalViewer: React.FC = () => {
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
-        <div className="text-sm text-gray-400 flex items-center">
+        <button
+          onClick={() => setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50"
+          title="切换开单时间排序方向"
+        >
+          <ArrowUpDown className="h-3.5 w-3.5" />
+          开单时间：{sortDir === 'asc' ? '升序' : '降序'}
+        </button>
+        <div className="text-sm text-gray-400 pb-2">
           共 {filtered.length} 条
         </div>
       </div>
 
+      {filtered.length === 0 && (
+        <div className="text-center py-12 text-gray-400">
+          {journals.filter(j => j.status === 'submitted').length === 0 ? '暂无已提交的日志' : '无匹配结果'}
+        </div>
+      )}
+
       {/* 表格 */}
+      {filtered.length > 0 && (
       <div className="overflow-x-auto rounded-lg bg-gray-100" style={{ padding: '4px' }}>
         <table className="border-separate text-sm" style={{ tableLayout: 'fixed', borderSpacing: '0 4px' }}>
           <thead>
@@ -494,6 +506,7 @@ export const JournalViewer: React.FC = () => {
           </tbody>
         </table>
       </div>
+      )}
 
       {/* 匹配记录弹窗 */}
       {matchingJournalId && (
