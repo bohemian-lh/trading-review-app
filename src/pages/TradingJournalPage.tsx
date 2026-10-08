@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Bell, BellOff, FileText, ListFilter, ClipboardList, Settings } from 'lucide-react';
 import { JournalEntry } from '@/components/journal/JournalEntry';
 import { JournalDrafts } from '@/components/journal/JournalDrafts';
@@ -6,8 +6,7 @@ import { JournalViewer } from '@/components/journal/JournalViewer';
 import { ReminderSettings } from '@/components/common/ReminderSettings';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
-import { ReminderTimer, getReminderConfig, setReminderConfig } from '@/utils/reminderTimer';
-import type { ReminderConfig } from '@/utils/reminderTimer';
+import { useReminderStore } from '@/stores/reminderStore';
 
 type Tab = 'entry' | 'drafts' | 'view';
 
@@ -17,39 +16,11 @@ const TradingJournalPage: React.FC = () => {
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
   // ─── 定时提醒 ──────────────────────────────────────────────────
-  const [config, setConfig] = useState<ReminderConfig>(getReminderConfig);
+  // 定时器本体由全局宿主 useGlobalReminder 驱动（不随本页卸载），此处只负责 UI 与配置读写
+  const config = useReminderStore(s => s.config);
+  const toggleReminder = useReminderStore(s => s.toggle);
+  const saveReminderConfig = useReminderStore(s => s.setConfig);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const timerRef = useRef<ReminderTimer | null>(null);
-
-  const toggleReminder = useCallback(() => {
-    setConfig(prev => {
-      const next = { ...prev, enabled: !prev.enabled };
-      setReminderConfig(next);
-      return next;
-    });
-  }, []);
-
-  const handleSaveConfig = useCallback((newConfig: ReminderConfig) => {
-    setReminderConfig(newConfig);
-    setConfig(newConfig);
-    // 重启 timer 以应用新时间点/间隔
-    if (newConfig.enabled) {
-      if (!timerRef.current) timerRef.current = new ReminderTimer(newConfig);
-      else timerRef.current.updateConfig(newConfig);
-      timerRef.current.start();
-    }
-  }, []);
-
-  useEffect(() => {
-    if (config.enabled) {
-      if (!timerRef.current) timerRef.current = new ReminderTimer(config);
-      else timerRef.current.updateConfig(config);
-      timerRef.current.start();
-    } else {
-      timerRef.current?.stop();
-    }
-    return () => { timerRef.current?.stop(); };
-  }, [config.enabled]);
 
   useEffect(() => {
     init(datasetId);
@@ -123,7 +94,7 @@ const TradingJournalPage: React.FC = () => {
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         config={config}
-        onSave={handleSaveConfig}
+        onSave={saveReminderConfig}
       />
     </div>
   );

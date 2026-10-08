@@ -28,42 +28,55 @@ function getAudioCtx(): AudioContext {
   return audioCtx;
 }
 
+/** 在用户手势内调用，解锁音频上下文；否则浏览器自动播放策略会一直挂起导致静音 */
+export function primeReminderAudio() {
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') void ctx.resume();
+  } catch { /* ignore */ }
+}
+
+/** 排程提示音（调用前需保证 AudioContext 已处于 running） */
+function scheduleBeep(ctx: AudioContext) {
+  // 连续播放 3 次，每次间隔 0.8s
+  for (let i = 0; i < 3; i++) {
+    const offset = i * 0.8;
+    const t = ctx.currentTime + offset;
+    // 第一声
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(880, t);
+    gain1.gain.setValueAtTime(0.3, t);
+    gain1.gain.exponentialRampToValueAtTime(0.01, t + 0.25);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(t);
+    osc1.stop(t + 0.25);
+    // 第二声（稍高，稍延迟）
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1100, t + 0.1);
+    gain2.gain.setValueAtTime(0.3, t + 0.1);
+    gain2.gain.exponentialRampToValueAtTime(0.01, t + 0.35);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(t + 0.1);
+    osc2.stop(t + 0.35);
+  }
+}
+
 function playBeep() {
   try {
     const ctx = getAudioCtx();
+    // 必须等 resume 生效后再排程，否则在 suspended 状态下排程不会发声
     if (ctx.state === 'suspended') {
-      ctx.resume();
+      ctx.resume().then(() => scheduleBeep(ctx)).catch(() => { /* ignore */ });
+    } else {
+      scheduleBeep(ctx);
     }
-    // 连续播放 3 次，每次间隔 0.8s
-    for (let i = 0; i < 3; i++) {
-      const offset = i * 0.8;
-      const t = ctx.currentTime + offset;
-      // 第一声
-      const osc1 = ctx.createOscillator();
-      const gain1 = ctx.createGain();
-      osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(880, t);
-      gain1.gain.setValueAtTime(0.3, t);
-      gain1.gain.exponentialRampToValueAtTime(0.01, t + 0.25);
-      osc1.connect(gain1);
-      gain1.connect(ctx.destination);
-      osc1.start(t);
-      osc1.stop(t + 0.25);
-      // 第二声（稍高，稍延迟）
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.type = 'sine';
-      osc2.frequency.setValueAtTime(1100, t + 0.1);
-      gain2.gain.setValueAtTime(0.3, t + 0.1);
-      gain2.gain.exponentialRampToValueAtTime(0.01, t + 0.35);
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.start(t + 0.1);
-      osc2.stop(t + 0.35);
-    }
-  } catch {
-    // 静默失败
-  }
+  } catch { /* 静默失败 */ }
 }
 
 // ─── 配置读写 ──────────────────────────────────────────────────
@@ -120,7 +133,10 @@ export class ReminderTimer {
   }
 
   private resetIfNewDay() {
-    const today = new Date().toISOString().slice(0, 10);
+    // 必须用本地日期：触发匹配用的是本地时间，若用 toISOString()（UTC）
+    // 会把跨日点落在本地 08:00，导致 00:00–07:59 的时间点 key 错位
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (this.lastDate !== today) {
       this.triggered.clear();
       this.lastDate = today;

@@ -5,6 +5,7 @@ import { Navigation } from '@/components/layout/Navigation';
 import { DatasetSelector } from '@/components/common/DatasetSelector';
 import { useUIStore } from '@/stores';
 import { useInitializeStore } from '@/hooks/useInitializeStore';
+import { useGlobalReminder } from '@/hooks/useGlobalReminder';
 
 const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const ExcelUploader = lazy(() => import('@/components/excel').then(m => ({ default: m.ExcelUploader })));
@@ -26,6 +27,8 @@ const PageLoader: React.FC = () => (
 
 const App: React.FC = () => {
   useInitializeStore();
+  // 全局定时提醒：挂在 Routes 之外，任意页面都持续生效
+  useGlobalReminder();
   const isInitialized = useUIStore((state) => state.isInitialized);
   const error = useUIStore((state) => state.error);
 
