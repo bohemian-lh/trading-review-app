@@ -84,6 +84,7 @@ function migrateJournal(j: any): TradingJournal {
     strategyRed: j.strategyRed || [],
     strategyYellow: j.strategyYellow || [],
     strategyRedText: j.strategyRedText || [],
+    strategyHidden: j.strategyHidden || [],
     priceLevels: Array.isArray(j.priceLevels)
       ? j.priceLevels.length >= 7
         ? j.priceLevels
@@ -173,6 +174,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       strategyRed: [],
       strategyYellow: [],
       strategyRedText: [],
+      strategyHidden: [],
       priceLevels: ['', '', '', '', '', '', ''],
       strategyOrder: {},
       snapshotId,

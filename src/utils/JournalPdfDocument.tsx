@@ -166,6 +166,8 @@ const StrategyCardPdf: React.FC<{
   priceLevelCodes?: Record<number, string>;
 }> = ({ item, journal, spacing, priceLevelCodes }) => {
   const sid = item.strategyId;
+  // 隐藏的策略不在 PDF 中渲染（网页端其余场景仍正常显示）
+  if (journal.strategyHidden?.includes(sid)) return null;
   const isBold = journal.strategyBold.includes(sid);
   const isRed = journal.strategyRed.includes(sid);
   const isRedText = journal.strategyRedText.includes(sid);

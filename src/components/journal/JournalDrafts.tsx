@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings, Maximize, Minimize, Download, Plus } from 'lucide-react';
+import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings, Maximize, Minimize, Download, Plus, EyeOff } from 'lucide-react';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { useRecordsStore } from '@/stores';
@@ -68,9 +68,10 @@ const StrategyPopover: React.FC<{
   isRed: boolean;
   isYellow: boolean;
   isRedText: boolean;
-  onToggle: (field: 'strategyBold' | 'strategyRed' | 'strategyYellow' | 'strategyRedText') => void;
+  isHidden: boolean;
+  onToggle: (field: 'strategyBold' | 'strategyRed' | 'strategyYellow' | 'strategyRedText' | 'strategyHidden') => void;
   onClose: () => void;
-}> = ({ x, y, isBold, isRed, isYellow, isRedText, onToggle, onClose }) => {
+}> = ({ x, y, isBold, isRed, isYellow, isRedText, isHidden, onToggle, onClose }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -86,7 +87,7 @@ const StrategyPopover: React.FC<{
 
   // 限制 popover 不超出视口
   const adjustedX = Math.min(x, window.innerWidth - 160);
-  const adjustedY = Math.min(y, window.innerHeight - 140);
+  const adjustedY = Math.min(y, window.innerHeight - 170);
 
   return (
     <div
@@ -118,6 +119,12 @@ const StrategyPopover: React.FC<{
           className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs ${isRedText ? 'bg-red-50 text-red-600 font-semibold' : 'text-gray-600 hover:bg-red-50'}`}
         >
           <span className="h-3.5 w-3.5 flex items-center justify-center text-red-500 font-bold text-sm">A</span>红字
+        </button>
+        <button
+          onClick={() => onToggle('strategyHidden')}
+          className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs ${isHidden ? 'bg-gray-200 text-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}
+        >
+          <EyeOff className="h-3.5 w-3.5" />隐藏
         </button>
       </div>
     </div>
@@ -439,7 +446,7 @@ export const JournalDrafts: React.FC = () => {
   const handleStrategyToggle = async (
     journalId: string,
     strategyId: string,
-    field: 'strategyBold' | 'strategyRed' | 'strategyYellow' | 'strategyRedText'
+    field: 'strategyBold' | 'strategyRed' | 'strategyYellow' | 'strategyRedText' | 'strategyHidden'
   ) => {
     const journal = journals.find(j => j.id === journalId);
     if (!journal) return;
@@ -476,6 +483,11 @@ export const JournalDrafts: React.FC = () => {
         // 开启红字时关闭标红（红字 ↔ 标红互斥）
         patch.strategyRed = journal.strategyRed.filter(s => s !== strategyId);
       }
+    } else if (field === 'strategyHidden') {
+      // 隐藏是独立维度，可与其它样式叠加，仅影响 PDF 导出
+      patch.strategyHidden = enabled
+        ? journal.strategyHidden.filter(s => s !== strategyId)
+        : [...journal.strategyHidden, strategyId];
     }
 
     await updateDraftJournal(journalId, patch, datasetId);
@@ -501,6 +513,7 @@ export const JournalDrafts: React.FC = () => {
     const isRed = journal.strategyRed.includes(sid);
     const isYellow = journal.strategyYellow.includes(sid);
     const isRedText = journal.strategyRedText.includes(sid);
+    const isHidden = journal.strategyHidden.includes(sid);
     const isCustom = item.isCustom;
 
     // 背景
@@ -545,7 +558,7 @@ export const JournalDrafts: React.FC = () => {
         key={sid}
         draggable
         className={`px-1.5 py-0.5 rounded cursor-pointer hover:ring-1 hover:ring-blue-300 ${bgClass} ${borderClass} ${textClass} ${boldClass} ${
-          isDragging ? 'opacity-30' : ''
+          isDragging ? 'opacity-30' : isHidden ? 'opacity-50' : ''
         } ${isDragOver ? 'ring-2 ring-blue-400' : ''}`}
         onClick={(e) => {
           e.stopPropagation();
@@ -598,6 +611,7 @@ export const JournalDrafts: React.FC = () => {
         {resolvePriceCodeSegments(item.text, journal.priceLevels, priceLevelCodes).map((seg, i) =>
           seg.isHardStop ? <span key={i} className="text-red-600">{seg.text}</span> : <React.Fragment key={i}>{seg.text}</React.Fragment>
         )}
+        {isHidden && <EyeOff className="inline h-3 w-3 ml-0.5 align-[-2px] text-gray-400" />}
       </span>
     );
   };
@@ -1064,6 +1078,7 @@ export const JournalDrafts: React.FC = () => {
             isRed={j.strategyRed.includes(sid)}
             isYellow={j.strategyYellow.includes(sid)}
             isRedText={j.strategyRedText.includes(sid)}
+            isHidden={j.strategyHidden.includes(sid)}
             onToggle={(field) => handleStrategyToggle(j.id, sid, field)}
             onClose={() => setPopover(null)}
           />
