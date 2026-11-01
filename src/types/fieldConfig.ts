@@ -14,6 +14,10 @@ export interface TheoreticalDimension {
   id: string;
   name: string;
   comment: string;
+  /** 是否为基准盈亏率（独立）。旧配置无该字段时视为 true */
+  isBase: boolean;
+  /** 关联盈亏率所锚定的基准维度 id（仅 isBase=false 时有效，单层关联） */
+  baseDimensionId?: string;
 }
 
 export interface FieldConfig {
@@ -98,7 +102,11 @@ export function migrateFieldConfig(raw: unknown): FieldConfig {
       : base.patternFeatures,
     aggregateRules: Array.isArray(cfg.aggregateRules) ? (cfg.aggregateRules as AggregateRule[]) : base.aggregateRules,
     theoreticalDimensions: Array.isArray(cfg.theoreticalDimensions)
-      ? (cfg.theoreticalDimensions as TheoreticalDimension[])
+      ? (cfg.theoreticalDimensions as TheoreticalDimension[]).map(d => {
+          // 旧配置没有 isBase：一律视为独立基准；无效关联（缺 baseDimensionId）也回退为基准
+          const isBase = (d as { isBase?: boolean }).isBase !== false || !d.baseDimensionId;
+          return { ...d, isBase, baseDimensionId: isBase ? undefined : d.baseDimensionId };
+        })
       : [],
   };
 }

@@ -3,6 +3,7 @@ import { Settings, Plus, Trash2, Save, X, GripVertical } from 'lucide-react';
 import { useRecordsStore, useAnalysisTabStore } from '@/stores';
 import { saveFieldConfigToR2, saveTabsToR2 } from '@/hooks/useStoreSync';
 import { generateId } from '@/utils';
+import { convertRecordForDimensionChange } from '@/utils/theoreticalRatio';
 import type { FieldConfig, AggregateRule, TheoreticalDimension, JournalStageConfig, JournalStrategyGroup, MindsetRow, DecisionCheckItem, AnalysisTab } from '@/types';
 import { DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS, DEFAULT_MINDSET_ROWS, DEFAULT_FIELD_CONFIG, getSourceDimensionId } from '@/types';
 
@@ -286,7 +287,7 @@ export const FieldConfigPage: React.FC = () => {
   const addTheoreticalDimension = () => {
     setPending(p => ({
       ...p,
-      theoreticalDimensions: [...p.theoreticalDimensions, { id: generateId(), name: '', comment: '' }],
+      theoreticalDimensions: [...p.theoreticalDimensions, { id: generateId(), name: '', comment: '', isBase: true }],
     }));
     setMessage(null);
   };
@@ -294,14 +295,27 @@ export const FieldConfigPage: React.FC = () => {
   const updateTheoreticalDimension = (id: string, patch: Partial<TheoreticalDimension>) => {
     setPending(p => ({
       ...p,
-      theoreticalDimensions: p.theoreticalDimensions.map(d => d.id === id ? { ...d, ...patch } : d),
+      theoreticalDimensions: p.theoreticalDimensions.map(d => {
+        if (d.id !== id) return d;
+        const next = { ...d, ...patch };
+        // 独立基准不保留关联信息
+        if (next.isBase) next.baseDimensionId = undefined;
+        return next;
+      }),
     }));
     setMessage(null);
   };
 
   const deleteTheoreticalDimension = (id: string) => {
     const dim = pending.theoreticalDimensions.find(d => d.id === id);
-    if (!confirm(`确定删除理论盈亏比维度「${dim?.name || '未命名'}」？\n删除后将同时移除所有记录中该维度的数值，并影响相关的统计分析页面。`)) return;
+    const referenced = pending.theoreticalDimensions.some(
+      d => d.id !== id && !d.isBase && d.baseDimensionId === id,
+    );
+    if (referenced) {
+      alert(`维度「${dim?.name || '未命名'}」被其他关联维度作为基准引用，请先解除关联后再删除。`);
+      return;
+    }
+    if (!confirm(`确定删除理论盈亏比维度「${dim?.name || '未命名'}」？\n删除后将同时移除所有记录中该维度的数值与变化率，并影响相关的统计分析页面。`)) return;
     setPending(p => ({
       ...p,
       theoreticalDimensions: p.theoreticalDimensions.filter(d => d.id !== id),
@@ -313,6 +327,18 @@ export const FieldConfigPage: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // 0. 校验维度关联配置
+      for (const dim of pending.theoreticalDimensions) {
+        if (dim.isBase) continue;
+        const validBase = pending.theoreticalDimensions.some(
+          d => d.id === dim.baseDimensionId && d.isBase,
+        );
+        if (!validBase) {
+          setMessage({ type: 'error', text: `维度「${dim.name || '未命名'}」必须选择一个有效的基准盈亏率` });
+          return;
+        }
+      }
+
       // 1. 删除枚举值/理论维度：同步处理受影响记录
       const deletedTradingTypes = fieldConfig.tradingTypes.filter(t => !pending.tradingTypes.includes(t));
       const deletedTrendFeatures = fieldConfig.trendFeatures.filter(t => !pending.trendFeatures.includes(t));
@@ -320,7 +346,9 @@ export const FieldConfigPage: React.FC = () => {
       const deletedTheoreticalDimensions = fieldConfig.theoreticalDimensions
         .filter(d => !pending.theoreticalDimensions.some(pd => pd.id === d.id))
         .map(d => d.id);
-      if (deletedTradingTypes.length > 0 || deletedTrendFeatures.length > 0 || deletedPatternFeatures.length > 0 || deletedTheoreticalDimensions.length > 0) {
+      // 维度定义（名称除外）变化时，按新语义换算历史值，保证最终值不变
+      const dimensionsChanged = JSON.stringify(fieldConfig.theoreticalDimensions) !== JSON.stringify(pending.theoreticalDimensions);
+      if (deletedTradingTypes.length > 0 || deletedTrendFeatures.length > 0 || deletedPatternFeatures.length > 0 || dimensionsChanged) {
         useRecordsStore.getState().setRecords(
           records.map(r => {
             let changed = false;
@@ -328,6 +356,7 @@ export const FieldConfigPage: React.FC = () => {
             let trendFeatures = r.trendFeatures;
             let patternFeatures = r.patternFeatures;
             let theoreticalProfitRatios = r.theoreticalProfitRatios;
+            let theoreticalProfitDeltas = r.theoreticalProfitDeltas;
             if (deletedTradingTypes.includes(r.tradingType)) { tradingType = '未知'; changed = true; }
             if (deletedTrendFeatures.some(dt => r.trendFeatures.includes(dt))) {
               trendFeatures = r.trendFeatures.filter(et => !deletedTrendFeatures.includes(et));
@@ -338,12 +367,21 @@ export const FieldConfigPage: React.FC = () => {
               patternFeatures = r.patternFeatures.filter(pf => !deletedPatternFeatures.includes(pf));
               changed = true;
             }
-            if (deletedTheoreticalDimensions.some(id => id in (r.theoreticalProfitRatios || {}))) {
-              theoreticalProfitRatios = { ...(r.theoreticalProfitRatios || {}) };
-              deletedTheoreticalDimensions.forEach(id => delete theoreticalProfitRatios[id]);
-              changed = true;
+            if (dimensionsChanged) {
+              const converted = convertRecordForDimensionChange(
+                { ...r, tradingType, trendFeatures, patternFeatures, theoreticalProfitRatios },
+                fieldConfig.theoreticalDimensions,
+                pending.theoreticalDimensions,
+              );
+              const ratiosDiff = JSON.stringify(converted.theoreticalProfitRatios ?? {}) !== JSON.stringify(r.theoreticalProfitRatios ?? {});
+              const deltasDiff = JSON.stringify(converted.theoreticalProfitDeltas ?? {}) !== JSON.stringify(r.theoreticalProfitDeltas ?? {});
+              if (ratiosDiff || deltasDiff) {
+                theoreticalProfitRatios = converted.theoreticalProfitRatios;
+                theoreticalProfitDeltas = converted.theoreticalProfitDeltas;
+                changed = true;
+              }
             }
-            return changed ? { ...r, tradingType, trendFeatures, patternFeatures, theoreticalProfitRatios, hasCycleStats: false, cycleId: undefined } : r;
+            return changed ? { ...r, tradingType, trendFeatures, patternFeatures, theoreticalProfitRatios, theoreticalProfitDeltas, hasCycleStats: false, cycleId: undefined } : r;
           })
         );
       }
@@ -577,7 +615,9 @@ export const FieldConfigPage: React.FC = () => {
             <Plus className="h-3.5 w-3.5" /> 新增维度
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-1 mb-4">维度的名称与备注说明仅在字段编辑中维护；数据编辑中按维度录入数值（未填默认等于盈亏情况）。</p>
+        <p className="text-xs text-gray-400 mt-1 mb-4">
+          维度的名称与备注说明仅在字段编辑中维护。独立盈亏率录入最终值（未填默认等于盈亏情况）；关联盈亏率锚定某个基准，录入变化率，最终值 = 基准值 + 变化率。
+        </p>
 
         {pending.theoreticalDimensions.length === 0 ? (
           <p className="text-sm text-gray-500">暂无理论盈亏比维度，点击「新增维度」添加。</p>
@@ -596,6 +636,41 @@ export const FieldConfigPage: React.FC = () => {
                   <button onClick={() => deleteTheoreticalDimension(dim.id)} className="text-red-500 hover:text-red-700">
                     <Trash2 className="h-4 w-4" />
                   </button>
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs text-gray-500 shrink-0">类型</span>
+                  <select
+                    value={dim.isBase ? 'base' : 'linked'}
+                    onChange={(e) => {
+                      const isBase = e.target.value === 'base';
+                      const firstBase = pending.theoreticalDimensions.find(d => d.id !== dim.id && d.isBase)?.id;
+                      updateTheoreticalDimension(dim.id, {
+                        isBase,
+                        baseDimensionId: isBase ? undefined : (dim.baseDimensionId || firstBase),
+                      });
+                    }}
+                    className="text-xs border rounded px-2 py-1.5"
+                  >
+                    <option value="base">独立盈亏率（基准）</option>
+                    <option value="linked">关联盈亏率</option>
+                  </select>
+                  {!dim.isBase && (
+                    <>
+                      <span className="text-xs text-gray-500 shrink-0">基准</span>
+                      <select
+                        value={dim.baseDimensionId ?? ''}
+                        onChange={(e) => updateTheoreticalDimension(dim.id, { baseDimensionId: e.target.value || undefined })}
+                        className="flex-1 text-xs border rounded px-2 py-1.5"
+                      >
+                        <option value="">请选择基准盈亏率</option>
+                        {pending.theoreticalDimensions
+                          .filter(b => b.id !== dim.id && b.isBase)
+                          .map(b => (
+                            <option key={b.id} value={b.id}>{b.name || '未命名维度'}</option>
+                          ))}
+                      </select>
+                    </>
+                  )}
                 </div>
                 <input
                   type="text"

@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { Plus, Filter, RefreshCw, CheckCircle, AlertCircle, Image, ChevronUp, ChevronDown, Pencil, Trash2, Eye, FolderOpen, Loader2, FileText } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, Filter, RefreshCw, CheckCircle, AlertCircle, Image, ChevronUp, ChevronDown, Pencil, Trash2, Eye, FolderOpen, Loader2, FileText, Columns } from 'lucide-react';
 import { Button, Select, ZoomControls } from '@/components/common';
 import { Pagination } from '@/components/common/Pagination';
 import { useTableZoom } from '@/hooks/useTableZoom';
 import { useRecordsStore } from '@/stores';
+import { getLinkedDimensionParts } from '@/utils/theoreticalRatio';
 import type { TradingRecord } from '@/types';
 
 interface Filters {
@@ -16,6 +17,53 @@ interface Filters {
 interface SortConfig {
   key: 'openDate' | 'stockCode' | null;
   direction: 'asc' | 'desc';
+}
+
+// ─── 显示列配置 ────────────────────────────────────────────────────
+type ColumnKey =
+  | 'openDate'
+  | 'stockName'
+  | 'stockCode'
+  | 'tradingType'
+  | 'trendFeatures'
+  | 'patternFeatures'
+  | 'hasMistake'
+  | 'profitPercent'
+  | 'holdDays'
+  | 'positionSize'
+  | 'images'
+  | `dim:${string}`;
+
+const COLUMN_STORAGE_KEY = 'data_table_hidden_columns';
+
+const BASE_COLUMNS: Array<{ key: ColumnKey; label: string }> = [
+  { key: 'openDate', label: '开单时间' },
+  { key: 'stockName', label: '股票名称' },
+  { key: 'stockCode', label: '股票代码' },
+  { key: 'tradingType', label: '交易类型' },
+  { key: 'trendFeatures', label: '趋势特征' },
+  { key: 'patternFeatures', label: '模式特征' },
+  { key: 'hasMistake', label: '有无大的失误' },
+  { key: 'profitPercent', label: '盈亏情况' },
+  { key: 'holdDays', label: '持仓时间（天）' },
+  { key: 'positionSize', label: '仓位' },
+  { key: 'images', label: '图片' },
+];
+
+function loadHiddenColumns(): string[] {
+  try {
+    const raw = localStorage.getItem(COLUMN_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHiddenColumns(hidden: string[]) {
+  try {
+    localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(hidden));
+  } catch { /* ignore */ }
 }
 
 interface TradeRecordTableProps {
@@ -93,7 +141,53 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
   );
 
   const theoreticalDimensions = fieldConfig.theoreticalDimensions;
-  const totalColumns = 12 + theoreticalDimensions.length;
+
+  // ─── 显示列 ──────────────────────────────────────────────────────
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>(loadHiddenColumns);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const columnsRef = useRef<HTMLDivElement>(null);
+
+  const configurableColumns = useMemo<Array<{ key: ColumnKey; label: string }>>(
+    () => [
+      ...BASE_COLUMNS,
+      ...theoreticalDimensions.map(d => ({
+        key: `dim:${d.id}` as ColumnKey,
+        label: d.name || '未命名维度',
+      })),
+    ],
+    [theoreticalDimensions],
+  );
+
+  const isVisible = (key: ColumnKey) => !hiddenColumns.includes(key);
+  const visibleColumnCount = configurableColumns.filter(c => isVisible(c.key)).length + 1; // + 操作列
+  const totalColumns = visibleColumnCount;
+
+  // 点击面板外关闭
+  useEffect(() => {
+    if (!columnsOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (columnsRef.current && !columnsRef.current.contains(e.target as Node)) setColumnsOpen(false);
+    };
+    setTimeout(() => document.addEventListener('mousedown', handler), 0);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [columnsOpen]);
+
+  const toggleColumn = (key: ColumnKey) => {
+    setHiddenColumns(prev => {
+      const isHidden = prev.includes(key);
+      // 至少保留一列（操作列固定显示，不计入）
+      const otherVisible = configurableColumns.filter(c => c.key !== key && !prev.includes(c.key)).length;
+      if (!isHidden && otherVisible === 0) return prev;
+      const next = isHidden ? prev.filter(k => k !== key) : [...prev, key];
+      saveHiddenColumns(next);
+      return next;
+    });
+  };
+
+  const showAllColumns = () => {
+    setHiddenColumns([]);
+    saveHiddenColumns([]);
+  };
 
   const allMonthOptions = [{ value: '', label: '全部月份' }, ...monthOptions];
   const allTradingTypeOptions = [{ value: '', label: '全部类型' }, ...tradingTypeOptions];
@@ -119,6 +213,48 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
             hint={zoomHint}
             showHint={showZoomHint}
           />
+          {/* 列设置 */}
+          <div className="relative" ref={columnsRef}>
+            <button
+              onClick={() => setColumnsOpen(v => !v)}
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border ${
+                columnsOpen ? 'border-blue-300 text-blue-700 bg-blue-50' : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+              }`}
+              title="选择要显示的列"
+            >
+              <Columns className="h-4 w-4" />
+              列设置
+            </button>
+            {columnsOpen && (
+              <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-30 max-h-80 overflow-y-auto">
+                <div className="flex items-center justify-between px-1 pb-1.5 border-b border-gray-100 mb-1.5">
+                  <span className="text-xs text-gray-500">显示列</span>
+                  <button onClick={showAllColumns} className="text-xs text-blue-600 hover:text-blue-800">
+                    全部显示
+                  </button>
+                </div>
+                {configurableColumns.map(col => {
+                  const checked = isVisible(col.key);
+                  const lastVisible = checked && configurableColumns.filter(c => c.key !== col.key && isVisible(c.key)).length === 0;
+                  return (
+                    <label
+                      key={col.key}
+                      className="flex items-center gap-2 px-1 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={lastVisible}
+                        onChange={() => toggleColumn(col.key)}
+                        className="rounded"
+                      />
+                      <span className={lastVisible ? 'text-gray-400' : ''}>{col.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           {isSaving && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -232,44 +368,66 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
-                    onClick={() => onSort('openDate')}
-                  >
-                    <div className="flex items-center gap-1">
-                      开单时间
-                      {sortConfig.key === 'openDate' && (
-                        sortConfig.direction === 'asc'
-                          ? <ChevronUp className="h-4 w-4" />
-                          : <ChevronDown className="h-4 w-4" />
-                      )}
-                    </div>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">股票名称</th>
-                  <th
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
-                    onClick={() => onSort('stockCode')}
-                  >
-                    <div className="flex items-center gap-1">
-                      股票代码
-                      {sortConfig.key === 'stockCode' && (
-                        sortConfig.direction === 'asc'
-                          ? <ChevronUp className="h-4 w-4" />
-                          : <ChevronDown className="h-4 w-4" />
-                      )}
-                    </div>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">交易类型</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">趋势特征</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">模式特征</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">有无大的失误</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏情况</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">持仓时间（天）</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">仓位</th>
-                  {theoreticalDimensions.map(dim => (
+                  {isVisible('openDate') && (
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => onSort('openDate')}
+                    >
+                      <div className="flex items-center gap-1">
+                        开单时间
+                        {sortConfig.key === 'openDate' && (
+                          sortConfig.direction === 'asc'
+                            ? <ChevronUp className="h-4 w-4" />
+                            : <ChevronDown className="h-4 w-4" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+                  {isVisible('stockName') && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">股票名称</th>
+                  )}
+                  {isVisible('stockCode') && (
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => onSort('stockCode')}
+                    >
+                      <div className="flex items-center gap-1">
+                        股票代码
+                        {sortConfig.key === 'stockCode' && (
+                          sortConfig.direction === 'asc'
+                            ? <ChevronUp className="h-4 w-4" />
+                            : <ChevronDown className="h-4 w-4" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+                  {isVisible('tradingType') && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">交易类型</th>
+                  )}
+                  {isVisible('trendFeatures') && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">趋势特征</th>
+                  )}
+                  {isVisible('patternFeatures') && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">模式特征</th>
+                  )}
+                  {isVisible('hasMistake') && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">有无大的失误</th>
+                  )}
+                  {isVisible('profitPercent') && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">盈亏情况</th>
+                  )}
+                  {isVisible('holdDays') && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">持仓时间（天）</th>
+                  )}
+                  {isVisible('positionSize') && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">仓位</th>
+                  )}
+                  {theoreticalDimensions.map(dim => isVisible(`dim:${dim.id}`) && (
                     <th key={dim.id} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{dim.name}</th>
                   ))}
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">图片</th>
+                  {isVisible('images') && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">图片</th>
+                  )}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
                 </tr>
               </thead>
@@ -284,33 +442,63 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                   paginatedRecords.map((record) => (
                     <React.Fragment key={record.id}>
                     <tr className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-900">{record.openDate}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{record.stockName}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{record.stockCode}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{record.tradingType}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{record.trendFeatures.join(', ')}</td>
-                      <td className="px-4 py-3 text-sm">
-                        <span className="inline-flex px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">
-                          {record.patternFeatures.length > 0 ? record.patternFeatures.join(', ') : '-'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <span className={`inline-flex px-2 py-1 text-xs rounded ${
-                          record.hasMistake === '是' ? 'bg-red-100 text-red-800'
-                          : record.hasMistake === '其他' ? 'bg-gray-100 text-gray-600'
-                          : 'bg-green-100 text-green-800'
+                      {isVisible('openDate') && (
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.openDate}</td>
+                      )}
+                      {isVisible('stockName') && (
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.stockName}</td>
+                      )}
+                      {isVisible('stockCode') && (
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.stockCode}</td>
+                      )}
+                      {isVisible('tradingType') && (
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.tradingType}</td>
+                      )}
+                      {isVisible('trendFeatures') && (
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.trendFeatures.join(', ')}</td>
+                      )}
+                      {isVisible('patternFeatures') && (
+                        <td className="px-4 py-3 text-sm">
+                          <span className="inline-flex px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">
+                            {record.patternFeatures.length > 0 ? record.patternFeatures.join(', ') : '-'}
+                          </span>
+                        </td>
+                      )}
+                      {isVisible('hasMistake') && (
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`inline-flex px-2 py-1 text-xs rounded ${
+                            record.hasMistake === '是' ? 'bg-red-100 text-red-800'
+                            : record.hasMistake === '其他' ? 'bg-gray-100 text-gray-600'
+                            : 'bg-green-100 text-green-800'
+                          }`}>
+                            {record.hasMistake}
+                          </span>
+                        </td>
+                      )}
+                      {isVisible('profitPercent') && (
+                        <td className={`px-4 py-3 text-sm font-medium ${
+                          record.profitPercent >= 0 ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {record.hasMistake}
-                        </span>
-                      </td>
-                      <td className={`px-4 py-3 text-sm font-medium ${
-                        record.profitPercent >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {record.profitPercent}%
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{record.holdDays}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{record.positionSize ?? 33}%</td>
+                          {record.profitPercent}%
+                        </td>
+                      )}
+                      {isVisible('holdDays') && (
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.holdDays}</td>
+                      )}
+                      {isVisible('positionSize') && (
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.positionSize ?? 33}%</td>
+                      )}
                       {theoreticalDimensions.map(dim => {
+                        if (!isVisible(`dim:${dim.id}`)) return null;
+                        const isLinked = !dim.isBase && !!dim.baseDimensionId;
+                        if (isLinked) {
+                          const { baseValue, delta } = getLinkedDimensionParts(record, dim, theoreticalDimensions);
+                          return (
+                            <td key={dim.id} className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
+                              {baseValue}% {delta >= 0 ? '+' : '-'} {Math.abs(delta)}%
+                            </td>
+                          );
+                        }
                         const val = record.theoreticalProfitRatios[dim.id];
                         return (
                           <td key={dim.id} className="px-4 py-3 text-sm text-gray-900">
@@ -318,11 +506,13 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                           </td>
                         );
                       })}
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {record.images && record.images.length > 0
-                          ? `${record.images.length} 张`
-                          : '-'}
-                      </td>
+                      {isVisible('images') && (
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {record.images && record.images.length > 0
+                            ? `${record.images.length} 张`
+                            : '-'}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-sm space-x-2">
                         {record.images && record.images.length > 0 && (
                           <button

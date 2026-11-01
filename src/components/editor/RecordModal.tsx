@@ -294,29 +294,67 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
                   {fieldConfig.theoreticalDimensions.map(dim => {
                     const ratios = formData.theoreticalProfitRatios ?? {};
-                    const value = ratios[dim.id];
+                    const deltas = formData.theoreticalProfitDeltas ?? {};
+                    const isLinked = !dim.isBase && !!dim.baseDimensionId;
+                    const baseDim = isLinked
+                      ? fieldConfig.theoreticalDimensions.find(d => d.id === dim.baseDimensionId && d.isBase)
+                      : undefined;
+                    const profitFallback = formData.profitPercent ?? 0;
+                    const baseValue = baseDim ? (ratios[baseDim.id] ?? profitFallback) : profitFallback;
+                    const delta = deltas[dim.id];
+                    const linkedResult = parseFloat((baseValue + (delta ?? 0)).toFixed(2));
+
                     return (
                       <div key={dim.id}>
-                        <label className="block text-sm text-gray-600 mb-1">{dim.name}</label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          value={value !== undefined ? value : ''}
-                          onChange={(e) => {
-                            const raw = e.target.value;
-                            const next = { ...ratios };
-                            if (raw === '' || raw === '-') {
-                              delete next[dim.id];
-                            } else {
-                              const num = parseFloat(raw);
-                              if (isNaN(num)) return;
-                              next[dim.id] = parseFloat(num.toFixed(2));
-                            }
-                            onFormChange({ ...formData, theoreticalProfitRatios: next });
-                          }}
-                          placeholder="默认 = 盈亏情况"
-                        />
+                        <label className="block text-sm text-gray-600 mb-1">
+                          {isLinked
+                            ? `${dim.name}（基准：${baseDim?.name || '未命名维度'} ${baseValue}%）`
+                            : dim.name}
+                        </label>
+                        {isLinked ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              step="0.1"
+                              className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              value={delta !== undefined ? delta : ''}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const next = { ...deltas };
+                                if (raw === '' || raw === '-') {
+                                  delete next[dim.id];
+                                } else {
+                                  const num = parseFloat(raw);
+                                  if (isNaN(num)) return;
+                                  next[dim.id] = parseFloat(num.toFixed(2));
+                                }
+                                onFormChange({ ...formData, theoreticalProfitDeltas: next });
+                              }}
+                              placeholder="变化值，如 2 / -1"
+                            />
+                            <span className="text-xs text-gray-500 whitespace-nowrap">= {linkedResult}%</span>
+                          </div>
+                        ) : (
+                          <Input
+                            type="number"
+                            step="0.1"
+                            className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            value={ratios[dim.id] !== undefined ? ratios[dim.id] : ''}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              const next = { ...ratios };
+                              if (raw === '' || raw === '-') {
+                                delete next[dim.id];
+                              } else {
+                                const num = parseFloat(raw);
+                                if (isNaN(num)) return;
+                                next[dim.id] = parseFloat(num.toFixed(2));
+                              }
+                              onFormChange({ ...formData, theoreticalProfitRatios: next });
+                            }}
+                            placeholder="默认 = 盈亏情况"
+                          />
+                        )}
                       </div>
                     );
                   })}

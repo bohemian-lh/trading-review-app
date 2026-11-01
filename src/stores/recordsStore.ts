@@ -21,6 +21,7 @@ export function migrateRecord(r: any): TradingRecord {
     hasMonthlyStats: r.hasMonthlyStats ?? false,
     positionSize: typeof r.positionSize === 'number' ? Math.min(100, Math.max(0, r.positionSize)) : 33,
     theoreticalProfitRatios: r.theoreticalProfitRatios ?? {},
+    theoreticalProfitDeltas: r.theoreticalProfitDeltas ?? {},
   };
 }
 

@@ -7,6 +7,7 @@ import { useAnalysisResult, useMonthlyAnalysis } from '@/hooks/useAnalysis';
 import type { TradingRecord, TradingRecordInput, AnalysisResult, MonthlyAnalysis, ParsedTradeData, FieldConfig } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
 import { validateTradingRecord } from '@/utils/validationUtils';
+import { materializeTheoreticalRatios, prepareTheoreticalForm } from '@/utils/theoreticalRatio';
 
 export type ValidationError = { field: string; message: string };
 
@@ -26,6 +27,7 @@ const emptyRecord: TradingRecordInput = {
   preMarket: '否',
   remark: '',
   theoreticalProfitRatios: {},
+  theoreticalProfitDeltas: {},
 };
 
 function validateForm(data: TradingRecordInput, fieldConfig: FieldConfig): ValidationError[] {
@@ -73,6 +75,7 @@ export function useDataEditor() {
   const openRecordModal = (record?: TradingRecord) => {
     if (record) {
       setEditingRecord(record);
+      const theoretical = prepareTheoreticalForm(record, fieldConfig.theoreticalDimensions);
       setFormData({
         openDate: record.openDate, stockName: record.stockName, stockCode: record.stockCode,
         tradingType: record.tradingType, trendFeatures: record.trendFeatures, patternFeatures: record.patternFeatures,
@@ -80,7 +83,9 @@ export function useDataEditor() {
         positionSize: record.positionSize ?? 33,
         images: record.images || [], imagePrefix: record.imagePrefix || '',
         preMarket: record.preMarket,
-        remark: record.remark, theoreticalProfitRatios: record.theoreticalProfitRatios ?? {},
+        remark: record.remark,
+        theoreticalProfitRatios: theoretical.theoreticalProfitRatios,
+        theoreticalProfitDeltas: theoretical.theoreticalProfitDeltas,
       });
     } else {
       setEditingRecord(null);
@@ -125,13 +130,20 @@ export function useDataEditor() {
       setValidationErrors([{ field: 'profitPercent', message: '盈亏和持仓天数不能为空' }]);
       return;
     }
-    const saveData = {
+    const baseData = {
       ...formData, profitPercent: formData.profitPercent, holdDays: formData.holdDays,
       positionSize: formData.positionSize ?? 33,
       images: formData.images || [], imagePrefix: formData.imagePrefix || '',
       remark: formData.remark ?? '',
       theoreticalProfitRatios: formData.theoreticalProfitRatios ?? {},
+      theoreticalProfitDeltas: formData.theoreticalProfitDeltas ?? {},
     };
+    // 材料化：关联维度最终值 = 基准实际值 + 变化率（同时保留变化率）
+    const { theoreticalProfitRatios, theoreticalProfitDeltas } = materializeTheoreticalRatios(
+      baseData,
+      fieldConfig.theoreticalDimensions,
+    );
+    const saveData = { ...baseData, theoreticalProfitRatios, theoreticalProfitDeltas };
     if (editingRecord) updateRecord(editingRecord.id, saveData);
     else addRecord(saveData);
     try { await saveNow(); closeRecordModal(); } catch (error) {
