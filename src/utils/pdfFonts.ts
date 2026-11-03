@@ -1,9 +1,10 @@
 import { Font } from '@react-pdf/renderer';
 
 // ─── 字体清单 ──────────────────────────────────────────────────────
+// 带版本查询串：字体文件更新时改 v，即可让 IndexedDB/浏览器缓存失效
 const FONT_SPECS = [
-  { family: 'Noto Sans SC', url: '/fonts/noto-sans-sc-regular.ttf', fontWeight: 400 },
-  { family: 'Noto Sans SC', url: '/fonts/noto-sans-sc-bold.ttf', fontWeight: 700 },
+  { family: 'Noto Sans SC', url: '/fonts/noto-sans-sc-regular.ttf?v=1', fontWeight: 400 },
+  { family: 'Noto Sans SC', url: '/fonts/noto-sans-sc-bold.ttf?v=1', fontWeight: 700 },
 ] as const;
 
 // ─── IndexedDB 持久化（刷新后零网络下载）───────────────────────────

@@ -164,6 +164,7 @@ class R2StorageService {
     customMonthly?: CustomMonthlyData,
     cycleStats?: Record<CycleStatType, CycleStats[]>,
     cycleStatsGeneratedAt?: number | null,
+    keepalive = false,
   ): Promise<{
     success: boolean; message: string; version?: number; conflict?: boolean;
     records?: TradingRecord[]; customAnalysis?: CustomAnalysisData;
@@ -175,6 +176,7 @@ class R2StorageService {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({ records, version, customAnalysis, customMonthly, cycleStats, cycleStatsGeneratedAt }),
+        keepalive,
       });
       const data = await this.handleResponse<RecordsResponse>(response);
       return data;

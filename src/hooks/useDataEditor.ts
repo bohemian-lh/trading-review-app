@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useRecordsStore } from '@/stores/recordsStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useImageDirectory } from '@/hooks/useImageDirectory';
-import { saveNow, updateCycleStats } from '@/hooks/useStoreSync';
+import { saveNow, scheduleSaveNow, updateCycleStats } from '@/hooks/useStoreSync';
 import { useAnalysisResult, useMonthlyAnalysis } from '@/hooks/useAnalysis';
 import type { TradingRecord, TradingRecordInput, AnalysisResult, MonthlyAnalysis, ParsedTradeData, FieldConfig } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
@@ -146,9 +146,9 @@ export function useDataEditor() {
     const saveData = { ...baseData, theoreticalProfitRatios, theoreticalProfitDeltas };
     if (editingRecord) updateRecord(editingRecord.id, saveData);
     else addRecord(saveData);
-    try { await saveNow(); closeRecordModal(); } catch (error) {
-      setSaveError(error instanceof Error ? error.message : '保存失败');
-    }
+    // 乐观关闭弹窗，后台合并落盘；失败由全局错误提示暴露
+    closeRecordModal();
+    scheduleSaveNow();
   };
 
   const deleteRecordWithImages = (id: string) => {
@@ -156,6 +156,7 @@ export function useDataEditor() {
     if (confirm('确定要删除这条记录吗？')) {
       deleteRecord(id);
       if (record?.imagePrefix) imageDir.deleteImages(record.imagePrefix).catch(() => {});
+      scheduleSaveNow();
     }
   };
 

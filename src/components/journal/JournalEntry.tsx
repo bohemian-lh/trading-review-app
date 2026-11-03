@@ -31,7 +31,12 @@ function draftToState(d: JournalDraft): EntryState {
 }
 
 export const JournalEntry: React.FC = () => {
-  const { activeStages, createJournal, createSnapshot, saveDraft, clearDraft, getAllDraftEntries } = useJournalStore();
+  const activeStages = useJournalStore(s => s.activeStages);
+  const createJournal = useJournalStore(s => s.createJournal);
+  const createSnapshot = useJournalStore(s => s.createSnapshot);
+  const saveDraft = useJournalStore(s => s.saveDraft);
+  const clearDraft = useJournalStore(s => s.clearDraft);
+  const getAllDraftEntries = useJournalStore(s => s.getAllDraftEntries);
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
   const [entries, setEntries] = useState<EntryState[]>(() => {

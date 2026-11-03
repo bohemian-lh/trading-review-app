@@ -45,6 +45,11 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLev
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 列宽/间距只在松手或键盘调整后重新生成预览，避免拖动滑杆时反复渲染 PDF
+  const [renderTick, setRenderTick] = useState(0);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const bumpRender = () => setRenderTick(t => t + 1);
 
   // 生成/更新 PDF 预览
   useEffect(() => {
@@ -53,7 +58,8 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLev
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, settings.colWidths, settings.rowSpacing, priceLevelCodes, watchlist);
+        const current = settingsRef.current;
+        const blob = await generateJournalPdfBlob(rows, groupIds, groupNames, current.colWidths, current.rowSpacing, priceLevelCodes, watchlist);
         setBlobUrl(prev => {
           if (prev) URL.revokeObjectURL(prev);
           return URL.createObjectURL(blob);
@@ -63,11 +69,11 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLev
       } finally {
         setLoading(false);
       }
-    }, 300);
+    }, 150);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [rows, groupIds, groupNames, settings, watchlist]);
+  }, [rows, groupIds, groupNames, priceLevelCodes, watchlist, renderTick]);
 
   // 卸载时释放 blob
   useEffect(() => {
@@ -94,6 +100,7 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLev
       colWidths: Array(groupCount + 1).fill(Math.round(USABLE_WIDTH / (groupCount + 1))),
       rowSpacing: 2,
     });
+    bumpRender();
   };
 
   const handleDownload = async () => {
@@ -138,7 +145,9 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLev
           {/* 左侧预览 */}
           <div className="flex-1 bg-gray-100 min-w-0">
             {loading && !blobUrl && (
-              <div className="flex items-center justify-center h-full text-gray-500 text-sm">生成预览中...</div>
+              <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+                生成预览中（首次需加载中文字体，请稍候）...
+              </div>
             )}
             {error && (
               <div className="flex items-center justify-center h-full text-red-600 text-sm">{error}</div>
@@ -169,6 +178,8 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLev
                   max={300}
                   value={settings.colWidths[idx]}
                   onChange={(e) => updateColWidth(idx, Number(e.target.value))}
+                  onPointerUp={bumpRender}
+                  onKeyUp={bumpRender}
                   className="w-full"
                 />
               </div>
@@ -185,6 +196,8 @@ const PdfPreviewModal: React.FC<Props> = ({ rows, groupIds, groupNames, priceLev
                 max={12}
                 value={settings.rowSpacing}
                 onChange={(e) => setSettings(prev => ({ ...prev, rowSpacing: Number(e.target.value) }))}
+                onPointerUp={bumpRender}
+                onKeyUp={bumpRender}
                 className="w-full"
               />
             </div>

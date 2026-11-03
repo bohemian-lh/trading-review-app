@@ -4,11 +4,12 @@ import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { useRecordsStore } from '@/stores';
 import { StrategyCard } from './StrategyCard';
-import { JournalRow } from '@/utils/JournalPdfDocument';
-import PdfPreviewModal from './PdfPreviewModal';
+import type { JournalRow } from '@/utils/JournalPdfDocument';
 import { groupStrategies, type StrategyItem, applySort, extractNumbers, getClosePrice, computeGainSegments, GAIN_PRICE_INDEXES, resolvePriceCodeSegments } from '@/utils/journalHelpers';
-import { ensurePdfFontsRegistered } from '@/utils/pdfFonts';
 import type { TradingJournal, CustomStrategy } from '@/types';
+
+// PDF 预览依赖 @react-pdf（约 1.4MB），改为按需加载，避免进入日志页即下载解析
+const PdfPreviewModal = React.lazy(() => import('./PdfPreviewModal'));
 
 // ─── 简易 ID 生成 ────────────────────────────────────────────────
 let _idCounter = 0;
@@ -133,7 +134,15 @@ const StrategyPopover: React.FC<{
 
 // ─── 组件 ──────────────────────────────────────────────────────────
 export const JournalDrafts: React.FC = () => {
-  const { journals, snapshots, activeStages, createSnapshot, finalizeJournal, updateDraftJournal, deleteJournal, watchlist, updateWatchlist } = useJournalStore();
+  const journals = useJournalStore(s => s.journals);
+  const snapshots = useJournalStore(s => s.snapshots);
+  const activeStages = useJournalStore(s => s.activeStages);
+  const createSnapshot = useJournalStore(s => s.createSnapshot);
+  const finalizeJournal = useJournalStore(s => s.finalizeJournal);
+  const updateDraftJournal = useJournalStore(s => s.updateDraftJournal);
+  const deleteJournal = useJournalStore(s => s.deleteJournal);
+  const watchlist = useJournalStore(s => s.watchlist);
+  const updateWatchlist = useJournalStore(s => s.updateWatchlist);
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
   const priceLevelCodes = useRecordsStore(s => s.fieldConfig.priceLevelCodes);
 
@@ -186,11 +195,6 @@ export const JournalDrafts: React.FC = () => {
     return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
 
-  // 预热 PDF 中文字体（后台下载/解析，点开预览时即时出结果）
-  useEffect(() => {
-    ensurePdfFontsRegistered().catch(() => { /* 预热失败不影响预览兜底 */ });
-  }, []);
-
   const toggleFullscreen = async () => {
     if (document.fullscreenElement) {
       await document.exitFullscreen();
@@ -200,7 +204,7 @@ export const JournalDrafts: React.FC = () => {
     }
   };
 
-  const drafts = journals.filter(j => j.status === 'draft');
+  const drafts = useMemo(() => journals.filter(j => j.status === 'draft'), [journals]);
 
   // 策略组顺序与名称：跟随字段编辑中的配置顺序
   const groupIds = useMemo(
@@ -217,17 +221,26 @@ export const JournalDrafts: React.FC = () => {
     [groupIds, groupNameById],
   );
 
+  // 每条日志的分组结果只算一次，避免弹层/拖拽等交互触发整表重复计算
+  const groupedById = useMemo(() => {
+    const map: Record<string, Record<string, StrategyItem[]>> = {};
+    for (const journal of drafts) {
+      map[journal.id] = groupStrategies(journal, activeStages, snapshots);
+    }
+    return map;
+  }, [drafts, activeStages, snapshots]);
+
   // 导出/预览用的行数据（过滤无策略内容的行）
   const exportRows = useMemo<JournalRow[]>(() => {
     return drafts.map(j => {
-      const grp = groupStrategies(j, activeStages, snapshots);
+      const grp = groupedById[j.id] || {};
       const sorted = { ...grp };
       for (const gid of groupIds) {
         sorted[gid] = applySort(grp[gid] || [], j.strategyOrder[gid]);
       }
       return { journal: j, grouped: sorted };
     }).filter(row => groupIds.some(gid => (row.grouped[gid] || []).length > 0));
-  }, [drafts, activeStages, snapshots, groupIds]);
+  }, [drafts, groupedById, groupIds]);
 
   // 持久化设置变更
   const updateSettings = useCallback((patch: Partial<TableSettings>) => {
@@ -240,30 +253,54 @@ export const JournalDrafts: React.FC = () => {
 
   // ─── 列拖拽 resize ────────────────────────────────────────────
   const resizeState = useRef<{ colId: string; startX: number; startWidth: number } | null>(null);
+  const resizeFrame = useRef<number | null>(null);
+  const resizeEvent = useRef<MouseEvent | null>(null);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!resizeState.current) return;
-      const { colId, startX, startWidth } = resizeState.current;
-      const delta = e.clientX - startX;
-      const newWidth = Math.max(60, startWidth + delta);
-      setSettings(prev => ({ ...prev, colWidths: { ...prev.colWidths, [colId]: newWidth } }));
+      resizeEvent.current = e;
+      // 每帧最多更新一次，避免 mousemove 高频触发整表重渲染
+      if (resizeFrame.current !== null) return;
+      resizeFrame.current = requestAnimationFrame(() => {
+        resizeFrame.current = null;
+        const ev = resizeEvent.current;
+        if (!ev || !resizeState.current) return;
+        const { colId, startX, startWidth } = resizeState.current;
+        const newWidth = Math.max(60, startWidth + (ev.clientX - startX));
+        setSettings(prev => ({ ...prev, colWidths: { ...prev.colWidths, [colId]: newWidth } }));
+      });
     };
     const handleMouseUp = () => {
-      if (resizeState.current) {
-        saveSettings({ ...loadSettings(), colWidths: settings.colWidths });
-        resizeState.current = null;
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
+      if (!resizeState.current) return;
+      if (resizeFrame.current !== null) {
+        cancelAnimationFrame(resizeFrame.current);
+        resizeFrame.current = null;
       }
+      const { colId, startX, startWidth } = resizeState.current;
+      const next = { ...settingsRef.current };
+      const ev = resizeEvent.current;
+      if (ev) {
+        const newWidth = Math.max(60, startWidth + (ev.clientX - startX));
+        next.colWidths = { ...next.colWidths, [colId]: newWidth };
+        setSettings(next);
+      }
+      saveSettings(next);
+      resizeState.current = null;
+      resizeEvent.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (resizeFrame.current !== null) cancelAnimationFrame(resizeFrame.current);
     };
-  }, [settings.colWidths]);
+  }, []);
 
   const startResize = (colId: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -573,7 +610,8 @@ export const JournalDrafts: React.FC = () => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
           if (dragState?.journalId === journal.id && dragState?.groupId === gid && dragState?.strategyId !== sid) {
-            setDragState(prev => prev ? { ...prev, overId: sid } : null);
+            // 只在悬停目标变化时更新，避免 dragover 高频触发整表重渲染
+            setDragState(prev => prev && prev.overId !== sid ? { ...prev, overId: sid } : prev);
           }
         }}
         onDragLeave={() => {
@@ -589,7 +627,7 @@ export const JournalDrafts: React.FC = () => {
           // 重新排序
           const currentOrder = journal.strategyOrder[gid] || [];
           // 从全量策略列表构建当前顺序
-          const allInGroup = groupStrategies(journal, activeStages, snapshots)[gid] || [];
+          const allInGroup = groupedById[journal.id]?.[gid] || [];
           const allIds = allInGroup.map(i => i.strategyId);
           // 合并自定义顺序
           let ordered = currentOrder.length > 0
@@ -803,7 +841,7 @@ export const JournalDrafts: React.FC = () => {
           </thead>
           <tbody>
             {drafts.map((journal, idx) => {
-              const grouped = groupStrategies(journal, activeStages, snapshots);
+              const grouped = groupedById[journal.id] || {};
               const isSubmitting = submittingIds.has(journal.id);
               const isEditing = editingId === journal.id;
               const es = getEditState(journal.id);
@@ -1090,16 +1128,24 @@ export const JournalDrafts: React.FC = () => {
         <div className="fixed inset-0 z-10" onClick={() => setShowSettings(false)} />
       )}
 
-      {/* PDF 预览弹窗 */}
+      {/* PDF 预览弹窗（按需加载 @react-pdf） */}
       {showPdfPreview && (
-        <PdfPreviewModal
-          rows={exportRows}
-          groupIds={groupIds}
-          groupNames={groupNames}
-          priceLevelCodes={priceLevelCodes}
-          watchlist={watchlist}
-          onClose={() => setShowPdfPreview(false)}
-        />
+        <React.Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+              <div className="bg-white rounded-lg px-6 py-4 text-sm text-gray-600">正在加载 PDF 组件…</div>
+            </div>
+          }
+        >
+          <PdfPreviewModal
+            rows={exportRows}
+            groupIds={groupIds}
+            groupNames={groupNames}
+            priceLevelCodes={priceLevelCodes}
+            watchlist={watchlist}
+            onClose={() => setShowPdfPreview(false)}
+          />
+        </React.Suspense>
       )}
     </div>
   );

@@ -33,7 +33,7 @@ export async function onRequest(context: any) {
         return json({ success: false, error: 'watchlist must be an array' }, 400, corsHeaders);
       }
       const key = `trading-journals/${datasetId}-watchlist.json`;
-      await env.R2_BUCKET.put(key, JSON.stringify(watchlist, null, 2), {
+      await env.R2_BUCKET.put(key, JSON.stringify(watchlist), {
         httpMetadata: { contentType: 'application/json' },
       });
       return json({ success: true }, 200, corsHeaders);

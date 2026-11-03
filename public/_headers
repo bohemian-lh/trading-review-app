@@ -2,6 +2,10 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
+# PDF 中文字体（约 10MB/个）：长效缓存，减少重复下载
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
 # 入口文件：绝不缓存，保证永远加载最新版本
 /index.html
   Cache-Control: no-cache

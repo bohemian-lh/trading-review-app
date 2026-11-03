@@ -33,7 +33,7 @@ export async function onRequest(context: any) {
         return json({ success: false, error: 'snapshots must be an array' }, 400, corsHeaders);
       }
       const key = `journal-snapshots/${datasetId}.json`;
-      await env.R2_BUCKET.put(key, JSON.stringify(snapshots, null, 2), {
+      await env.R2_BUCKET.put(key, JSON.stringify(snapshots), {
         httpMetadata: { contentType: 'application/json' },
       });
       return json({ success: true }, 200, corsHeaders);

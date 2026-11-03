@@ -112,10 +112,13 @@ export async function switchDataset(datasetId: string): Promise<void> {
  */
 async function loadDatasetData(datasetId: string): Promise<void> {
   try {
-    const result = await r2StorageService.getRecords(datasetId) as any;
-    const configResult = await r2StorageService.getConfig(datasetId);
-    const tabsResult = await r2StorageService.getTabs(datasetId);
-    const stressResult = await r2StorageService.getStressSeries(datasetId);
+    // 四个请求互不依赖，并行发出，减少首屏/切换数据集的串行等待
+    const [result, configResult, tabsResult, stressResult] = await Promise.all([
+      r2StorageService.getRecords(datasetId),
+      r2StorageService.getConfig(datasetId),
+      r2StorageService.getTabs(datasetId),
+      r2StorageService.getStressSeries(datasetId),
+    ]) as any[];
     const fieldConfig = configResult.success && configResult.config
       ? migrateFieldConfig(configResult.config)
       : { ...DEFAULT_FIELD_CONFIG };
@@ -209,7 +212,7 @@ export async function saveStressSeriesToR2(series: StressSeries[]): Promise<{ su
 /**
  * 立即保存（跳过防抖）
  */
-export async function saveNow(): Promise<void> {
+export async function saveNow(keepalive = false): Promise<void> {
   const datasetId = useDatasetStore.getState().currentDatasetId;
   if (!datasetId) return;
   const state = useRecordsStore.getState();
@@ -220,7 +223,8 @@ export async function saveNow(): Promise<void> {
       datasetId,
       state.records, state.version ?? undefined,
       state.customAnalysis, state.customMonthly,
-      state.cycleStats, state.cycleStatsGeneratedAt
+      state.cycleStats, state.cycleStatsGeneratedAt,
+      keepalive,
     ) as any;
     if (result.success) {
       useRecordsStore.getState().setVersion(result.version ?? null);
@@ -259,4 +263,62 @@ export function updateCycleStats(): void {
     cycleStatsGeneratedAt: result.generatedAt,
     statsNeedUpdate: false,
   });
+}
+
+// ─── 合并保存（乐观更新后的后台落盘）───────────────────────────────
+let scheduledSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let savingInFlight = false;
+let saveAgain = false;
+let hasScheduledChanges = false;
+
+/** 合并多次保存请求：防抖后只落盘一次最新状态，不阻塞界面 */
+export function scheduleSaveNow(delay = 600): void {
+  hasScheduledChanges = true;
+  if (scheduledSaveTimer) clearTimeout(scheduledSaveTimer);
+  scheduledSaveTimer = setTimeout(() => {
+    scheduledSaveTimer = null;
+    void runScheduledSave();
+  }, delay);
+}
+
+async function runScheduledSave(): Promise<void> {
+  if (savingInFlight) {
+    saveAgain = true;
+    return;
+  }
+  hasScheduledChanges = false;
+  savingInFlight = true;
+  try {
+    await saveNow();
+  } finally {
+    savingInFlight = false;
+    if (saveAgain) {
+      saveAgain = false;
+      scheduleSaveNow(0);
+    }
+  }
+}
+
+/** 立即落盘待保存变更（页面隐藏/卸载时使用，keepalive 降低丢写概率） */
+export async function flushScheduledSave(keepalive = false): Promise<void> {
+  if (!hasScheduledChanges) return;
+  if (scheduledSaveTimer) {
+    clearTimeout(scheduledSaveTimer);
+    scheduledSaveTimer = null;
+  }
+  if (savingInFlight) {
+    saveAgain = true;
+    return;
+  }
+  hasScheduledChanges = false;
+  savingInFlight = true;
+  try {
+    await saveNow(keepalive);
+  } finally {
+    savingInFlight = false;
+    if (saveAgain) {
+      saveAgain = false;
+      scheduleSaveNow(0);
+    }
+  }
 }

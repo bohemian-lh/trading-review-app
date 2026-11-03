@@ -8,6 +8,7 @@ import { CycleStatsPanel } from '@/components/editor/CycleStatsPanel';
 import { RecordModal } from '@/components/editor/RecordModal';
 import { MonthlyAnalysisModal } from '@/components/editor/MonthlyAnalysisModal';
 import { useDataEditor } from '@/hooks/useDataEditor';
+import { flushScheduledSave } from '@/hooks/useStoreSync';
 import { ImportModal } from './ImportModal';
 import { QuickProfitCalculator } from './QuickProfitCalculator';
 
@@ -36,6 +37,20 @@ export const DataEditor: React.FC = () => {
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
+
+  // 页面隐藏/卸载前把待保存的记录落盘
+  useEffect(() => {
+    const flush = () => { void flushScheduledSave(true); };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   // ---- sort ----
   const handleSort = (key: 'openDate' | 'stockCode') => {

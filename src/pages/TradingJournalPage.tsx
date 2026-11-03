@@ -4,7 +4,7 @@ import { JournalEntry } from '@/components/journal/JournalEntry';
 import { JournalDrafts } from '@/components/journal/JournalDrafts';
 import { JournalViewer } from '@/components/journal/JournalViewer';
 import { ReminderSettings } from '@/components/common/ReminderSettings';
-import { useJournalStore } from '@/stores/journalStore';
+import { useJournalStore, flushJournalsNow } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { useReminderStore } from '@/stores/reminderStore';
 
@@ -12,7 +12,12 @@ type Tab = 'entry' | 'drafts' | 'view';
 
 const TradingJournalPage: React.FC = () => {
   const [tab, setTab] = useState<Tab>('entry');
-  const { init, loading, error } = useJournalStore();
+  const init = useJournalStore(s => s.init);
+  const loading = useJournalStore(s => s.loading);
+  const error = useJournalStore(s => s.error);
+  const syncState = useJournalStore(s => s.syncState);
+  const syncError = useJournalStore(s => s.syncError);
+  const retrySync = useJournalStore(s => s.retrySync);
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
   // ─── 定时提醒 ──────────────────────────────────────────────────
@@ -25,6 +30,20 @@ const TradingJournalPage: React.FC = () => {
   useEffect(() => {
     init(datasetId);
   }, [datasetId, init]);
+
+  // 页面隐藏/卸载前把待写日志落盘（keepalive 降低丢写概率）
+  useEffect(() => {
+    const flush = () => { void flushJournalsNow(true); };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'entry', label: '填写提交', icon: <FileText className="h-4 w-4" /> },
@@ -56,6 +75,18 @@ const TradingJournalPage: React.FC = () => {
         </div>
         {/* 定时提醒开关 */}
         <div className="flex items-center gap-1.5">
+          {syncState === 'saving' && (
+            <span className="text-xs text-gray-400">保存中…</span>
+          )}
+          {syncState === 'error' && (
+            <button
+              onClick={retrySync}
+              title={syncError || '同步失败'}
+              className="text-xs text-red-500 hover:text-red-600 transition-colors"
+            >
+              同步失败，重试
+            </button>
+          )}
           <button
             onClick={toggleReminder}
             title={config.enabled ? '关闭定时提醒' : '开启定时提醒'}

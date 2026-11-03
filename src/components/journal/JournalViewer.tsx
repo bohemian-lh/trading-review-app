@@ -3,7 +3,7 @@ import { Trash2, Link, Undo2, ArrowUpDown } from 'lucide-react';
 import { useRecordsStore } from '@/stores';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
-import { groupStrategies, applySort, resolvePriceCodeSegments } from '@/utils/journalHelpers';
+import { groupStrategies, applySort, resolvePriceCodeSegments, type StrategyItem } from '@/utils/journalHelpers';
 import type { TradingJournal } from '@/types';
 
 // ─── 价位标签 ──────────────────────────────────────────────────────
@@ -159,7 +159,12 @@ const MatchPopover: React.FC<{
 export const JournalViewer: React.FC = () => {
   const records = useRecordsStore(s => s.records);
   const priceLevelCodes = useRecordsStore(s => s.fieldConfig.priceLevelCodes);
-  const { journals, snapshots, activeStages, deleteJournal, updateJournalRecordId, revertJournal } = useJournalStore();
+  const journals = useJournalStore(s => s.journals);
+  const snapshots = useJournalStore(s => s.snapshots);
+  const activeStages = useJournalStore(s => s.activeStages);
+  const deleteJournal = useJournalStore(s => s.deleteJournal);
+  const updateJournalRecordId = useJournalStore(s => s.updateJournalRecordId);
+  const revertJournal = useJournalStore(s => s.revertJournal);
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
   const [dateFrom, setDateFrom] = useState('');
@@ -174,31 +179,51 @@ export const JournalViewer: React.FC = () => {
 
   // ─── 列拖拽 resize ────────────────────────────────────────────────
   const resizeState = useRef<{ colId: string; startX: number; startWidth: number } | null>(null);
+  const resizeFrame = useRef<number | null>(null);
+  const resizeEvent = useRef<MouseEvent | null>(null);
+  const colSettingsRef = useRef(colSettings);
+  colSettingsRef.current = colSettings;
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!resizeState.current) return;
-      const { colId, startX, startWidth } = resizeState.current;
-      const newWidth = Math.max(60, startWidth + (e.clientX - startX));
-      setColSettings(prev => {
-        (prev.colWidths as Record<string, number>)[colId] = newWidth;
-        return { ...prev };
+      resizeEvent.current = e;
+      // 每帧最多更新一次，避免 mousemove 高频触发整表重渲染
+      if (resizeFrame.current !== null) return;
+      resizeFrame.current = requestAnimationFrame(() => {
+        resizeFrame.current = null;
+        const ev = resizeEvent.current;
+        if (!ev || !resizeState.current) return;
+        const { colId, startX, startWidth } = resizeState.current;
+        const newWidth = Math.max(60, startWidth + (ev.clientX - startX));
+        setColSettings(prev => ({ colWidths: { ...prev.colWidths, [colId]: newWidth } }));
       });
     };
     const handleMouseUp = () => {
-      if (resizeState.current) {
-        const current = loadColSettings();
-        saveColSettings(current);
-        resizeState.current = null;
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
+      if (!resizeState.current) return;
+      if (resizeFrame.current !== null) {
+        cancelAnimationFrame(resizeFrame.current);
+        resizeFrame.current = null;
       }
+      const { colId, startX, startWidth } = resizeState.current;
+      const ev = resizeEvent.current;
+      const next = { ...colSettingsRef.current, colWidths: { ...colSettingsRef.current.colWidths } };
+      if (ev) {
+        next.colWidths[colId] = Math.max(60, startWidth + (ev.clientX - startX));
+        setColSettings(next);
+      }
+      saveColSettings(next);
+      resizeState.current = null;
+      resizeEvent.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (resizeFrame.current !== null) cancelAnimationFrame(resizeFrame.current);
     };
   }, []);
 
@@ -246,6 +271,15 @@ export const JournalViewer: React.FC = () => {
     });
   }, [journals, dateFrom, dateTo, filterCode, sortDir]);
 
+  // 每条日志的分组结果只算一次，避免筛选/弹层等交互触发整表重复计算
+  const groupedById = useMemo(() => {
+    const map: Record<string, Record<string, StrategyItem[]>> = {};
+    for (const journal of filtered) {
+      map[journal.id] = groupStrategies(journal, activeStages, snapshots);
+    }
+    return map;
+  }, [filtered, activeStages, snapshots]);
+
   const handleDelete = async (journalId: string) => {
     if (!confirm('确认删除此条日志？')) return;
     await deleteJournal(journalId, datasetId);
@@ -261,9 +295,12 @@ export const JournalViewer: React.FC = () => {
     setMatchingJournalId(null);
   };
 
+  // 记录索引：避免每行都线性遍历全部交易记录
+  const recordById = useMemo(() => new Map(records.map(r => [r.id, r])), [records]);
+
   const getLinkedRecord = (journal: TradingJournal) => {
     if (!journal.recordId) return null;
-    return records.find(r => r.id === journal.recordId);
+    return recordById.get(journal.recordId) ?? null;
   };
 
   // 用于匹配弹窗的记录数据
@@ -403,7 +440,7 @@ export const JournalViewer: React.FC = () => {
           </thead>
           <tbody>
             {filtered.map((journal, idx) => {
-              const grouped = groupStrategies(journal, activeStages, snapshots);
+              const grouped = groupedById[journal.id] || {};
               const stageName = activeStages.find(s => s.stageId === journal.stage)?.stageName || journal.stage;
               const linkedRecord = getLinkedRecord(journal);
               const rowColor = ROW_COLORS[idx % ROW_COLORS.length];

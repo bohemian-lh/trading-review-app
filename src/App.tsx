@@ -31,6 +31,7 @@ const App: React.FC = () => {
   useGlobalReminder();
   const isInitialized = useUIStore((state) => state.isInitialized);
   const error = useUIStore((state) => state.error);
+  const setError = useUIStore((state) => state.setError);
 
   if (!isInitialized) {
     return (
@@ -57,6 +58,22 @@ const App: React.FC = () => {
         </header>
 
         <Navigation />
+
+        {/* 后台保存失败提示（乐观更新后由全局错误通道暴露） */}
+        {error && (
+          <div className="max-w-7xl mx-auto px-4 pt-4">
+            <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+              <span className="flex-1">{error}</span>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-400 hover:text-red-600"
+                aria-label="关闭错误提示"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
 
         <main className="max-w-7xl mx-auto px-4 py-6">
           <Suspense fallback={<PageLoader />}>
