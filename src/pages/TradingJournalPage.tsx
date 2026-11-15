@@ -17,6 +17,7 @@ const TradingJournalPage: React.FC = () => {
   const error = useJournalStore(s => s.error);
   const syncState = useJournalStore(s => s.syncState);
   const syncError = useJournalStore(s => s.syncError);
+  const pendingCount = useJournalStore(s => s.pendingCount);
   const retrySync = useJournalStore(s => s.retrySync);
   const datasetId = useDatasetStore(s => s.currentDatasetId) || 'default';
 
@@ -31,17 +32,20 @@ const TradingJournalPage: React.FC = () => {
     init(datasetId);
   }, [datasetId, init]);
 
-  // 页面隐藏/卸载前把待写日志落盘（keepalive 降低丢写概率）
+  // 页面隐藏/卸载前把待写日志落盘（keepalive 降低丢写概率）；网络恢复后自动重放
   useEffect(() => {
     const flush = () => { void flushJournalsNow(true); };
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') flush();
     };
+    const onOnline = () => { useJournalStore.getState().retrySync(); };
     window.addEventListener('pagehide', flush);
     document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('online', onOnline);
     return () => {
       window.removeEventListener('pagehide', flush);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('online', onOnline);
     };
   }, []);
 
@@ -76,7 +80,9 @@ const TradingJournalPage: React.FC = () => {
         {/* 定时提醒开关 */}
         <div className="flex items-center gap-1.5">
           {syncState === 'saving' && (
-            <span className="text-xs text-gray-400">保存中…</span>
+            <span className="text-xs text-gray-400">
+              保存中{pendingCount > 0 ? `（待同步 ${pendingCount} 条）` : ''}…
+            </span>
           )}
           {syncState === 'error' && (
             <button

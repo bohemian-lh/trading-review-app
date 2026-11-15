@@ -1,6 +1,7 @@
 import type { TradingRecord, ValidationResult, ValidationError, FieldConfig } from '@/types';
 import { DEFAULT_FIELD_CONFIG } from '@/types';
 import { parseDate } from './dateUtils';
+import { isExcludedTheoreticalValue } from './theoreticalRatio';
 
 export function validateTradingRecord(
   record: Partial<TradingRecord>,
@@ -196,13 +197,15 @@ export function validateTradingRecord(
     });
   }
 
-  // 理论盈亏比维度值验证（可选字段，键为维度 id）
+  // 理论盈亏比维度值验证（可选字段，键为维度 id；null / ±999 表示 NULL，合法）
   if (record.theoreticalProfitRatios !== undefined && record.theoreticalProfitRatios !== null) {
     for (const [dimId, val] of Object.entries(record.theoreticalProfitRatios)) {
+      if (val === null) continue;
+      if (isExcludedTheoreticalValue(val)) continue;
       if (typeof val !== 'number' || isNaN(val)) {
         errors.push({
           field: 'theoreticalProfitRatios',
-          message: `理论盈亏比维度"${dimId}"的值必须为有效数字`,
+          message: `理论盈亏比维度"${dimId}"的值必须为有效数字或 N/A`,
           row: rowIndex,
         });
       }

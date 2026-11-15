@@ -300,27 +300,110 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                       ? fieldConfig.theoreticalDimensions.find(d => d.id === dim.baseDimensionId && d.isBase)
                       : undefined;
                     const profitFallback = formData.profitPercent ?? 0;
-                    const baseValue = baseDim ? (ratios[baseDim.id] ?? profitFallback) : profitFallback;
+                    const baseRaw = baseDim ? ratios[baseDim.id] : undefined;
+                    const baseValue = baseDim
+                      ? (baseRaw === null ? null : typeof baseRaw === 'number' ? baseRaw : profitFallback)
+                      : profitFallback;
                     const delta = deltas[dim.id];
-                    const linkedResult = parseFloat((baseValue + (delta ?? 0)).toFixed(2));
+                    const isBaseNull = !isLinked && ratios[dim.id] === null;
+                    const isDeltaNull = isLinked && delta === null;
+                    const linkedResult = isLinked && baseValue !== null && !isDeltaNull
+                      ? parseFloat((baseValue + (typeof delta === 'number' ? delta : 0)).toFixed(2))
+                      : null;
+
+                    const setBaseNull = (excluded: boolean) => {
+                      const next = { ...ratios };
+                      if (excluded) next[dim.id] = null;
+                      else delete next[dim.id];
+                      onFormChange({ ...formData, theoreticalProfitRatios: next });
+                    };
+                    const setDeltaNull = (excluded: boolean) => {
+                      const next = { ...deltas };
+                      if (excluded) next[dim.id] = null;
+                      else delete next[dim.id];
+                      onFormChange({ ...formData, theoreticalProfitDeltas: next });
+                    };
 
                     return (
                       <div key={dim.id}>
                         <label className="block text-sm text-gray-600 mb-1">
                           {isLinked
-                            ? `${dim.name}（基准：${baseDim?.name || '未命名维度'} ${baseValue}%）`
+                            ? `${dim.name}（基准：${baseDim?.name || '未命名维度'} ${baseValue === null ? 'N/A' : `${baseValue}%`}）`
                             : dim.name}
                         </label>
                         {isLinked ? (
+                          baseValue === null ? (
+                            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-500">
+                              N/A（基准失效，本维度统计排除）
+                            </div>
+                          ) : isDeltaNull ? (
+                            <div className="flex items-center gap-2">
+                              <span className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-500">
+                                N/A（统计排除）
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setDeltaNull(false)}
+                                className="text-xs text-blue-600 hover:text-blue-700"
+                              >
+                                恢复
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                step="0.1"
+                                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                value={typeof delta === 'number' ? delta : ''}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  const next = { ...deltas };
+                                  if (raw === '' || raw === '-') {
+                                    delete next[dim.id];
+                                  } else {
+                                    const num = parseFloat(raw);
+                                    if (isNaN(num)) return;
+                                    next[dim.id] = parseFloat(num.toFixed(2));
+                                  }
+                                  onFormChange({ ...formData, theoreticalProfitDeltas: next });
+                                }}
+                                placeholder="变化值，如 2 / -1"
+                              />
+                              <span className="text-xs text-gray-500 whitespace-nowrap">= {linkedResult}%</span>
+                              <button
+                                type="button"
+                                title="标记为 NULL：统计时排除该记录在本维度下的数据"
+                                onClick={() => setDeltaNull(true)}
+                                className="text-xs text-gray-500 hover:text-red-500 whitespace-nowrap"
+                              >
+                                N/A
+                              </button>
+                            </div>
+                          )
+                        ) : isBaseNull ? (
+                          <div className="flex items-center gap-2">
+                            <span className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-500">
+                              N/A（统计排除）
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setBaseNull(false)}
+                              className="text-xs text-blue-600 hover:text-blue-700"
+                            >
+                              恢复
+                            </button>
+                          </div>
+                        ) : (
                           <div className="flex items-center gap-2">
                             <Input
                               type="number"
                               step="0.1"
                               className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              value={delta !== undefined ? delta : ''}
+                              value={typeof ratios[dim.id] === 'number' ? ratios[dim.id] as number : ''}
                               onChange={(e) => {
                                 const raw = e.target.value;
-                                const next = { ...deltas };
+                                const next = { ...ratios };
                                 if (raw === '' || raw === '-') {
                                   delete next[dim.id];
                                 } else {
@@ -328,37 +411,27 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                                   if (isNaN(num)) return;
                                   next[dim.id] = parseFloat(num.toFixed(2));
                                 }
-                                onFormChange({ ...formData, theoreticalProfitDeltas: next });
+                                onFormChange({ ...formData, theoreticalProfitRatios: next });
                               }}
-                              placeholder="变化值，如 2 / -1"
+                              placeholder="留空 = 盈亏情况"
                             />
-                            <span className="text-xs text-gray-500 whitespace-nowrap">= {linkedResult}%</span>
+                            <button
+                              type="button"
+                              title="标记为 NULL：统计时排除该记录在本维度下的数据"
+                              onClick={() => setBaseNull(true)}
+                              className="text-xs text-gray-500 hover:text-red-500 whitespace-nowrap"
+                            >
+                              N/A
+                            </button>
                           </div>
-                        ) : (
-                          <Input
-                            type="number"
-                            step="0.1"
-                            className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            value={ratios[dim.id] !== undefined ? ratios[dim.id] : ''}
-                            onChange={(e) => {
-                              const raw = e.target.value;
-                              const next = { ...ratios };
-                              if (raw === '' || raw === '-') {
-                                delete next[dim.id];
-                              } else {
-                                const num = parseFloat(raw);
-                                if (isNaN(num)) return;
-                                next[dim.id] = parseFloat(num.toFixed(2));
-                              }
-                              onFormChange({ ...formData, theoreticalProfitRatios: next });
-                            }}
-                            placeholder="默认 = 盈亏情况"
-                          />
                         )}
                       </div>
                     );
                   })}
                 </div>
+                <p className="text-xs text-gray-400">
+                  留空 = 默认等于盈亏情况（关联维度按基准值）；N/A = 该维度下本条数据失效，统计时排除。
+                </p>
               </div>
             )}
 

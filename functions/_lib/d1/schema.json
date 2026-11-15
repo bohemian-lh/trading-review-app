@@ -1,0 +1,134 @@
+[
+  {
+    "table": "journal_datasets",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS journal_datasets (\n  dataset_id  TEXT PRIMARY KEY,\n  version     INTEGER NOT NULL DEFAULT 0,\n  write_token TEXT NOT NULL DEFAULT '',\n  updated_at  TEXT NOT NULL DEFAULT ''\n)"
+  },
+  {
+    "table": "journals",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS journals (\n  dataset_id  TEXT NOT NULL,\n  id          TEXT NOT NULL,\n  open_date   TEXT NOT NULL DEFAULT '',\n  stock_code  TEXT NOT NULL DEFAULT '',\n  stock_name  TEXT NOT NULL DEFAULT '',\n  status      TEXT NOT NULL DEFAULT 'submitted',\n  snapshot_id TEXT,\n  record_id   TEXT,\n  payload     TEXT NOT NULL DEFAULT '{}',\n  created_at  TEXT NOT NULL DEFAULT '',\n  updated_at  TEXT NOT NULL DEFAULT '',\n  PRIMARY KEY (dataset_id, id)\n)"
+  },
+  {
+    "table": "idx_journals_dataset_open_date",
+    "kind": "index",
+    "scoped": false,
+    "sql": "CREATE INDEX IF NOT EXISTS idx_journals_dataset_open_date ON journals (dataset_id, open_date, id)"
+  },
+  {
+    "table": "journal_snapshots",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS journal_snapshots (\n  dataset_id  TEXT NOT NULL,\n  snapshot_id TEXT NOT NULL,\n  version     INTEGER NOT NULL DEFAULT 0,\n  stages      TEXT NOT NULL,\n  created_at  TEXT NOT NULL DEFAULT '',\n  PRIMARY KEY (dataset_id, snapshot_id)\n)"
+  },
+  {
+    "table": "journal_watchlist",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS journal_watchlist (\n  dataset_id TEXT NOT NULL,\n  position   INTEGER NOT NULL,\n  name       TEXT NOT NULL,\n  PRIMARY KEY (dataset_id, position)\n)"
+  },
+  {
+    "table": "journal_snapshot_meta",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS journal_snapshot_meta (\n  dataset_id  TEXT PRIMARY KEY,\n  version     INTEGER NOT NULL DEFAULT 0,\n  write_token TEXT NOT NULL DEFAULT '',\n  updated_at  TEXT NOT NULL DEFAULT ''\n)"
+  },
+  {
+    "table": "journal_watchlist_meta",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS journal_watchlist_meta (\n  dataset_id  TEXT PRIMARY KEY,\n  version     INTEGER NOT NULL DEFAULT 0,\n  write_token TEXT NOT NULL DEFAULT '',\n  updated_at  TEXT NOT NULL DEFAULT ''\n)"
+  },
+  {
+    "table": "record_meta",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS record_meta (\n  dataset_id               TEXT PRIMARY KEY,\n  version                  INTEGER NOT NULL DEFAULT 0,\n  write_token              TEXT NOT NULL DEFAULT '',\n  custom_monthly_use       INTEGER NOT NULL DEFAULT 0,\n  cycle_stats_generated_at INTEGER,\n  updated_at               TEXT NOT NULL DEFAULT ''\n)"
+  },
+  {
+    "table": "records",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS records (\n  dataset_id        TEXT NOT NULL,\n  id                TEXT NOT NULL,\n  open_date         TEXT NOT NULL DEFAULT '',\n  stock_code        TEXT NOT NULL DEFAULT '',\n  stock_name        TEXT NOT NULL DEFAULT '',\n  trading_type      TEXT NOT NULL DEFAULT '',\n  pre_market        TEXT NOT NULL DEFAULT '',\n  has_mistake       TEXT NOT NULL DEFAULT '',\n  profit_percent    REAL NOT NULL DEFAULT 0,\n  hold_days         INTEGER NOT NULL DEFAULT 0,\n  position_size     INTEGER NOT NULL DEFAULT 0,\n  has_cycle_stats   INTEGER NOT NULL DEFAULT 0,\n  has_monthly_stats INTEGER NOT NULL DEFAULT 0,\n  cycle_id          TEXT,\n  image_prefix      TEXT NOT NULL DEFAULT '',\n  remark            TEXT NOT NULL DEFAULT '',\n  payload           TEXT NOT NULL DEFAULT '{}',\n  updated_at        TEXT NOT NULL DEFAULT '',\n  PRIMARY KEY (dataset_id, id)\n)"
+  },
+  {
+    "table": "idx_records_dataset_open_date",
+    "kind": "index",
+    "scoped": false,
+    "sql": "CREATE INDEX IF NOT EXISTS idx_records_dataset_open_date ON records (dataset_id, open_date DESC, id DESC)"
+  },
+  {
+    "table": "custom_analysis",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS custom_analysis (\n  dataset_id TEXT PRIMARY KEY,\n  use_custom INTEGER NOT NULL DEFAULT 0,\n  payload    TEXT NOT NULL DEFAULT '{}',\n  updated_at TEXT NOT NULL DEFAULT ''\n)"
+  },
+  {
+    "table": "monthly_analysis",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS monthly_analysis (\n  dataset_id                       TEXT NOT NULL,\n  month                            TEXT NOT NULL,\n  system_profit_ratio              REAL,\n  system_no_mistake_profit_ratio   REAL,\n  system_with_mistake_profit_ratio REAL,\n  non_system_profit_ratio          REAL,\n  avg_profit_ratio                 REAL,\n  total_profit                     REAL,\n  PRIMARY KEY (dataset_id, month)\n)"
+  },
+  {
+    "table": "cycle_stats",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS cycle_stats (\n  dataset_id   TEXT NOT NULL,\n  stat_type    TEXT NOT NULL,\n  cycle_id     TEXT NOT NULL,\n  start_date   TEXT NOT NULL DEFAULT '',\n  end_date     TEXT NOT NULL DEFAULT '',\n  record_count INTEGER NOT NULL DEFAULT 0,\n  is_complete  INTEGER NOT NULL DEFAULT 0,\n  profit_sum   REAL NOT NULL DEFAULT 0,\n  loss_sum     REAL NOT NULL DEFAULT 0,\n  profit_ratio REAL,\n  record_ids   TEXT NOT NULL DEFAULT '[]',\n  created_at   INTEGER NOT NULL DEFAULT 0,\n  updated_at   INTEGER NOT NULL DEFAULT 0,\n  PRIMARY KEY (dataset_id, stat_type, cycle_id)\n)"
+  },
+  {
+    "table": "stat_overview",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS stat_overview (\n  dataset_id                       TEXT PRIMARY KEY,\n  record_count                     INTEGER NOT NULL DEFAULT 0,\n  profit_count                     INTEGER NOT NULL DEFAULT 0,\n  loss_count                       INTEGER NOT NULL DEFAULT 0,\n  flat_count                       INTEGER NOT NULL DEFAULT 0,\n  system_profit_ratio              REAL,\n  system_no_mistake_profit_ratio   REAL,\n  system_with_mistake_profit_ratio REAL,\n  non_system_profit_ratio          REAL,\n  system_profit_avg_hold_days      REAL,\n  system_loss_avg_hold_days        REAL,\n  non_system_profit_avg_hold_days  REAL,\n  non_system_loss_avg_hold_days    REAL,\n  trading_type_ratios              TEXT NOT NULL DEFAULT '{}',\n  trend_feature_ratios             TEXT NOT NULL DEFAULT '{}',\n  aggregate_ratios                 TEXT NOT NULL DEFAULT '{}',\n  theoretical_profit_ratios        TEXT NOT NULL DEFAULT '{}',\n  source_version                   INTEGER NOT NULL DEFAULT 0,\n  computed_at                      TEXT NOT NULL DEFAULT ''\n)"
+  },
+  {
+    "table": "stat_month",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS stat_month (\n  dataset_id                       TEXT NOT NULL,\n  month                            TEXT NOT NULL,\n  system_profit_ratio              REAL,\n  system_no_mistake_profit_ratio   REAL,\n  system_with_mistake_profit_ratio REAL,\n  non_system_profit_ratio          REAL,\n  avg_profit_ratio                 REAL,\n  total_profit                     REAL,\n  source_version                   INTEGER NOT NULL DEFAULT 0,\n  computed_at                      TEXT NOT NULL DEFAULT '',\n  PRIMARY KEY (dataset_id, month)\n)"
+  },
+  {
+    "table": "analysis_results",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS analysis_results (\n  dataset_id     TEXT NOT NULL,\n  config_kind    TEXT NOT NULL,\n  config_id      TEXT NOT NULL,\n  record_count   INTEGER NOT NULL DEFAULT 0,\n  values_json    TEXT NOT NULL DEFAULT '[]',\n  positions_json TEXT NOT NULL DEFAULT '[]',\n  cumulative     TEXT NOT NULL DEFAULT '[]',\n  cycle          TEXT NOT NULL DEFAULT '[]',\n  growth         TEXT NOT NULL DEFAULT '[]',\n  skewness       REAL,\n  kurtosis       REAL,\n  jb             REAL,\n  jb_p_value     REAL,\n  source_version INTEGER NOT NULL DEFAULT 0,\n  computed_at    TEXT NOT NULL DEFAULT '',\n  PRIMARY KEY (dataset_id, config_kind, config_id)\n)"
+  },
+  {
+    "table": "idx_analysis_results_kind",
+    "kind": "index",
+    "scoped": false,
+    "sql": "CREATE INDEX IF NOT EXISTS idx_analysis_results_kind ON analysis_results (dataset_id, config_kind)"
+  },
+  {
+    "table": "field_configs",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS field_configs (\n  dataset_id  TEXT PRIMARY KEY,\n  version     INTEGER NOT NULL DEFAULT 0,\n  write_token TEXT NOT NULL DEFAULT '',\n  payload     TEXT NOT NULL DEFAULT '{}',\n  updated_at  TEXT NOT NULL DEFAULT ''\n)"
+  },
+  {
+    "table": "series_meta",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS series_meta (\n  dataset_id  TEXT NOT NULL,\n  kind        TEXT NOT NULL,\n  version     INTEGER NOT NULL DEFAULT 0,\n  write_token TEXT NOT NULL DEFAULT '',\n  updated_at  TEXT NOT NULL DEFAULT '',\n  PRIMARY KEY (dataset_id, kind)\n)"
+  },
+  {
+    "table": "analysis_series",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS analysis_series (\n  dataset_id TEXT NOT NULL,\n  kind       TEXT NOT NULL DEFAULT 'tab',\n  id         TEXT NOT NULL,\n  name       TEXT NOT NULL DEFAULT '',\n  position   INTEGER NOT NULL DEFAULT 0,\n  created_at INTEGER NOT NULL DEFAULT 0,\n  updated_at TEXT NOT NULL DEFAULT '',\n  PRIMARY KEY (dataset_id, kind, id)\n)"
+  },
+  {
+    "table": "analysis_series_groups",
+    "kind": "table",
+    "scoped": true,
+    "sql": "CREATE TABLE IF NOT EXISTS analysis_series_groups (\n  dataset_id TEXT NOT NULL,\n  kind       TEXT NOT NULL DEFAULT 'tab',\n  series_id  TEXT NOT NULL,\n  seq        INTEGER NOT NULL,\n  mode       TEXT NOT NULL DEFAULT 'merge',\n  source     TEXT NOT NULL DEFAULT 'profitPercent',\n  filter     TEXT NOT NULL DEFAULT '{}',\n  PRIMARY KEY (dataset_id, kind, series_id, seq)\n)"
+  },
+  {
+    "table": "datasets",
+    "kind": "table",
+    "scoped": false,
+    "sql": "CREATE TABLE IF NOT EXISTS datasets (\n  id         TEXT PRIMARY KEY,\n  name       TEXT NOT NULL,\n  created_at TEXT NOT NULL DEFAULT '',\n  deleted_at TEXT\n)"
+  }
+]

@@ -21,20 +21,25 @@ export class JournalConflictError extends Error {
   }
 }
 
+/** 集合类数据（快照 / 关注列表）版本冲突：携带服务端最新数据 */
+export class CollectionConflictError extends Error {
+  readonly version: number;
+  readonly items: any[];
+
+  constructor(version: number, items: any[]) {
+    super('collection version conflict');
+    this.name = 'CollectionConflictError';
+    this.version = version;
+    this.items = items;
+  }
+}
+
 async function apiGet<T>(endpoint: string, datasetId: string): Promise<T> {
   const res = await fetch(`${API_BASE}${endpoint}?dataset=${encodeURIComponent(datasetId)}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-async function apiPost<T>(endpoint: string, datasetId: string, body: any): Promise<T> {
-  const res = await fetch(`${API_BASE}${endpoint}?dataset=${encodeURIComponent(datasetId)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  if (data?.success !== true) throw new Error(data?.error || '读取失败');
+  return data as T;
 }
 
 /** 加载所有日志（含服务端版本号，用于增量写冲突检测） */
@@ -67,28 +72,80 @@ export async function saveJournalOps(
     });
   }
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  // 严格 ACK：必须明确 success 且回传新版本号，否则视为未写入
+  // （旧后端 / 网关登录页 / 静默失败都会走到这里，避免把未落盘误判为已保存）
+  if (data?.success !== true) throw new Error(data?.error || '服务端未确认保存');
+  if (typeof data.version !== 'number') throw new Error('服务端未返回版本号，保存可能未生效');
 
-  return { version: typeof data?.version === 'number' ? data.version : baseVersion + 1 };
+  return { version: data.version };
 }
 
-/** 加载所有配置快照 */
-export async function loadSnapshots(datasetId: string): Promise<JournalConfigSnapshot[]> {
-  const data = await apiGet<{ success: boolean; snapshots: JournalConfigSnapshot[] }>('/api/journal-snapshots', datasetId);
-  return data.snapshots || [];
+/** 加载所有配置快照（含版本号，用于 CAS 保存） */
+export async function loadSnapshots(
+  datasetId: string,
+): Promise<{ snapshots: JournalConfigSnapshot[]; version: number }> {
+  const data = await apiGet<{ success: boolean; snapshots: JournalConfigSnapshot[]; version?: number }>(
+    '/api/journal-snapshots',
+    datasetId,
+  );
+  return {
+    snapshots: data.snapshots || [],
+    version: typeof data.version === 'number' ? data.version : 0,
+  };
 }
 
-/** 保存配置快照（全量覆盖，仅在快照集合真正变化时调用） */
-export async function saveSnapshots(datasetId: string, snapshots: JournalConfigSnapshot[]): Promise<void> {
-  await apiPost('/api/journal-snapshots', datasetId, { snapshots });
+/** 保存配置快照（全量语义，服务端按 id 差量落库；带版本号做 CAS） */
+export async function saveSnapshots(
+  datasetId: string,
+  snapshots: JournalConfigSnapshot[],
+  baseVersion: number | null = null,
+): Promise<{ version: number }> {
+  const res = await fetch(`${API_BASE}/api/journal-snapshots?dataset=${encodeURIComponent(datasetId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ snapshots, baseVersion: baseVersion ?? undefined }),
+  });
+  let data: any = null;
+  try { data = await res.json(); } catch { /* 非 JSON 响应按错误处理 */ }
+  if (res.status === 409 && data?.conflict) {
+    throw new CollectionConflictError(data.version ?? 0, data.snapshots ?? []);
+  }
+  if (!res.ok || data?.success !== true) {
+    throw new Error(data?.error || `HTTP ${res.status}`);
+  }
+  return { version: typeof data.version === 'number' ? data.version : 0 };
 }
 
-/** 加载「后续可关注」列表 */
-export async function loadWatchlist(datasetId: string): Promise<string[]> {
-  const data = await apiGet<{ success: boolean; watchlist: string[] }>('/api/journal-watchlist', datasetId);
-  return data.watchlist || [];
+/** 加载「后续可关注」列表（含版本号） */
+export async function loadWatchlist(datasetId: string): Promise<{ watchlist: string[]; version: number }> {
+  const data = await apiGet<{ success: boolean; watchlist: string[]; version?: number }>(
+    '/api/journal-watchlist',
+    datasetId,
+  );
+  return {
+    watchlist: data.watchlist || [],
+    version: typeof data.version === 'number' ? data.version : 0,
+  };
 }
 
-/** 保存「后续可关注」列表（全量覆盖） */
-export async function saveWatchlist(datasetId: string, watchlist: string[]): Promise<void> {
-  await apiPost('/api/journal-watchlist', datasetId, { watchlist });
+/** 保存「后续可关注」列表（全量语义，服务端按 position 差量；带版本号做 CAS） */
+export async function saveWatchlist(
+  datasetId: string,
+  watchlist: string[],
+  baseVersion: number | null = null,
+): Promise<{ version: number }> {
+  const res = await fetch(`${API_BASE}/api/journal-watchlist?dataset=${encodeURIComponent(datasetId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ watchlist, baseVersion: baseVersion ?? undefined }),
+  });
+  let data: any = null;
+  try { data = await res.json(); } catch { /* 非 JSON 响应按错误处理 */ }
+  if (res.status === 409 && data?.conflict) {
+    throw new CollectionConflictError(data.version ?? 0, data.watchlist ?? []);
+  }
+  if (!res.ok || data?.success !== true) {
+    throw new Error(data?.error || `HTTP ${res.status}`);
+  }
+  return { version: typeof data.version === 'number' ? data.version : 0 };
 }

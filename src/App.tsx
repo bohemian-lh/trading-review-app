@@ -6,6 +6,7 @@ import { DatasetSelector } from '@/components/common/DatasetSelector';
 import { useUIStore } from '@/stores';
 import { useInitializeStore } from '@/hooks/useInitializeStore';
 import { useGlobalReminder } from '@/hooks/useGlobalReminder';
+import { useStoreSync } from '@/hooks/useStoreSync';
 
 const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const ExcelUploader = lazy(() => import('@/components/excel').then(m => ({ default: m.ExcelUploader })));
@@ -24,6 +25,15 @@ const PageLoader: React.FC = () => (
     </div>
   </div>
 );
+
+/**
+ * 自动保存宿主：单独渲染成空组件，避免 App 因为 records 变化整体重渲染。
+ * 之前这个 Hook 没有挂载，导致离开编辑器路径的改动（如重算周期统计）不会落盘。
+ */
+const StoreSyncHost: React.FC = () => {
+  useStoreSync();
+  return null;
+};
 
 const App: React.FC = () => {
   useInitializeStore();
@@ -47,6 +57,7 @@ const App: React.FC = () => {
 
   return (
     <BrowserRouter>
+      <StoreSyncHost />
       <div className="min-h-screen bg-gray-100">
         <header className="bg-white shadow">
           <div className="max-w-7xl mx-auto px-4 py-4">

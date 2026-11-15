@@ -14,7 +14,14 @@
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:schema:gen": "node scripts/generate-schema-sql.mjs",
+    "db:schema": "npm run db:schema:gen && wrangler d1 execute trading-review-app-d1sql --remote --file=./schema.sql",
+    "db:schema:preview": "npm run db:schema:gen && wrangler d1 execute trading-review-app-d1sql-preview --remote --file=./schema.sql",
+    "db:sql": "wrangler d1 execute trading-review-app-d1sql --remote --file=$FILE",
+    "db:export": "mkdir -p backups && wrangler d1 export trading-review-app-d1sql --remote --output ./backups/d1-$(date +%Y%m%d-%H%M%S).sql",
+    "db:export:preview": "mkdir -p backups && wrangler d1 export trading-review-app-d1sql-preview --remote --output ./backups/d1-preview-$(date +%Y%m%d-%H%M%S).sql",
+    "db:time-travel": "wrangler d1 time-travel info trading-review-app-d1sql"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.500.0",

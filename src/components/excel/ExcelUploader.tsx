@@ -6,6 +6,8 @@ import { useRecordsStore, useDatasetStore, useUIStore } from '@/stores';
 import { useAnalysisResult, useMonthlyAnalysis } from '@/hooks/useAnalysis';
 import { useImageDirectory } from '@/hooks/useImageDirectory';
 import { r2StorageService } from '@/services/r2Service';
+import type { RecordsSavePayload } from '@/services/r2Service';
+import { markRecordsSynced } from '@/hooks/useStoreSync';
 import type { TradingRecord, StorageFile, UploadProgress } from '@/types';
 
 const TABLE_OPTIONS: { value: ImportTableType; label: string; description: string }[] = [
@@ -217,13 +219,31 @@ export const ExcelUploader: React.FC = () => {
         newRecords = [...records, ...previewData.records];
       }
 
-      console.log('Step 3: Saving to R2, total records:', newRecords.length);
-      const saveResult = await r2StorageService.saveRecords(
-        currentDatasetId || 'default', newRecords,
-        useRecordsStore.getState().version ?? undefined,
-        customAnalysis, customMonthly,
-        cycleStats, useRecordsStore.getState().cycleStatsGeneratedAt
-      );
+      // 只上行导入产生的记录；覆盖模式下删除「导出后确实消失」的旧记录
+      const incoming = previewData.records;
+      const incomingIds = new Set(incoming.map(r => r.id));
+      const removedIds = importMode === 'overwrite'
+        ? records.filter(r => !incomingIds.has(r.id)).map(r => r.id)
+        : [];
+
+      const payload: RecordsSavePayload = {
+        baseVersion: useRecordsStore.getState().version ?? 0,
+        upserts: incoming,
+        deletes: removedIds,
+      };
+      // 表2/表3 导入会同时改动统计结果，仅在此时一并提交
+      if (selectedTable !== 'table1') {
+        payload.customAnalysis = customAnalysis;
+        payload.monthlyUpserts = customMonthly?.data ?? [];
+        payload.monthlyUseCustom = customMonthly?.useCustom;
+        payload.cycleStatsUpserts = Object.entries(cycleStats ?? {}).flatMap(([statType, list]) =>
+          (list ?? []).map(item => ({ ...item, statType: item.statType ?? statType })),
+        );
+        payload.cycleStatsGeneratedAt = useRecordsStore.getState().cycleStatsGeneratedAt ?? null;
+      }
+
+      console.log('Step 3: Saving to R2, upserts:', incoming.length, 'deletes:', removedIds.length);
+      const saveResult = await r2StorageService.saveRecords(currentDatasetId || 'default', payload);
       console.log('Step 3: Save result:', { success: saveResult.success, message: saveResult.message });
 
       if (!saveResult.success) {
@@ -234,6 +254,8 @@ export const ExcelUploader: React.FC = () => {
       useRecordsStore.setState({
         records: newRecords,
       });
+      // 导入已落盘，刷新增量基线，避免下一次保存把整批数据再传一遍
+      markRecordsSynced();
       useUIStore.setState({ currentFileName: fileToImport?.name || null, error: null });
 
       console.log('Step 5: Import completed successfully!');

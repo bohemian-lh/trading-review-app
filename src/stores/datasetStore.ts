@@ -9,7 +9,6 @@ interface DatasetState {
   setCurrentDatasetId: (id: string | null) => void;
   setDatasets: (datasets: Dataset[]) => void;
   createDataset: (name: string) => Promise<Dataset | null>;
-  deleteDataset: (id: string) => Promise<void>;
 }
 
 export const useDatasetStore = create<DatasetState>((set) => ({
@@ -26,10 +25,5 @@ export const useDatasetStore = create<DatasetState>((set) => ({
       return result.dataset;
     }
     return null;
-  },
-
-  deleteDataset: async (id) => {
-    await r2StorageService.deleteDataset(id);
-    set((s) => ({ datasets: s.datasets.filter(d => d.id !== id) }));
   },
 }));

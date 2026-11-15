@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { TradingRecord, AnalysisResult, MonthlyAnalysis, TradingType, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType, TheoreticalDimension } from '@/types';
 import { generateId } from '@/utils';
+import { isExcludedTheoreticalValue, normalizeTheoreticalValue } from '@/utils/theoreticalRatio';
 
 export const SHEET_NAME_1 = '表1-交易复盘数据';
 export const SHEET_NAME_2 = '表2-动态数据分析';
@@ -322,12 +323,13 @@ function mapRowToRecord(row: Record<string, unknown>, dimensions: TheoreticalDim
     : Math.min(100, Math.max(0, parseFloat(positionSizeRaw) || 33));
 
   // 解析理论盈亏比维度值（按列名匹配）
-  const theoreticalProfitRatios: Record<string, number> = {};
+  // 空单元格 = 未填写（回退盈亏情况）；N/A / NULL / ±999 = 显式 NULL（统计排除）
+  const theoreticalProfitRatios: Record<string, number | null> = {};
   for (const col of buildTheoreticalColumns(dimensions)) {
     const raw = String(row[col.header] ?? '').trim().replace('%', '');
-    if (raw === '' || raw === 'N/A') continue;
-    const num = parseFloat(raw);
-    if (!isNaN(num)) theoreticalProfitRatios[col.id] = num;
+    const normalized = normalizeTheoreticalValue(raw);
+    if (normalized === undefined) continue;
+    theoreticalProfitRatios[col.id] = normalized;
   }
 
   return {
@@ -373,8 +375,9 @@ export function exportTable1ToExcel(records: TradingRecord[], filename: string, 
       record.preMarket,
       record.remark,
       ...theoCols.map(c => {
-        const v = record.theoreticalProfitRatios[c.id];
-        return v === undefined ? '' : v;
+        const v = record.theoreticalProfitRatios?.[c.id];
+        if (v === undefined) return '';
+        return (v === null || isExcludedTheoreticalValue(v)) ? 'N/A' : v;
       }),
     ]),
   ];
@@ -538,8 +541,9 @@ export function exportAllToExcel(
       record.preMarket,
       record.remark,
       ...theoCols.map(c => {
-        const v = record.theoreticalProfitRatios[c.id];
-        return v === undefined ? '' : v;
+        const v = record.theoreticalProfitRatios?.[c.id];
+        if (v === undefined) return '';
+        return (v === null || isExcludedTheoreticalValue(v)) ? 'N/A' : v;
       }),
     ]),
   ];

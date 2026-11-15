@@ -1,9 +1,14 @@
-// /api/config?dataset=<id> — 独立端点管理 fieldConfig
-export async function onRequest(context) {
+// /api/config?dataset=<id> — 字段配置（单文档）
+// 存储：DATA_STORE=d1 且绑定 D1SQL 时走 D1，否则回退 R2。
+import { ensureSchemaReady } from '../_lib/d1/schema';
+import { getConfig, saveConfig } from '../_lib/d1/configRepository';
+import { shouldUseD1 } from '../_lib/d1/store';
+
+export async function onRequest(context: any) {
   const { request, env } = context;
   const url = new URL(request.url);
   const datasetId = url.searchParams.get('dataset');
-  
+
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -19,56 +24,54 @@ export async function onRequest(context) {
   }
 
   try {
+    const useD1 = shouldUseD1(env);
+    if (useD1) await ensureSchemaReady(env);
+    const key = `trading-data/${datasetId}/field-config.json`;
+
     if (request.method === 'GET') {
-      return await handleGet(env, corsHeaders, datasetId);
+      if (useD1) {
+        const { config, version } = await getConfig(env.D1SQL, datasetId);
+        return json({ success: true, config, version, store: 'd1' }, 200, corsHeaders);
+      }
+      const object = await env.R2_BUCKET.get(key);
+      if (!object) return json({ success: true, config: null, store: 'r2' }, 200, corsHeaders);
+      return json({ success: true, config: JSON.parse(await object.text()), store: 'r2' }, 200, corsHeaders);
     }
+
     if (request.method === 'POST') {
-      return await handlePost(request, env, corsHeaders, datasetId);
+      const body = await request.json();
+      const { config } = body;
+      if (!config) {
+        return json({ success: false, error: 'config is required' }, 400, corsHeaders);
+      }
+      if (useD1) {
+        const baseVersion = typeof body.baseVersion === 'number' ? body.baseVersion : null;
+        const result = await saveConfig(env.D1SQL, datasetId, config, baseVersion);
+        if (!result.ok) {
+          return json(
+            { success: false, conflict: true, version: result.version, config: result.config, store: 'd1' },
+            409,
+            corsHeaders,
+          );
+        }
+        return json({ success: true, message: 'Config saved', version: result.version, store: 'd1' }, 200, corsHeaders);
+      }
+      await env.R2_BUCKET.put(key, JSON.stringify(config), {
+        httpMetadata: { contentType: 'application/json' },
+      });
+      return json({ success: true, message: 'Config saved', store: 'r2' }, 200, corsHeaders);
     }
+
     return json({ success: false, error: 'Method not allowed' }, 405, corsHeaders);
-  } catch (e) {
-    console.error('Error:', e);
-    return json({ success: false, error: 'Internal error', details: e.message }, 500, corsHeaders);
+  } catch (e: any) {
+    console.error('Config API error:', e);
+    return json({ success: false, error: 'Failed to handle config', details: e.message }, 500, corsHeaders);
   }
 }
 
-async function handleGet(env, corsHeaders, datasetId) {
-  const CONFIG_KEY = `trading-data/${datasetId}/field-config.json`;
-  try {
-    const object = await env.R2_BUCKET.get(CONFIG_KEY);
-    if (!object) {
-      return json({ success: true, config: null }, 200, corsHeaders);
-    }
-    const text = await object.text();
-    const config = JSON.parse(text);
-    return json({ success: true, config }, 200, corsHeaders);
-  } catch (e) {
-    console.error('获取配置失败', e);
-    return json({ success: false, error: 'Failed to get config', details: e.message }, 500, corsHeaders);
-  }
-}
-
-async function handlePost(request, env, corsHeaders, datasetId) {
-  const CONFIG_KEY = `trading-data/${datasetId}/field-config.json`;
-  try {
-    const body = await request.json();
-    const { config } = body;
-    if (!config) {
-      return json({ success: false, error: 'config is required' }, 400, corsHeaders);
-    }
-    await env.R2_BUCKET.put(CONFIG_KEY, JSON.stringify(config), {
-      httpMetadata: { contentType: 'application/json' }
-    });
-    return json({ success: true, message: 'Config saved' }, 200, corsHeaders);
-  } catch (e) {
-    console.error('保存配置失败', e);
-    return json({ success: false, error: 'Failed to save config', details: e.message }, 500, corsHeaders);
-  }
-}
-
-function json(data, status = 200, headers = {}) {
+function json(data: any, status = 200, headers: any = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...headers }
+    headers: { 'Content-Type': 'application/json', ...headers },
   });
 }

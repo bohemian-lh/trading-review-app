@@ -1,8 +1,19 @@
 import { create } from 'zustand';
-import type { TradingRecord, AnalysisResult, MonthlyAnalysis, CustomAnalysisData, CustomMonthlyData, CycleStats, FieldConfig } from '@/types';
+import type { TradingRecord, AnalysisResult, MonthlyAnalysis, CustomAnalysisData, CustomMonthlyData, CycleStats, FieldConfig, StatOverview, AnalysisSeriesResult } from '@/types';
 import { DEFAULT_FIELD_CONFIG } from '@/types';
 import { generateId } from '@/utils';
+import { normalizeTheoreticalValue } from '@/utils/theoreticalRatio';
 import { buildStatTypes, recalculateSingleCycle, removeRecordFromCycle } from '@/services/cycleStatsService';
+
+/** 归一化理论盈亏字段：±999 / 'NULL' / 'N/A' → null；未填保持缺失 */
+function normalizeTheoreticalMap(map: any): Record<string, number | null> {
+  const result: Record<string, number | null> = {};
+  for (const [key, value] of Object.entries(map ?? {})) {
+    const normalized = normalizeTheoreticalValue(value);
+    if (normalized !== undefined) result[key] = normalized;
+  }
+  return result;
+}
 
 /** 迁移旧数据：entryType → trendFeatures；isSystem → patternFeatures；丢弃已删除的旧字段 */
 export function migrateRecord(r: any): TradingRecord {
@@ -20,8 +31,8 @@ export function migrateRecord(r: any): TradingRecord {
     hasCycleStats: r.hasCycleStats ?? false,
     hasMonthlyStats: r.hasMonthlyStats ?? false,
     positionSize: typeof r.positionSize === 'number' ? Math.min(100, Math.max(0, r.positionSize)) : 33,
-    theoreticalProfitRatios: r.theoreticalProfitRatios ?? {},
-    theoreticalProfitDeltas: r.theoreticalProfitDeltas ?? {},
+    theoreticalProfitRatios: normalizeTheoreticalMap(r.theoreticalProfitRatios),
+    theoreticalProfitDeltas: normalizeTheoreticalMap(r.theoreticalProfitDeltas),
   };
 }
 
@@ -34,6 +45,12 @@ interface RecordsState {
   cycleStatsGeneratedAt: number | null;
   statsNeedUpdate: boolean;
   version: number | null;
+  /** 预计算统计结果：总览宽表 */
+  statOverview: StatOverview | null;
+  /** 预计算统计结果：月度宽表 */
+  statMonthly: MonthlyAnalysis[];
+  /** 预计算统计结果：`${configKind}:${configId}` → 序列结果 */
+  analysisResults: Record<string, AnalysisSeriesResult>;
 
   setRecords: (records: TradingRecord[]) => void;
   addRecord: (record: Omit<TradingRecord, 'id' | 'hasCycleStats' | 'hasMonthlyStats'>) => void;
@@ -56,6 +73,11 @@ interface RecordsState {
 
   setVersion: (version: number | null) => void;
   setCycleStats: (stats: Record<string, CycleStats[]>, generatedAt: number | null) => void;
+  setStats: (snapshot: {
+    overview: StatOverview | null;
+    monthly: MonthlyAnalysis[];
+    results: AnalysisSeriesResult[];
+  }) => void;
 }
 
 const emptyAnalysis: AnalysisResult = {
@@ -77,15 +99,18 @@ export const useRecordsStore = create<RecordsState>((set, get) => ({
   cycleStatsGeneratedAt: null,
   statsNeedUpdate: false,
   version: null,
+  statOverview: null,
+  statMonthly: [],
+  analysisResults: {},
 
   setRecords: (records) => {
     const normalized = records.map(r => migrateRecord(r));
-    set({ records: normalized });
+    set({ records: normalized, statsNeedUpdate: true });
   },
 
   addRecord: (recordData) => {
     const newRecord: TradingRecord = { ...recordData, id: generateId(), hasCycleStats: false, hasMonthlyStats: false };
-    set((s) => ({ records: [...s.records, newRecord] }));
+    set((s) => ({ records: [...s.records, newRecord], statsNeedUpdate: true }));
   },
 
   addRecords: (recordsData) => {
@@ -108,7 +133,6 @@ export const useRecordsStore = create<RecordsState>((set, get) => ({
 
     let newRecord: TradingRecord = { ...oldRecord, ...updates };
     let newCycleStats = { ...state.cycleStats };
-    let needsUpdateFlag = false;
     const statTypes = buildStatTypes(state.fieldConfig);
 
     if (hasValueChange && !hasTypeChange && oldRecord.hasCycleStats) {
@@ -140,22 +164,18 @@ export const useRecordsStore = create<RecordsState>((set, get) => ({
         }
       }
       newRecord = { ...newRecord, hasCycleStats: false, cycleId: undefined };
-      needsUpdateFlag = true;
-    } else if (hasTypeChange) {
-      needsUpdateFlag = true;
     }
 
     set({
       records: state.records.map(r => r.id === id ? newRecord : r),
       cycleStats: newCycleStats,
-      statsNeedUpdate: needsUpdateFlag,
+      statsNeedUpdate: true,
     });
   },
 
   deleteRecord: (id) => {
     const state = get();
     let newCycleStats = { ...state.cycleStats };
-    let needsUpdateFlag = false;
     const statTypes = buildStatTypes(state.fieldConfig);
 
     for (const statType of statTypes) {
@@ -165,17 +185,16 @@ export const useRecordsStore = create<RecordsState>((set, get) => ({
         if (cycle.recordIds.includes(id)) {
           const updated = removeRecordFromCycle(cycle, id);
           if (updated) newCycleStats[statType].push(updated);
-          needsUpdateFlag = true;
         } else {
           newCycleStats[statType].push(cycle);
         }
       }
     }
 
-    set((s) => ({ records: s.records.filter(r => r.id !== id), cycleStats: newCycleStats, statsNeedUpdate: needsUpdateFlag }));
+    set((s) => ({ records: s.records.filter(r => r.id !== id), cycleStats: newCycleStats, statsNeedUpdate: true }));
   },
 
-  clearRecords: () => set({ records: [] }),
+  clearRecords: () => set({ records: [], statsNeedUpdate: true }),
 
   setCustomAnalysis: (data) => set({ customAnalysis: data }),
   updateCustomAnalysisField: (field, value) => {
@@ -203,4 +222,9 @@ export const useRecordsStore = create<RecordsState>((set, get) => ({
 
   setVersion: (version) => set({ version }),
   setCycleStats: (stats, generatedAt) => set({ cycleStats: stats, cycleStatsGeneratedAt: generatedAt, statsNeedUpdate: false }),
+  setStats: ({ overview, monthly, results }) => {
+    const analysisResults: Record<string, AnalysisSeriesResult> = {};
+    for (const item of results) analysisResults[`${item.configKind}:${item.configId}`] = item;
+    set({ statOverview: overview, statMonthly: monthly, analysisResults, statsNeedUpdate: false });
+  },
 }));

@@ -1,4 +1,5 @@
 import type { TradingRecord, YesNo, AggregateRule, TheoreticalDimension, FieldConfig, AnalysisResult } from '@/types';
+import { normalizeTheoreticalValue, resolveTheoreticalValue } from '@/utils/theoreticalRatio';
 
 // 盈亏比计算规则 (v3):
 // - 总盈利绝对值 > 总亏损绝对值: 盈亏比 = 总盈利绝对值 / 总亏损绝对值 (正)
@@ -47,19 +48,38 @@ export function calculateProfitRatio(
   return parseFloat(ratio.toFixed(2));
 }
 
-/** 获取某条记录在指定理论维度下的数值（未填则默认等于盈亏情况） */
-export function getTheoreticalRatio(record: TradingRecord, dimensionId: string): number {
-  return record.theoreticalProfitRatios[dimensionId] ?? record.profitPercent;
+/**
+ * 获取某条记录在指定理论维度下的数值。
+ * - 显式 NULL / 历史 ±999 → null（统计排除）
+ * - 未填写 → 回退到基准值/盈亏情况
+ */
+export function getTheoreticalRatio(
+  record: TradingRecord,
+  dimensionId: string,
+  dimensions: TheoreticalDimension[] = [],
+): number | null {
+  const dim = dimensions.find(d => d.id === dimensionId);
+  if (dim) return resolveTheoreticalValue(record, dim, dimensions);
+
+  const raw = normalizeTheoreticalValue(record.theoreticalProfitRatios?.[dimensionId]);
+  if (raw === null) return null;
+  if (raw === undefined) return record.profitPercent;
+  return raw;
 }
 
 /** 计算某理论维度下的系统盈亏比 */
-export function calculateTheoreticalSystemProfitRatio(records: TradingRecord[], dimensionId: string): number | 'N/A' {
+export function calculateTheoreticalSystemProfitRatio(
+  records: TradingRecord[],
+  dimensionId: string,
+  dimensions: TheoreticalDimension[] = [],
+): number | 'N/A' {
   const systemRecords = records.filter(r => r.patternFeatures.includes('系统'));
   let sumPositive = 0;
   let sumNegative = 0;
 
   for (const r of systemRecords) {
-    const val = getTheoreticalRatio(r, dimensionId);
+    const val = getTheoreticalRatio(r, dimensionId, dimensions);
+    if (val === null) continue;
     if (val > 0) sumPositive += val;
     else if (val < 0) sumNegative += val;
   }
@@ -86,7 +106,7 @@ export function calculateTheoreticalProfitRatios(
 ): Record<string, number | 'N/A'> {
   const result: Record<string, number | 'N/A'> = {};
   for (const d of dimensions) {
-    result[d.id] = calculateTheoreticalSystemProfitRatio(records, d.id);
+    result[d.id] = calculateTheoreticalSystemProfitRatio(records, d.id, dimensions);
   }
   return result;
 }
@@ -378,7 +398,8 @@ export function computeAnalysisResult(records: TradingRecord[], config: FieldCon
 
     if (isSystem) {
       for (const d of config.theoreticalDimensions) {
-        addV3(theoreticalAcc.get(d.id)!, getTheoreticalRatio(r, d.id));
+        const value = getTheoreticalRatio(r, d.id, config.theoreticalDimensions);
+        if (value !== null) addV3(theoreticalAcc.get(d.id)!, value);
       }
     }
   }

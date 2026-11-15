@@ -1,10 +1,18 @@
-// /api/datasets — 数据集 CRUD
-export async function onRequest(context) {
+// /api/datasets — 数据集读取与创建
+// 存储：DATA_STORE=d1 且绑定 D1SQL 时走 D1，否则回退 R2。
+//
+// 删除已从接口层移除：数据集删除属于高危操作，只允许在数据库里把
+// datasets.deleted_at 置位，再用 /api/admin/migrate-d1?stage=purge 分批清理。
+import { ensureSchemaReady } from '../_lib/d1/schema';
+import { listDatasets, createDataset } from '../_lib/d1/datasetRepository';
+import { shouldUseD1 } from '../_lib/d1/store';
+
+export async function onRequest(context: any) {
   const { request, env } = context;
 
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
 
@@ -12,124 +20,58 @@ export async function onRequest(context) {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const useD1 = shouldUseD1(env);
+
   try {
+    if (useD1) await ensureSchemaReady(env);
+
     if (request.method === 'GET') {
-      return await handleGet(env, corsHeaders);
-    }
-    if (request.method === 'POST') {
-      return await handlePost(request, env, corsHeaders);
-    }
-    if (request.method === 'DELETE') {
-      return await handleDelete(request, env, corsHeaders);
-    }
-    return json({ success: false, error: 'Method not allowed' }, 405, corsHeaders);
-  } catch (e) {
-    console.error('Error:', e);
-    return json({ success: false, error: 'Internal error', details: e.message }, 500, corsHeaders);
-  }
-}
-
-async function handleGet(env, corsHeaders) {
-  const DATASETS_KEY = 'trading-data/datasets.json';
-  try {
-    const object = await env.R2_BUCKET.get(DATASETS_KEY);
-    if (!object) {
-      return json({ success: true, datasets: [] }, 200, corsHeaders);
-    }
-    const text = await object.text();
-    const datasets = JSON.parse(text);
-    return json({ success: true, datasets }, 200, corsHeaders);
-  } catch (e) {
-    console.error('获取数据集列表失败', e);
-    return json({ success: false, error: 'Failed to get datasets', details: e.message }, 500, corsHeaders);
-  }
-}
-
-async function handlePost(request, env, corsHeaders) {
-  const DATASETS_KEY = 'trading-data/datasets.json';
-  try {
-    const body = await request.json();
-    const { name } = body;
-    if (!name || !name.trim()) {
-      return json({ success: false, error: 'name is required' }, 400, corsHeaders);
-    }
-
-    const dataset = {
-      id: crypto.randomUUID(),
-      name: name.trim(),
-      createdAt: new Date().toISOString(),
-    };
-
-    // 读取现有列表追加
-    let datasets = [];
-    const object = await env.R2_BUCKET.get(DATASETS_KEY);
-    if (object) {
-      const text = await object.text();
-      datasets = JSON.parse(text);
-    }
-    datasets.push(dataset);
-
-    await env.R2_BUCKET.put(DATASETS_KEY, JSON.stringify(datasets), {
-      httpMetadata: { contentType: 'application/json' },
-    });
-
-    return json({ success: true, dataset }, 200, corsHeaders);
-  } catch (e) {
-    console.error('创建数据集失败', e);
-    return json({ success: false, error: 'Failed to create dataset', details: e.message }, 500, corsHeaders);
-  }
-}
-
-async function handleDelete(request, env, corsHeaders) {
-  const DATASETS_KEY = 'trading-data/datasets.json';
-  try {
-    const url = new URL(request.url);
-    const id = url.searchParams.get('id');
-    if (!id) {
-      return json({ success: false, error: 'id is required' }, 400, corsHeaders);
-    }
-
-    // 从列表中移除
-    const object = await env.R2_BUCKET.get(DATASETS_KEY);
-    let datasets = [];
-    if (object) {
-      const text = await object.text();
-      datasets = JSON.parse(text);
-    }
-    const filtered = datasets.filter((d: any) => d.id !== id);
-    if (filtered.length === datasets.length) {
-      return json({ success: false, error: 'Dataset not found' }, 404, corsHeaders);
-    }
-
-    await env.R2_BUCKET.put(DATASETS_KEY, JSON.stringify(filtered), {
-      httpMetadata: { contentType: 'application/json' },
-    });
-
-    // 删除该数据集下的所有 R2 对象
-    // R2 没有"删除目录"API，需要列出前缀后逐个删除
-    const prefix = `trading-data/${id}/`;
-    let truncated = true;
-    let cursor: string | undefined;
-    while (truncated) {
-      const listOpts: any = { prefix, limit: 100 };
-      if (cursor) listOpts.cursor = cursor;
-      const listResult = await env.R2_BUCKET.list(listOpts);
-      const keys = listResult.objects.map((o: any) => o.key);
-      if (keys.length > 0) {
-        await Promise.all(keys.map((key: string) => env.R2_BUCKET.delete(key)));
+      if (useD1) {
+        return json({ success: true, datasets: await listDatasets(env.D1SQL), store: 'd1' }, 200, corsHeaders);
       }
-      truncated = listResult.truncated;
-      cursor = listResult.cursor;
+      const object = await env.R2_BUCKET.get('trading-data/datasets.json');
+      if (!object) return json({ success: true, datasets: [], store: 'r2' }, 200, corsHeaders);
+      return json({ success: true, datasets: JSON.parse(await object.text()), store: 'r2' }, 200, corsHeaders);
     }
 
-    return json({ success: true, message: 'Dataset deleted' }, 200, corsHeaders);
-  } catch (e) {
-    console.error('删除数据集失败', e);
-    return json({ success: false, error: 'Failed to delete dataset', details: e.message }, 500, corsHeaders);
+    if (request.method === 'POST') {
+      const body = await request.json();
+      const name = typeof body?.name === 'string' ? body.name.trim() : '';
+      if (!name) return json({ success: false, error: 'name is required' }, 400, corsHeaders);
+
+      if (useD1) {
+        return json({ success: true, dataset: await createDataset(env.D1SQL, name), store: 'd1' }, 200, corsHeaders);
+      }
+
+      // R2 回退：原先是「读数组 → push → 整份写回」，这里保持不变
+      const DATASETS_KEY = 'trading-data/datasets.json';
+      const dataset = { id: crypto.randomUUID(), name, createdAt: new Date().toISOString() };
+      let datasets: any[] = [];
+      const object = await env.R2_BUCKET.get(DATASETS_KEY);
+      if (object) datasets = JSON.parse(await object.text());
+      datasets.push(dataset);
+      await env.R2_BUCKET.put(DATASETS_KEY, JSON.stringify(datasets), {
+        httpMetadata: { contentType: 'application/json' },
+      });
+      return json({ success: true, dataset, store: 'r2' }, 200, corsHeaders);
+    }
+
+    if (request.method === 'DELETE') {
+      return json(
+        { success: false, error: '删除数据集已禁用：请在数据库中标记 deleted_at 后调用迁移端点的 purge 阶段' },
+        403,
+        corsHeaders,
+      );
+    }
+
+    return json({ success: false, error: 'Method not allowed' }, 405, corsHeaders);
+  } catch (e: any) {
+    console.error('Datasets API error:', e);
+    return json({ success: false, error: 'Failed to handle dataset', details: e.message }, 500, corsHeaders);
   }
 }
 
-function json(data, status = 200, headers = {}) {
+function json(data: any, status = 200, headers: any = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json', ...headers },

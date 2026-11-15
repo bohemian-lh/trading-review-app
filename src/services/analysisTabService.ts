@@ -1,12 +1,29 @@
-import type { TradingRecord, FieldConfig, ProfitSource, AnalysisTabFilter, AnalysisTabGroup } from '@/types';
+import type { TradingRecord, FieldConfig, ProfitSource, AnalysisTabFilter, AnalysisTabGroup, TheoreticalDimension } from '@/types';
+import { normalizeTheoreticalValue, resolveTheoreticalValue } from '@/utils/theoreticalRatio';
 import { extractMonth } from '@/utils/dateUtils';
 
 // ============ 信源取值 ============
 
-export function getSourceValue(record: TradingRecord, source: ProfitSource): number {
+/**
+ * 解析记录在指定信源下的值。
+ * - 显式 NULL / 历史 ±999 → null（该记录不纳入统计）
+ * - 未填写 → 回退到基准值/盈亏情况
+ */
+export function getSourceValue(
+  record: TradingRecord,
+  source: ProfitSource,
+  dimensions: TheoreticalDimension[] = [],
+): number | null {
   if (source === 'profitPercent') return record.profitPercent;
+
   const dimensionId = source.slice(4);
-  return record.theoreticalProfitRatios[dimensionId] ?? record.profitPercent;
+  const dim = dimensions.find(d => d.id === dimensionId);
+  if (dim) return resolveTheoreticalValue(record, dim, dimensions);
+
+  const raw = normalizeTheoreticalValue(record.theoreticalProfitRatios?.[dimensionId]);
+  if (raw === null) return null;
+  if (raw === undefined) return record.profitPercent;
+  return raw;
 }
 
 // ============ 数据范围筛选 ============
@@ -36,14 +53,20 @@ export interface MergedSeriesItem {
  * 信源按组独立解析；同一记录命中多组时以先出现组为准。
  * 结果按开单时间升序返回。
  */
-export function mergeGroupRecords(records: TradingRecord[], groups: AnalysisTabGroup[]): MergedSeriesItem[] {
+export function mergeGroupRecords(
+  records: TradingRecord[],
+  groups: AnalysisTabGroup[],
+  dimensions: TheoreticalDimension[] = [],
+): MergedSeriesItem[] {
   const map = new Map<string, MergedSeriesItem>();
   for (const g of groups) {
     if (g.mode === 'exclude') continue;
     for (const r of filterRecords(records, g.filter)) {
-      if (!map.has(r.id)) {
-        map.set(r.id, { record: r, value: getSourceValue(r, g.source) });
-      }
+      if (map.has(r.id)) continue;
+      const value = getSourceValue(r, g.source, dimensions);
+      // NULL 表示该维度下此记录失效，直接跳过；后续组若有效仍可纳入
+      if (value === null) continue;
+      map.set(r.id, { record: r, value });
     }
   }
   for (const g of groups) {
@@ -88,8 +111,15 @@ function computeProfitRatioFromValues(values: number[]): number | 'N/A' {
   return ratioFromSums(sumPositive, sumNegative);
 }
 
-export function computeProfitRatio(records: TradingRecord[], source: ProfitSource): number | 'N/A' {
-  return computeProfitRatioFromValues(records.map(r => getSourceValue(r, source)));
+export function computeProfitRatio(
+  records: TradingRecord[],
+  source: ProfitSource,
+  dimensions: TheoreticalDimension[] = [],
+): number | 'N/A' {
+  const values = records
+    .map(r => getSourceValue(r, source, dimensions))
+    .filter((v): v is number => v !== null);
+  return computeProfitRatioFromValues(values);
 }
 
 // ============ 排序（按开单时间升序） ============
@@ -105,14 +135,21 @@ export interface Point {
   value: number | null;
 }
 
-export function computeCumulativeProfit(records: TradingRecord[], source: ProfitSource): Point[] {
+export function computeCumulativeProfit(
+  records: TradingRecord[],
+  source: ProfitSource,
+  dimensions: TheoreticalDimension[] = [],
+): Point[] {
   const sorted = sortByOpenDate(records);
+  const points: Point[] = [];
   let cum = 0;
-  return sorted.map((r, i) => {
-    const v = getSourceValue(r, source);
-    if (v !== null) cum += v;
-    return { index: i + 1, value: parseFloat(cum.toFixed(2)) };
-  });
+  for (const r of sorted) {
+    const v = getSourceValue(r, source, dimensions);
+    if (v === null) continue; // NULL 记录不纳入统计，序号按有效记录重排
+    cum += v;
+    points.push({ index: points.length + 1, value: parseFloat(cum.toFixed(2)) });
+  }
+  return points;
 }
 
 // ============ 图2：盈亏比周期图（30 笔/周期） ============
@@ -122,12 +159,21 @@ export interface PeriodPoint {
   value: number | null;
 }
 
-export function computeCycleProfitRatios(records: TradingRecord[], source: ProfitSource, cycleSize = 30): PeriodPoint[] {
+export function computeCycleProfitRatios(
+  records: TradingRecord[],
+  source: ProfitSource,
+  cycleSize = 30,
+  dimensions: TheoreticalDimension[] = [],
+): PeriodPoint[] {
   const sorted = sortByOpenDate(records);
+  // 先剔除 NULL 记录，再按有效记录切周期
+  const values = sorted
+    .map(r => getSourceValue(r, source, dimensions))
+    .filter((v): v is number => v !== null);
   const result: PeriodPoint[] = [];
-  for (let i = 0; i < sorted.length; i += cycleSize) {
-    const chunk = sorted.slice(i, i + cycleSize);
-    const ratio = computeProfitRatio(chunk, source);
+  for (let i = 0; i < values.length; i += cycleSize) {
+    const chunk = values.slice(i, i + cycleSize);
+    const ratio = computeProfitRatioFromValues(chunk);
     result.push({ period: `第${Math.floor(i / cycleSize) + 1}周期`, value: ratio === 'N/A' ? null : ratio });
   }
   return result;
@@ -135,19 +181,24 @@ export function computeCycleProfitRatios(records: TradingRecord[], source: Profi
 
 // ============ 图3：盈亏比成长曲线（逐笔累计） ============
 
-export function computeGrowthProfitRatios(records: TradingRecord[], source: ProfitSource): Point[] {
+export function computeGrowthProfitRatios(
+  records: TradingRecord[],
+  source: ProfitSource,
+  dimensions: TheoreticalDimension[] = [],
+): Point[] {
   const sorted = sortByOpenDate(records);
+  const points: Point[] = [];
   let sumPositive = 0;
   let sumNegative = 0;
-  return sorted.map((r, i) => {
-    const v = getSourceValue(r, source);
-    if (v !== null && v !== undefined) {
-      if (v > 0) sumPositive += v;
-      else if (v < 0) sumNegative += v;
-    }
+  for (const r of sorted) {
+    const v = getSourceValue(r, source, dimensions);
+    if (v === null) continue;
+    if (v > 0) sumPositive += v;
+    else if (v < 0) sumNegative += v;
     const ratio = ratioFromSums(sumPositive, sumNegative);
-    return { index: i + 1, value: ratio === 'N/A' ? null : ratio };
-  });
+    points.push({ index: points.length + 1, value: ratio === 'N/A' ? null : ratio });
+  }
+  return points;
 }
 
 // ============ 值域版计算（基于合并后的 { record, value } 序列，已按开单时间排序） ============

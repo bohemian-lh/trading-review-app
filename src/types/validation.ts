@@ -71,7 +71,8 @@ export const TradingRecordSchema = z.object({
   hasMonthlyStats: z.boolean().default(false),
   cycleId: z.string().optional(),
   remark: z.string().max(1000, '备注不能超过1000个字符').default(''),
-  theoreticalProfitRatios: z.record(z.string(), z.number()).default({}),
+  theoreticalProfitRatios: z.record(z.string(), z.number().nullable()).default({}),
+  theoreticalProfitDeltas: z.record(z.string(), z.number().nullable()).optional(),
 }) satisfies z.ZodType<TradingRecord>;
 
 export const TradingRecordArraySchema = z.array(TradingRecordSchema);

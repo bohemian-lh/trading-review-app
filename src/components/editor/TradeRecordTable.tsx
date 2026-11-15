@@ -4,7 +4,7 @@ import { Button, Select, ZoomControls } from '@/components/common';
 import { Pagination } from '@/components/common/Pagination';
 import { useTableZoom } from '@/hooks/useTableZoom';
 import { useRecordsStore } from '@/stores';
-import { getLinkedDimensionParts } from '@/utils/theoreticalRatio';
+import { getLinkedDimensionParts, isExcludedTheoreticalValue } from '@/utils/theoreticalRatio';
 import type { TradingRecord } from '@/types';
 
 interface Filters {
@@ -495,14 +495,20 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                           const { baseValue, delta } = getLinkedDimensionParts(record, dim, theoreticalDimensions);
                           return (
                             <td key={dim.id} className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
-                              {baseValue}% {delta >= 0 ? '+' : '-'} {Math.abs(delta)}%
+                              {baseValue === null || delta === null
+                                ? <span className="text-gray-400">N/A</span>
+                                : `${baseValue}% ${delta >= 0 ? '+' : '-'} ${Math.abs(delta)}%`}
                             </td>
                           );
                         }
-                        const val = record.theoreticalProfitRatios[dim.id];
+                        const val = record.theoreticalProfitRatios?.[dim.id];
                         return (
                           <td key={dim.id} className="px-4 py-3 text-sm text-gray-900">
-                            {val !== undefined ? `${val}%` : <span className="text-gray-400">默认</span>}
+                            {val === undefined
+                              ? <span className="text-gray-400">默认</span>
+                              : (val === null || isExcludedTheoreticalValue(val))
+                                ? <span className="text-gray-400">N/A</span>
+                                : `${val}%`}
                           </td>
                         );
                       })}

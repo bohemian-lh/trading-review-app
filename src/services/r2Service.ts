@@ -1,7 +1,25 @@
-import type { StorageFile, UploadProgress, TradingRecord, CustomAnalysisData, CustomMonthlyData, CycleStats, CycleStatType, FieldConfig, Dataset, AnalysisTab, StressSeries } from '@/types';
+import type { StorageFile, UploadProgress, TradingRecord, CustomAnalysisData, CustomMonthlyData, MonthlyAnalysis, CycleStats, CycleStatType, FieldConfig, Dataset, AnalysisTab, StressSeries } from '@/types';
 import type { RecordsResponse } from '@/types/validation';
 
 const API_BASE_URL = '';
+
+/**
+ * 记录保存载荷（增量）
+ * 只有真正变化的记录 / 月份 / 周期才会上行，服务端按主键 upsert + 删除差集，
+ * 不再整份响应式覆盖全部记录。
+ */
+export interface RecordsSavePayload {
+  baseVersion: number;
+  upserts?: TradingRecord[];
+  deletes?: string[];
+  customAnalysis?: CustomAnalysisData;
+  monthlyUpserts?: MonthlyAnalysis[];
+  monthlyDeletes?: string[];
+  monthlyUseCustom?: boolean;
+  cycleStatsUpserts?: CycleStats[];
+  cycleStatsDeletes?: { statType: CycleStatType; cycleId: string }[];
+  cycleStatsGeneratedAt?: number | null;
+}
 
 interface FilesResponse {
   success: boolean;
@@ -125,31 +143,30 @@ class R2StorageService {
     }
   }
 
-  async deleteDataset(id: string): Promise<{
-    success: boolean; message: string;
-  }> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/datasets?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: this.getHeaders(),
-      });
-      return await this.handleResponse(response);
-    } catch (error) {
-      console.error('Delete dataset failed:', error);
-      return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  }
+  // 删除数据集已从前端移除：高危操作只能在数据库里标记 deleted_at 后由管理端点分批清理
 
   // ============ 记录读写（带 datasetId） ============
 
-  async getRecords(datasetId: string): Promise<{
+  /**
+   * 键集分页读取记录。
+   * 首页（不传 cursor）同时返回 version / total 与派生数据（自定义分析、月度、周期统计）。
+   */
+  async getRecords(datasetId: string, cursor?: string | null, limit = 20): Promise<{
     success: boolean; message: string;
-    records?: TradingRecord[]; version?: number; conflict?: boolean;
+    records?: TradingRecord[]; version?: number; total?: number; nextCursor?: string | null;
+    customAnalysis?: CustomAnalysisData; customMonthly?: CustomMonthlyData;
+    cycleStats?: Record<CycleStatType, CycleStats[]>; cycleStatsGeneratedAt?: number | null;
+    conflict?: boolean;
   }> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/records?dataset=${encodeURIComponent(datasetId)}`, { method: 'GET', headers: this.getHeaders() });
+      const params = new URLSearchParams({ dataset: datasetId, limit: String(limit) });
+      if (cursor) params.set('cursor', cursor);
+      const response = await fetch(`${API_BASE_URL}/api/records?${params.toString()}`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
       const data = await this.handleResponse<RecordsResponse>(response);
-      return data;
+      return data as any;
     } catch (error) {
       console.error('Get records failed:', error);
       return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
@@ -158,12 +175,7 @@ class R2StorageService {
 
   async saveRecords(
     datasetId: string,
-    records: TradingRecord[],
-    version?: number,
-    customAnalysis?: CustomAnalysisData,
-    customMonthly?: CustomMonthlyData,
-    cycleStats?: Record<CycleStatType, CycleStats[]>,
-    cycleStatsGeneratedAt?: number | null,
+    payload: RecordsSavePayload,
     keepalive = false,
   ): Promise<{
     success: boolean; message: string; version?: number; conflict?: boolean;
@@ -175,7 +187,7 @@ class R2StorageService {
       const response = await fetch(`${API_BASE_URL}/api/records?dataset=${encodeURIComponent(datasetId)}`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ records, version, customAnalysis, customMonthly, cycleStats, cycleStatsGeneratedAt }),
+        body: JSON.stringify(payload),
         keepalive,
       });
       const data = await this.handleResponse<RecordsResponse>(response);
@@ -187,7 +199,7 @@ class R2StorageService {
   }
 
   async getConfig(datasetId: string): Promise<{
-    success: boolean; config?: FieldConfig | null; message?: string;
+    success: boolean; config?: FieldConfig | null; version?: number; message?: string;
   }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/config?dataset=${encodeURIComponent(datasetId)}`, { method: 'GET', headers: this.getHeaders() });
@@ -198,14 +210,14 @@ class R2StorageService {
     }
   }
 
-  async saveConfig(datasetId: string, config: FieldConfig): Promise<{
-    success: boolean; message: string;
+  async saveConfig(datasetId: string, config: FieldConfig, baseVersion?: number | null): Promise<{
+    success: boolean; message: string; version?: number; conflict?: boolean; config?: FieldConfig | null;
   }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/config?dataset=${encodeURIComponent(datasetId)}`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ config, baseVersion: baseVersion ?? undefined }),
       });
       return await this.handleResponse(response);
     } catch (error) {
@@ -217,7 +229,7 @@ class R2StorageService {
   // ============ 分析页签管理（dataset 级） ============
 
   async getTabs(datasetId: string): Promise<{
-    success: boolean; tabs?: AnalysisTab[]; message?: string;
+    success: boolean; tabs?: AnalysisTab[]; version?: number; message?: string;
   }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/tabs?dataset=${encodeURIComponent(datasetId)}`, { method: 'GET', headers: this.getHeaders() });
@@ -228,14 +240,14 @@ class R2StorageService {
     }
   }
 
-  async saveTabs(datasetId: string, tabs: AnalysisTab[]): Promise<{
-    success: boolean; message: string;
+  async saveTabs(datasetId: string, tabs: AnalysisTab[], baseVersion?: number | null): Promise<{
+    success: boolean; message: string; version?: number; conflict?: boolean; tabs?: AnalysisTab[];
   }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/tabs?dataset=${encodeURIComponent(datasetId)}`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ tabs }),
+        body: JSON.stringify({ tabs, baseVersion: baseVersion ?? undefined }),
       });
       return await this.handleResponse(response);
     } catch (error) {
@@ -247,7 +259,7 @@ class R2StorageService {
   // ============ 压测对比系列管理（dataset 级） ============
 
   async getStressSeries(datasetId: string): Promise<{
-    success: boolean; series?: StressSeries[]; message?: string;
+    success: boolean; series?: StressSeries[]; version?: number; message?: string;
   }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/stress-series?dataset=${encodeURIComponent(datasetId)}`, { method: 'GET', headers: this.getHeaders() });
@@ -258,14 +270,14 @@ class R2StorageService {
     }
   }
 
-  async saveStressSeries(datasetId: string, series: StressSeries[]): Promise<{
-    success: boolean; message: string;
+  async saveStressSeries(datasetId: string, series: StressSeries[], baseVersion?: number | null): Promise<{
+    success: boolean; message: string; version?: number; conflict?: boolean; series?: StressSeries[];
   }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/stress-series?dataset=${encodeURIComponent(datasetId)}`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ series }),
+        body: JSON.stringify({ series, baseVersion: baseVersion ?? undefined }),
       });
       return await this.handleResponse(response);
     } catch (error) {

@@ -1,8 +1,17 @@
 // /api/journals?dataset=<id>
-// GET  → { success, journals, version }
+// GET  → { success, journals, version, store }
 // POST → 支持增量 ops（推荐）与旧版全量覆盖
 //   { baseVersion, ops: [{ op: 'upsert', journal }, { op: 'delete', id }] }
 //   { journals: [...] }
+// 存储：DATA_STORE=d1 且绑定 D1SQL 时走 D1，否则回退 R2。
+import { ensureSchemaReady } from '../_lib/d1/schema';
+import {
+  getJournals,
+  applyJournalOps,
+  replaceAllJournals,
+} from '../_lib/d1/journalRepository';
+import { shouldUseD1 } from '../_lib/d1/store';
+
 export async function onRequest(context: any) {
   const { request, env } = context;
   const url = new URL(request.url);
@@ -22,49 +31,93 @@ export async function onRequest(context: any) {
     return json({ success: false, error: 'dataset parameter is required' }, 400, corsHeaders);
   }
 
-  const key = `trading-journals/${datasetId}.json`;
-
   try {
-    if (request.method === 'GET') {
-      const obj = await env.R2_BUCKET.get(key);
-      if (!obj) return json({ success: true, journals: [], version: 0 }, 200, corsHeaders);
-      const stored = parseStored(await obj.text());
-      return json({ success: true, journals: stored.journals, version: stored.version }, 200, corsHeaders);
+    if (shouldUseD1(env)) {
+      await ensureSchemaReady(env);
+      return await handleD1(env.D1SQL, request, datasetId, corsHeaders);
     }
-
-    if (request.method === 'POST') {
-      const body = await request.json();
-      const obj = await env.R2_BUCKET.get(key);
-      const stored = obj ? parseStored(await obj.text()) : { journals: [], version: 0 };
-      const nextVersion = stored.version + 1;
-
-      if (Array.isArray(body?.ops)) {
-        if (typeof body.baseVersion === 'number' && body.baseVersion !== stored.version) {
-          return json(
-            { success: false, conflict: true, version: stored.version, journals: stored.journals },
-            409,
-            corsHeaders,
-          );
-        }
-        const journals = applyOps(stored.journals, body.ops);
-        await putJournals(env, key, journals, nextVersion);
-        return json({ success: true, version: nextVersion }, 200, corsHeaders);
-      }
-
-      // 旧版全量覆盖，保留兼容
-      if (Array.isArray(body?.journals)) {
-        await putJournals(env, key, body.journals, nextVersion);
-        return json({ success: true, version: nextVersion }, 200, corsHeaders);
-      }
-
-      return json({ success: false, error: 'ops or journals array is required' }, 400, corsHeaders);
-    }
-
-    return json({ success: false, error: 'Method not allowed' }, 405, corsHeaders);
+    return await handleR2(env, request, datasetId, corsHeaders);
   } catch (e: any) {
     console.error('Journals API error:', e);
     return json({ success: false, error: e.message || 'Internal error' }, 500, corsHeaders);
   }
+}
+
+// ─── D1 ────────────────────────────────────────────────────────────
+async function handleD1(db: any, request: any, datasetId: string, corsHeaders: any) {
+  if (request.method === 'GET') {
+    const { journals, version } = await getJournals(db, datasetId);
+    return json({ success: true, journals, version, store: 'd1' }, 200, corsHeaders);
+  }
+
+  if (request.method === 'POST') {
+    const body = await request.json();
+
+    if (Array.isArray(body?.ops)) {
+      const baseVersion = typeof body.baseVersion === 'number' ? body.baseVersion : 0;
+      const result = await applyJournalOps(db, datasetId, baseVersion, body.ops);
+      if (!result.ok) {
+        return json(
+          { success: false, conflict: true, version: result.version, journals: result.journals, store: 'd1' },
+          409,
+          corsHeaders,
+        );
+      }
+      return json({ success: true, version: result.version, store: 'd1' }, 200, corsHeaders);
+    }
+
+    // 旧版全量覆盖，保留兼容
+    if (Array.isArray(body?.journals)) {
+      const version = await replaceAllJournals(db, datasetId, body.journals);
+      return json({ success: true, version, store: 'd1' }, 200, corsHeaders);
+    }
+
+    return json({ success: false, error: 'ops or journals array is required' }, 400, corsHeaders);
+  }
+
+  return json({ success: false, error: 'Method not allowed' }, 405, corsHeaders);
+}
+
+// ─── R2（回滚用）────────────────────────────────────────────────────
+async function handleR2(env: any, request: any, datasetId: string, corsHeaders: any) {
+  const key = `trading-journals/${datasetId}.json`;
+
+  if (request.method === 'GET') {
+    const obj = await env.R2_BUCKET.get(key);
+    if (!obj) return json({ success: true, journals: [], version: 0, store: 'r2' }, 200, corsHeaders);
+    const stored = parseStored(await obj.text());
+    return json({ success: true, journals: stored.journals, version: stored.version, store: 'r2' }, 200, corsHeaders);
+  }
+
+  if (request.method === 'POST') {
+    const body = await request.json();
+    const obj = await env.R2_BUCKET.get(key);
+    const stored = obj ? parseStored(await obj.text()) : { journals: [], version: 0 };
+    const nextVersion = stored.version + 1;
+
+    if (Array.isArray(body?.ops)) {
+      if (typeof body.baseVersion === 'number' && body.baseVersion !== stored.version) {
+        return json(
+          { success: false, conflict: true, version: stored.version, journals: stored.journals, store: 'r2' },
+          409,
+          corsHeaders,
+        );
+      }
+      const journals = applyOps(stored.journals, body.ops);
+      await putJournals(env, key, journals, nextVersion);
+      return json({ success: true, version: nextVersion, store: 'r2' }, 200, corsHeaders);
+    }
+
+    // 旧版全量覆盖，保留兼容
+    if (Array.isArray(body?.journals)) {
+      await putJournals(env, key, body.journals, nextVersion);
+      return json({ success: true, version: nextVersion, store: 'r2' }, 200, corsHeaders);
+    }
+
+    return json({ success: false, error: 'ops or journals array is required' }, 400, corsHeaders);
+  }
+
+  return json({ success: false, error: 'Method not allowed' }, 405, corsHeaders);
 }
 
 function parseStored(text: string): { journals: any[]; version: number } {

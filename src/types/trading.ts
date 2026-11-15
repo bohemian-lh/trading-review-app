@@ -22,10 +22,13 @@ export interface TradingRecord {
   cycleId?: string;
   // 备注
   remark: string;
-  // 理论盈亏比（key = 维度 id，value = 该维度最终值；基准未填时语义上等于盈亏情况）
-  theoreticalProfitRatios: Record<string, number>;
+  // 理论盈亏比（key = 维度 id，value = 该维度最终值）
+  // - 键不存在：未填写，语义上回退到基准/盈亏情况
+  // - null：显式 NULL（未知/混沌），该维度作为信源时本记录不纳入统计
+  theoreticalProfitRatios: Record<string, number | null>;
   // 关联盈亏率的变化率（key = 关联维度 id）；最终值 = 基准实际值 + 变化率
-  theoreticalProfitDeltas?: Record<string, number>;
+  // null 表示该关联维度同样视为 NULL（不纳入统计）
+  theoreticalProfitDeltas?: Record<string, number | null>;
 }
 
 // 合法值由 fieldConfig 动态控制，类型层面不做约束
@@ -55,8 +58,8 @@ export interface TradingRecordInput {
   hasMonthlyStats?: boolean;
   cycleId?: string;
   remark?: string;
-  theoreticalProfitRatios?: Record<string, number>;
-  theoreticalProfitDeltas?: Record<string, number>;
+  theoreticalProfitRatios?: Record<string, number | null>;
+  theoreticalProfitDeltas?: Record<string, number | null>;
 }
 
 // ============ 数据集 ============

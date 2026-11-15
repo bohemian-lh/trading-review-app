@@ -1,12 +1,259 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { r2StorageService } from '@/services/r2Service';
+import type { RecordsSavePayload } from '@/services/r2Service';
 import { useRecordsStore, migrateRecord } from '@/stores/recordsStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useAnalysisTabStore } from '@/stores/analysisTabStore';
 import { useStressTestStore } from '@/stores/stressTestStore';
-import { DEFAULT_FIELD_CONFIG, migrateFieldConfig, migrateAnalysisTabGroups, type AnalysisTab, type StressSeries } from '@/types';
+import {
+  DEFAULT_FIELD_CONFIG,
+  migrateFieldConfig,
+  migrateAnalysisTabGroups,
+  type AnalysisTab,
+  type StressSeries,
+  type MonthlyAnalysis,
+  type CycleStats,
+  type TradingRecord,
+} from '@/types';
 import { generateCycleStats } from '@/services/cycleStatsService';
+import { fetchStats, recomputeStats } from '@/services/statsService';
+import {
+  recordsOutboxGet,
+  recordsOutboxMerge,
+  recordsOutboxClear,
+  recordsOutboxReset,
+  entryToPayload,
+  cycleEntryKey,
+} from '@/services/recordsOutbox';
+import type { RecordsOutboxEntry } from '@/services/recordsOutbox';
+
+// ─── 增量保存基线 ──────────────────────────────────────────────────
+// 记录编辑只上行真正变化的条目：以「上次成功落盘的内容」为基线做差集，
+// 避免每次保存都序列化并上传全部记录。
+interface RecordsBaseline {
+  records: Map<string, string>;
+  customAnalysis: string;
+  monthly: Map<string, string>;
+  monthlyUseCustom: boolean;
+  cycleStats: Map<string, string>;
+  cycleStatsGeneratedAt: number | null;
+}
+
+let recordsBaseline: RecordsBaseline | null = null;
+
+function cycleKey(statType: string, cycleId: string): string {
+  return `${statType}::${cycleId}`;
+}
+
+function snapshotBaseline(state: any): RecordsBaseline {
+  const records = new Map<string, string>();
+  for (const record of state.records ?? []) records.set(record.id, JSON.stringify(record));
+
+  const monthly = new Map<string, string>();
+  for (const item of state.customMonthly?.data ?? []) monthly.set(item.month, JSON.stringify(item));
+
+  const cycleStats = new Map<string, string>();
+  for (const [statType, list] of Object.entries(state.cycleStats ?? {})) {
+    for (const item of (list as CycleStats[]) ?? []) {
+      cycleStats.set(cycleKey((item as any).statType ?? statType, item.cycleId), JSON.stringify(item));
+    }
+  }
+
+  return {
+    records,
+    customAnalysis: JSON.stringify(state.customAnalysis ?? null),
+    monthly,
+    monthlyUseCustom: !!state.customMonthly?.useCustom,
+    cycleStats,
+    cycleStatsGeneratedAt: state.cycleStatsGeneratedAt ?? null,
+  };
+}
+
+/** 计算相对基线的增量；无任何变化时返回 null（不发起请求） */
+function buildRecordsPayload(state: any): RecordsSavePayload | null {
+  if (!recordsBaseline) recordsBaseline = snapshotBaseline(state);
+  const base = recordsBaseline;
+
+  const upserts: TradingRecord[] = [];
+  const seenRecords = new Set<string>();
+  for (const record of state.records ?? []) {
+    seenRecords.add(record.id);
+    if (base.records.get(record.id) !== JSON.stringify(record)) upserts.push(record);
+  }
+  const deletes = [...base.records.keys()].filter(id => !seenRecords.has(id));
+
+  const monthlyUpserts: MonthlyAnalysis[] = [];
+  const seenMonths = new Set<string>();
+  for (const item of state.customMonthly?.data ?? []) {
+    seenMonths.add(item.month);
+    if (base.monthly.get(item.month) !== JSON.stringify(item)) monthlyUpserts.push(item);
+  }
+  const monthlyDeletes = [...base.monthly.keys()].filter(month => !seenMonths.has(month));
+
+  const cycleStatsUpserts: CycleStats[] = [];
+  const seenCycles = new Set<string>();
+  for (const [statType, list] of Object.entries(state.cycleStats ?? {})) {
+    for (const item of (list as CycleStats[]) ?? []) {
+      const type = (item as any).statType ?? statType;
+      const key = cycleKey(type, item.cycleId);
+      seenCycles.add(key);
+      const normalized = { ...item, statType: type } as CycleStats;
+      if (base.cycleStats.get(key) !== JSON.stringify(normalized)) cycleStatsUpserts.push(normalized);
+    }
+  }
+  const cycleStatsDeletes = [...base.cycleStats.keys()]
+    .filter(key => !seenCycles.has(key))
+    .map(key => {
+      const index = key.indexOf('::');
+      return { statType: key.slice(0, index), cycleId: key.slice(index + 2) };
+    });
+
+  const customAnalysisChanged = JSON.stringify(state.customAnalysis ?? null) !== base.customAnalysis;
+  const monthlyUseCustom = !!state.customMonthly?.useCustom;
+  const monthlyUseChanged = monthlyUseCustom !== base.monthlyUseCustom;
+  const generatedAtChanged = (state.cycleStatsGeneratedAt ?? null) !== base.cycleStatsGeneratedAt;
+
+  const hasChanges =
+    upserts.length > 0 ||
+    deletes.length > 0 ||
+    monthlyUpserts.length > 0 ||
+    monthlyDeletes.length > 0 ||
+    cycleStatsUpserts.length > 0 ||
+    cycleStatsDeletes.length > 0 ||
+    customAnalysisChanged ||
+    monthlyUseChanged ||
+    generatedAtChanged;
+
+  if (!hasChanges) return null;
+
+  const payload: RecordsSavePayload = { baseVersion: state.version ?? 0 };
+  if (upserts.length > 0) payload.upserts = upserts;
+  if (deletes.length > 0) payload.deletes = deletes;
+  if (customAnalysisChanged) payload.customAnalysis = state.customAnalysis;
+  if (monthlyUpserts.length > 0) payload.monthlyUpserts = monthlyUpserts;
+  if (monthlyDeletes.length > 0) payload.monthlyDeletes = monthlyDeletes;
+  if (monthlyUseChanged) payload.monthlyUseCustom = monthlyUseCustom;
+  if (cycleStatsUpserts.length > 0) payload.cycleStatsUpserts = cycleStatsUpserts;
+  if (cycleStatsDeletes.length > 0) payload.cycleStatsDeletes = cycleStatsDeletes;
+  if (generatedAtChanged) payload.cycleStatsGeneratedAt = state.cycleStatsGeneratedAt ?? null;
+  return payload;
+}
+
+/** 落盘成功后刷新基线，避免同一批变更被重复提交 */
+function commitBaseline(): void {
+  recordsBaseline = snapshotBaseline(useRecordsStore.getState());
+}
+
+/**
+ * 只把「本次实际提交的内容」合并进基线。
+ * 保存过程中用户可能又改了别的记录，那些改动不在本次 payload 里，
+ * 必须保持脏状态留给下一轮，否则会被误判为已落盘而丢失。
+ */
+function applyPayloadToBaseline(payload: RecordsSavePayload): void {
+  if (!recordsBaseline) return;
+  for (const record of payload.upserts ?? []) recordsBaseline.records.set(record.id, JSON.stringify(record));
+  for (const id of payload.deletes ?? []) recordsBaseline.records.delete(id);
+  if (payload.customAnalysis !== undefined) {
+    recordsBaseline.customAnalysis = JSON.stringify(payload.customAnalysis ?? null);
+  }
+  for (const item of payload.monthlyUpserts ?? []) recordsBaseline.monthly.set(item.month, JSON.stringify(item));
+  for (const month of payload.monthlyDeletes ?? []) recordsBaseline.monthly.delete(month);
+  if (payload.monthlyUseCustom !== undefined) recordsBaseline.monthlyUseCustom = payload.monthlyUseCustom;
+  for (const item of payload.cycleStatsUpserts ?? []) {
+    if (!item?.statType || !item?.cycleId) continue;
+    recordsBaseline.cycleStats.set(cycleKey(item.statType, item.cycleId), JSON.stringify(item));
+  }
+  for (const item of payload.cycleStatsDeletes ?? []) {
+    recordsBaseline.cycleStats.delete(cycleKey(item.statType, item.cycleId));
+  }
+  if (payload.cycleStatsGeneratedAt !== undefined) {
+    recordsBaseline.cycleStatsGeneratedAt = payload.cycleStatsGeneratedAt ?? null;
+  }
+}
+
+/** 批量导入等「已在别处落盘」的场景，调用它把基线对齐到当前状态 */
+export function markRecordsSynced(): void {
+  commitBaseline();
+  const datasetId = useDatasetStore.getState().currentDatasetId;
+  if (datasetId) void recordsOutboxReset(datasetId);
+}
+
+/** 把待发队列叠加到服务端快照上，用于刷新后恢复「已改但未确认」的数据 */
+function applyOutboxToLoadedState(loaded: any, entry: RecordsOutboxEntry): any {
+  const records = new Map<string, TradingRecord>();
+  for (const record of loaded.records ?? []) records.set(record.id, record);
+  for (const record of Object.values(entry.upserts)) records.set(record.id, record);
+  for (const id of Object.keys(entry.deletes)) records.delete(id);
+
+  const monthly = new Map<string, MonthlyAnalysis>();
+  for (const item of loaded.customMonthly?.data ?? []) monthly.set(item.month, item);
+  for (const item of Object.values(entry.monthlyUpserts)) monthly.set(item.month, item);
+  for (const month of Object.keys(entry.monthlyDeletes)) monthly.delete(month);
+
+  const cycles = new Map<string, CycleStats>();
+  for (const [statType, list] of Object.entries(loaded.cycleStats ?? {})) {
+    for (const item of (list as CycleStats[]) ?? []) {
+      cycles.set(cycleEntryKey((item as any).statType ?? statType, item.cycleId), item);
+    }
+  }
+  for (const [key, item] of Object.entries(entry.cycleStatsUpserts)) cycles.set(key, item as CycleStats);
+  for (const key of Object.keys(entry.cycleStatsDeletes)) cycles.delete(key);
+
+  const cycleStats: Record<string, CycleStats[]> = {};
+  for (const item of cycles.values()) {
+    const statType = (item as any).statType ?? '';
+    (cycleStats[statType] ||= []).push(item);
+  }
+
+  return {
+    records: [...records.values()],
+    customAnalysis: entry.customAnalysisSet ? entry.customAnalysis : loaded.customAnalysis,
+    customMonthly: {
+      useCustom: entry.monthlyUseCustom ?? loaded.customMonthly?.useCustom ?? false,
+      data: [...monthly.values()],
+    },
+    cycleStats,
+    cycleStatsGeneratedAt: entry.cycleStatsGeneratedAtSet
+      ? entry.cycleStatsGeneratedAt
+      : loaded.cycleStatsGeneratedAt,
+  };
+}
+
+async function persistRecords(keepalive = false, retried = false): Promise<void> {
+  const datasetId = useDatasetStore.getState().currentDatasetId;
+  if (!datasetId) return;
+
+  const delta = buildRecordsPayload(useRecordsStore.getState());
+  if (!delta) return;
+
+  // 写前日志：先把变更落盘到本地出站队列，再请求服务端
+  const entry = await recordsOutboxMerge(datasetId, delta);
+  const payload = entryToPayload(entry, useRecordsStore.getState().version ?? 0);
+
+  useUIStore.getState().setSaving(true);
+  try {
+    const result = await r2StorageService.saveRecords(datasetId, payload, keepalive);
+    if (result.success) {
+      useRecordsStore.getState().setVersion(result.version ?? null);
+      useUIStore.getState().setError(null);
+      // 只把本次提交的内容记为已落盘，保存期间的新改动留给下一轮
+      applyPayloadToBaseline(payload);
+      await recordsOutboxClear(datasetId, entry.opId);
+    } else if (result.conflict && typeof result.version === 'number' && !retried) {
+      // 版本被其它页面推进：用服务端返回的版本号把同一批待发变更重放一次，
+      // 不覆盖本地状态，避免把用户刚做的改动冲掉。
+      useRecordsStore.getState().setVersion(result.version);
+      await persistRecords(keepalive, true);
+    } else {
+      useUIStore.getState().setError(result.error || result.message || '保存失败');
+    }
+  } catch (e) {
+    useUIStore.getState().setError(e instanceof Error ? e.message : '保存失败，请检查网络连接');
+  } finally {
+    useUIStore.getState().setSaving(false);
+  }
+}
 
 /**
  * R2 数据同步 Hook
@@ -18,55 +265,30 @@ export function useStoreSync() {
   const customAnalysis = useRecordsStore(s => s.customAnalysis);
   const customMonthly = useRecordsStore(s => s.customMonthly);
   const cycleStats = useRecordsStore(s => s.cycleStats);
-  const version = useRecordsStore(s => s.version);
   const currentDatasetId = useDatasetStore(s => s.currentDatasetId);
 
   const isInitialized = useUIStore(s => s.isInitialized);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // 防抖保存
+  // 任意数据变化都排进同一条保存流水线：由基线差集决定是否真的发请求。
+  // 刻意不依赖 version：它在保存成功后会被写回，若纳入依赖会导致每次保存后再空跑一轮全量比对。
   useEffect(() => {
     if (!isInitialized) return; // 初始化完成前不触发自动保存
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      if (!currentDatasetId) return;
-      const state = useRecordsStore.getState();
-      if (state.records.length === 0 && !state.customAnalysis.useCustom) return;
+    scheduleSaveNow();
+  }, [records, customAnalysis, customMonthly, cycleStats, currentDatasetId, isInitialized]);
 
-      useUIStore.getState().setSaving(true);
-      try {
-        const result = await r2StorageService.saveRecords(
-          currentDatasetId,
-          state.records, state.version ?? undefined,
-          state.customAnalysis, state.customMonthly,
-          state.cycleStats, state.cycleStatsGeneratedAt
-        ) as any;
-        if (result.success) {
-          useRecordsStore.getState().setVersion(result.version ?? null);
-          useUIStore.getState().setError(null);
-        } else if (result.conflict) {
-          const migrated = (result.records || []).map(migrateRecord);
-          useRecordsStore.setState({
-            records: migrated,
-            customAnalysis: result.customAnalysis || { useCustom: false, data: {} as any },
-            customMonthly: result.customMonthly || { useCustom: false, data: [] },
-            cycleStats: result.cycleStats || {},
-            cycleStatsGeneratedAt: result.cycleStatsGeneratedAt || null,
-            version: result.version || null,
-          });
-          useUIStore.getState().setError('数据冲突，已加载最新数据，请重试操作');
-        } else {
-          const msg = result.error || result.message || '保存失败';
-          useUIStore.getState().setError(msg);
-        }
-      } catch (e) {
-        useUIStore.getState().setError(e instanceof Error ? e.message : '保存失败，请检查网络连接');
-      } finally {
-        useUIStore.getState().setSaving(false);
-      }
-    }, 1000);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [records, customAnalysis, customMonthly, cycleStats, version, currentDatasetId, isInitialized]);
+  // 全局兜底落盘：任意页面关页/切后台都尽量把待保存变更送出去（不局限于数据编辑页）
+  useEffect(() => {
+    const flush = () => { void flushScheduledSave(true); };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
 }
 
 /**
@@ -107,21 +329,66 @@ export async function switchDataset(datasetId: string): Promise<void> {
   useUIStore.getState().setLoading(false);
 }
 
-/**
- * 加载指定数据集的所有数据
- */
+// 记录按 200 条一页拉取（API 上限），逐页累积后交给 store：
+// 统计、压测、导出都基于这份全量数据在浏览器里计算，一个数据集一次会话只拉一遍。
+const RECORDS_PAGE_SIZE = 200;
+const MAX_PAGES = 5000;
+
+/** 配置 / 页签 / 压测系列各自的服务端版本，用于 CAS 保存 */
+const serverVersions = {
+  config: new Map<string, number>(),
+  tab: new Map<string, number>(),
+  stress: new Map<string, number>(),
+};
+
+async function fetchAllRecords(datasetId: string): Promise<{ first: any; records: TradingRecord[] }> {
+  const records: TradingRecord[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  let first: any = null;
+
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const result = await r2StorageService.getRecords(datasetId, cursor, RECORDS_PAGE_SIZE);
+    if (!first) first = result;
+    if (!result.success) break;
+
+    // 去重 + 终止保护：服务端若返回重复页，这里不会无限翻页
+    let added = 0;
+    for (const record of result.records ?? []) {
+      if (seen.has(record.id)) continue;
+      seen.add(record.id);
+      records.push(record);
+      added += 1;
+    }
+
+    const nextCursor = result.nextCursor ?? null;
+    if (!nextCursor || nextCursor === cursor || added === 0) break;
+    cursor = nextCursor;
+  }
+
+  return { first, records };
+}
+
 async function loadDatasetData(datasetId: string): Promise<void> {
   try {
-    // 四个请求互不依赖，并行发出，减少首屏/切换数据集的串行等待
-    const [result, configResult, tabsResult, stressResult] = await Promise.all([
-      r2StorageService.getRecords(datasetId),
+    // 记录分页拉取与配置/页签/压测系列/统计结果并行，减少首屏串行等待
+    const [recordPages, configResult, tabsResult, stressResult, statsSnapshot] = (await Promise.all([
+      fetchAllRecords(datasetId),
       r2StorageService.getConfig(datasetId),
       r2StorageService.getTabs(datasetId),
       r2StorageService.getStressSeries(datasetId),
-    ]) as any[];
+      fetchStats(datasetId),
+    ])) as any[];
+
+    const result = recordPages.first ?? { success: false };
     const fieldConfig = configResult.success && configResult.config
       ? migrateFieldConfig(configResult.config)
       : { ...DEFAULT_FIELD_CONFIG };
+
+    // 记下服务端版本，保存时用于 CAS
+    if (configResult.success) serverVersions.config.set(datasetId, configResult.version ?? 0);
+    if (tabsResult.success) serverVersions.tab.set(datasetId, tabsResult.version ?? 0);
+    if (stressResult.success) serverVersions.stress.set(datasetId, stressResult.version ?? 0);
 
     useAnalysisTabStore.getState().setTabs(
       tabsResult.success
@@ -136,26 +403,46 @@ async function loadDatasetData(datasetId: string): Promise<void> {
         : []
     );
 
-    if (result.success) {
-      const migrated = (result.records || []).map(migrateRecord);
-      useRecordsStore.setState({
-        records: migrated,
-        fieldConfig,
-        customAnalysis: result.customAnalysis || { useCustom: false, data: {} as any },
-        customMonthly: result.customMonthly || { useCustom: false, data: [] },
-        cycleStats: result.cycleStats || {},
-        cycleStatsGeneratedAt: result.cycleStatsGeneratedAt || null,
-        version: result.version || null,
-        statsNeedUpdate: false,
+    const loaded = result.success
+      ? {
+          records: (recordPages.records as TradingRecord[]).map(migrateRecord),
+          version: result.version || 0,
+          customAnalysis: result.customAnalysis || { useCustom: false, data: {} as any },
+          customMonthly: result.customMonthly || { useCustom: false, data: [] },
+          cycleStats: result.cycleStats || {},
+          cycleStatsGeneratedAt: result.cycleStatsGeneratedAt || null,
+        }
+      : {
+          records: [],
+          version: 0,
+          customAnalysis: { useCustom: false, data: {} as any },
+          customMonthly: { useCustom: false, data: [] },
+          cycleStats: {},
+          cycleStatsGeneratedAt: null,
+        };
+
+    // 基线 = 服务端真相；出站队列里未确认的改动叠加后仍保持「脏」，等下一轮提交
+    recordsBaseline = snapshotBaseline(loaded);
+
+    const pending = await recordsOutboxGet(datasetId);
+    const merged = pending ? applyOutboxToLoadedState(loaded, pending) : loaded;
+
+    // 预计算统计结果（D1）：读取即取数，缺失时由 useAnalysis 回退到浏览器计算
+    if (statsSnapshot) {
+      useRecordsStore.getState().setStats({
+        overview: statsSnapshot.overview ?? null,
+        monthly: statsSnapshot.monthly ?? [],
+        results: statsSnapshot.analysisResults ?? [],
       });
     } else {
-      useRecordsStore.setState({
-        records: [], version: null, fieldConfig: { ...DEFAULT_FIELD_CONFIG },
-        customAnalysis: { useCustom: false, data: {} as any },
-        customMonthly: { useCustom: false, data: [] },
-        cycleStats: {}, cycleStatsGeneratedAt: null, statsNeedUpdate: false,
-      });
+      useRecordsStore.getState().setStats({ overview: null, monthly: [], results: [] });
     }
+
+    // 记录状态最后写入：出站队列里有未确认改动时，统计结果必然已经过期
+    useRecordsStore.setState({ ...merged, fieldConfig, statsNeedUpdate: !!pending });
+
+    // 上次没送出去的改动，进入页面后立刻重放
+    if (pending) scheduleSaveNow(0);
   } catch (e) {
     useUIStore.getState().setError(e instanceof Error ? e.message : '切换数据集失败');
   }
@@ -169,12 +456,16 @@ export async function saveFieldConfigToR2(config: any): Promise<{ success: boole
   if (!datasetId) {
     return { success: false, error: '未选择数据集' };
   }
-  try {
-    await r2StorageService.saveConfig(datasetId, config);
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e.message || '保存失败' };
+
+  const baseVersion = serverVersions.config.get(datasetId) ?? null;
+  let result = await r2StorageService.saveConfig(datasetId, config, baseVersion);
+  if (result.conflict && typeof result.version === 'number') {
+    // 版本已被其它页面推进：用新版本号把同一份配置重放一次
+    result = await r2StorageService.saveConfig(datasetId, config, result.version);
   }
+  if (!result.success) return { success: false, error: result.message || '保存失败' };
+  if (typeof result.version === 'number') serverVersions.config.set(datasetId, result.version);
+  return { success: true };
 }
 
 /**
@@ -185,12 +476,15 @@ export async function saveTabsToR2(tabs: AnalysisTab[]): Promise<{ success: bool
   if (!datasetId) {
     return { success: false, error: '未选择数据集' };
   }
-  try {
-    await r2StorageService.saveTabs(datasetId, tabs);
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e.message || '保存失败' };
+
+  const baseVersion = serverVersions.tab.get(datasetId) ?? null;
+  let result = await r2StorageService.saveTabs(datasetId, tabs, baseVersion);
+  if (result.conflict && typeof result.version === 'number') {
+    result = await r2StorageService.saveTabs(datasetId, tabs, result.version);
   }
+  if (!result.success) return { success: false, error: result.message || '保存失败' };
+  if (typeof result.version === 'number') serverVersions.tab.set(datasetId, result.version);
+  return { success: true };
 }
 
 /**
@@ -201,53 +495,54 @@ export async function saveStressSeriesToR2(series: StressSeries[]): Promise<{ su
   if (!datasetId) {
     return { success: false, error: '未选择数据集' };
   }
-  try {
-    await r2StorageService.saveStressSeries(datasetId, series);
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e.message || '保存失败' };
+
+  const baseVersion = serverVersions.stress.get(datasetId) ?? null;
+  let result = await r2StorageService.saveStressSeries(datasetId, series, baseVersion);
+  if (result.conflict && typeof result.version === 'number') {
+    result = await r2StorageService.saveStressSeries(datasetId, series, result.version);
   }
+  if (!result.success) return { success: false, error: result.message || '保存失败' };
+  if (typeof result.version === 'number') serverVersions.stress.set(datasetId, result.version);
+  return { success: true };
 }
 
 /**
  * 立即保存（跳过防抖）
+ * 只提交相对上次落盘基线的差异；无变化时不发请求。
  */
 export async function saveNow(keepalive = false): Promise<void> {
-  const datasetId = useDatasetStore.getState().currentDatasetId;
-  if (!datasetId) return;
-  const state = useRecordsStore.getState();
+  await persistRecords(keepalive);
+}
 
-  useUIStore.getState().setSaving(true);
-  try {
-    const result = await r2StorageService.saveRecords(
-      datasetId,
-      state.records, state.version ?? undefined,
-      state.customAnalysis, state.customMonthly,
-      state.cycleStats, state.cycleStatsGeneratedAt,
-      keepalive,
-    ) as any;
-    if (result.success) {
-      useRecordsStore.getState().setVersion(result.version ?? null);
-      useUIStore.getState().setError(null);
-    } else if (result.conflict) {
-      const migrated = (result.records || []).map(migrateRecord);
-      useRecordsStore.setState({
-        records: migrated,
-        customAnalysis: result.customAnalysis || { useCustom: false, data: {} as any },
-        customMonthly: result.customMonthly || { useCustom: false, data: [] },
-        cycleStats: result.cycleStats || {},
-        cycleStatsGeneratedAt: result.cycleStatsGeneratedAt || null,
-        version: result.version || null,
-      });
-      useUIStore.getState().setError('数据冲突，已加载最新数据，请重试操作');
-    } else {
-      useUIStore.getState().setError(result.error || result.message || '保存失败');
-    }
-  } catch (e) {
-    useUIStore.getState().setError(e instanceof Error ? e.message : '保存失败');
-  } finally {
-    useUIStore.getState().setSaving(false);
+/**
+ * 重新计算统计数据（服务端 SQL）并刷新本地结果。
+ * 先落盘记录，保证服务端算的是最新数据；版本冲突（重算期间记录被改动）时保存后重试一次。
+ */
+export async function refreshStats(
+  options: { kinds?: string[]; ids?: string[] } = {},
+): Promise<{ ok: boolean; error?: string }> {
+  const datasetId = useDatasetStore.getState().currentDatasetId;
+  if (!datasetId) return { ok: false, error: '未选择数据集' };
+
+  await saveNow();
+  let result = await recomputeStats(datasetId, options);
+  if (!result.ok && !result.error) {
+    await saveNow();
+    result = await recomputeStats(datasetId, options);
   }
+  // 未启用 D1：统计回退到浏览器计算，周期统计仍然有效，不报错
+  if (!result.ok && result.unsupported) return { ok: true };
+  if (!result.ok) return { ok: false, error: result.error || '统计数据更新失败' };
+
+  const snapshot = await fetchStats(datasetId);
+  if (snapshot) {
+    useRecordsStore.getState().setStats({
+      overview: snapshot.overview,
+      monthly: snapshot.monthly,
+      results: snapshot.analysisResults,
+    });
+  }
+  return { ok: true };
 }
 
 /**

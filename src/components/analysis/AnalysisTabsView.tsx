@@ -1,16 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { useRecordsStore, useAnalysisTabStore, useDatasetStore } from '@/stores';
+import { useRecordsStore, useAnalysisTabStore } from '@/stores';
 import { useAnalysisResult } from '@/hooks/useAnalysis';
-import { saveTabsToR2 } from '@/hooks/useStoreSync';
+import { saveTabsToR2, refreshStats } from '@/hooks/useStoreSync';
 import { useChartConfig } from '@/hooks/useChartConfig';
-import { useOnDemandCompute } from '@/hooks/useOnDemandCompute';
 import type { AnalysisTab } from '@/types';
-import {
-  buildDimensions, getDimensionRecords, mergeGroupRecords,
-  computeCumulativeProfit, computeCycleProfitRatios, computeGrowthProfitRatios,
-  computeCumulativeProfitFromItems, computeCycleProfitRatiosFromItems, computeGrowthProfitRatiosFromItems,
-  type DimensionDef,
-} from '@/services/analysisTabService';
+import { buildDimensions, type DimensionDef } from '@/services/analysisTabService';
 import { SeriesLineChart } from './SeriesLineChart';
 import { CreateAnalysisTabModal } from './CreateAnalysisTabModal';
 
@@ -39,37 +33,35 @@ export const AnalysisTabsView: React.FC = () => {
   const records = useRecordsStore(s => s.records);
   const fieldConfig = useRecordsStore(s => s.fieldConfig);
   const analysis = useAnalysisResult();
+  const overview = useRecordsStore(s => s.statOverview);
+  const analysisResults = useRecordsStore(s => s.analysisResults);
+  const datasetVersion = useRecordsStore(s => s.version);
 
   const tabs = useAnalysisTabStore(s => s.tabs);
   const activeTabId = useAnalysisTabStore(s => s.activeTabId);
   const setActiveTabId = useAnalysisTabStore(s => s.setActiveTabId);
 
   const [showCreate, setShowCreate] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const dimensions = useMemo(() => buildDimensions(fieldConfig), [fieldConfig]);
   const activeTab = useMemo(() => tabs.find(t => t.id === activeTabId) ?? null, [tabs, activeTabId]);
   const isDefault = !activeTab;
-  const currentDatasetId = useDatasetStore(s => s.currentDatasetId);
   const tabSuffix = activeTab ? ` · ${activeTab.name}` : '';
 
-  // 自定义页签：结果快照 + 手动更新（不随 records 变化实时重算）
-  const tabKey = activeTab ? `${currentDatasetId}:tab:${activeTab.id}` : null;
-  const { result: tabResult, refresh: refreshTab, isStale: tabStale } = useOnDemandCompute(
-    tabKey,
-    [records],
-    () => {
-      const store = useAnalysisTabStore.getState();
-      const tab = store.tabs.find(t => t.id === store.activeTabId);
-      if (!tab) return null;
-      const merged = mergeGroupRecords(useRecordsStore.getState().records, tab.groups);
-      return {
-        cumulative: computeCumulativeProfitFromItems(merged).map(p => p.value),
-        cycle: computeCycleProfitRatiosFromItems(merged).map(p => p.value),
-        growth: computeGrowthProfitRatiosFromItems(merged).map(p => p.value),
-        count: merged.length,
-      };
-    },
-  );
+  // 配置化统计直接取结果表：一行 = 一个配置（默认维度 / 页签）
+  const activeRow = activeTab ? analysisResults[`tab:${activeTab.id}`] : null;
+  const tabStale = !!activeRow && typeof datasetVersion === 'number' && activeRow.sourceVersion < datasetVersion;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const result = await refreshStats();
+      if (!result.ok) window.alert(result.error || '统计数据更新失败');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // 每张图独立的维度选择（localStorage 持久化，默认全选）
   const dimensionKeys = useMemo(() => dimensions.map(d => d.key), [dimensions]);
@@ -85,30 +77,26 @@ export const AnalysisTabsView: React.FC = () => {
   const buildDefaultSeries = (selected: string[], kind: 'cumulative' | 'cycle' | 'growth') => dimensions
     .filter(d => selected.includes(d.key))
     .map(d => {
-      const recs = getDimensionRecords(records, d.key);
-      const points = kind === 'cumulative'
-        ? computeCumulativeProfit(recs, 'profitPercent')
-        : kind === 'cycle'
-          ? computeCycleProfitRatios(recs, 'profitPercent')
-          : computeGrowthProfitRatios(recs, 'profitPercent');
-      return { key: d.key, label: d.label, color: d.color, values: points.map(p => p.value) };
+      const row = analysisResults[`dimension:${d.key}`];
+      const values = kind === 'cumulative' ? row?.cumulative : kind === 'cycle' ? row?.cycle : row?.growth;
+      return { key: d.key, label: d.label, color: d.color, values: values ?? [] };
     });
 
   const cumulativeSeries = useMemo(() => (
     activeTab
-      ? [{ key: 'main', label: activeTab.name, color: '#0ea5e9', values: tabResult?.cumulative ?? [] }]
+      ? [{ key: 'main', label: activeTab.name, color: '#0ea5e9', values: activeRow?.cumulative ?? [] }]
       : buildDefaultSeries(cumulativeSelected, 'cumulative')
-  ), [activeTab, tabResult, cumulativeSelected, dimensions, records]);
+  ), [activeTab, activeRow, cumulativeSelected, dimensions, analysisResults]);
   const cycleSeries = useMemo(() => (
     activeTab
-      ? [{ key: 'main', label: activeTab.name, color: '#0ea5e9', values: tabResult?.cycle ?? [] }]
+      ? [{ key: 'main', label: activeTab.name, color: '#0ea5e9', values: activeRow?.cycle ?? [] }]
       : buildDefaultSeries(cycleSelected, 'cycle')
-  ), [activeTab, tabResult, cycleSelected, dimensions, records]);
+  ), [activeTab, activeRow, cycleSelected, dimensions, analysisResults]);
   const growthSeries = useMemo(() => (
     activeTab
-      ? [{ key: 'main', label: activeTab.name, color: '#0ea5e9', values: tabResult?.growth ?? [] }]
+      ? [{ key: 'main', label: activeTab.name, color: '#0ea5e9', values: activeRow?.growth ?? [] }]
       : buildDefaultSeries(growthSelected, 'growth')
-  ), [activeTab, tabResult, growthSelected, dimensions, records]);
+  ), [activeTab, activeRow, growthSelected, dimensions, analysisResults]);
 
   const cumulativeX = useMemo(() => Array.from({ length: Math.max(...cumulativeSeries.map(s => s.values.length), 0) }, (_, i) => String(i + 1)), [cumulativeSeries]);
   const cycleX = useMemo(() => Array.from({ length: Math.max(...cycleSeries.map(s => s.values.length), 0) }, (_, i) => `第${i + 1}周期`), [cycleSeries]);
@@ -118,12 +106,24 @@ export const AnalysisTabsView: React.FC = () => {
     useAnalysisTabStore.getState().addTab(tab);
     setShowCreate(false);
     await saveTabsToR2(useAnalysisTabStore.getState().tabs);
+    // 新增配置 → 结果表新增一行
+    await refreshStats({ kinds: ['tab'], ids: [tab.id] });
   };
 
   const handleDeleteTab = async (id: string) => {
     if (!window.confirm('确认删除该页签？')) return;
     useAnalysisTabStore.getState().deleteTab(id);
     await saveTabsToR2(useAnalysisTabStore.getState().tabs);
+    // 全量重算页签，顺带清理已删除配置的结果行
+    await refreshStats({ kinds: ['tab'] });
+  };
+
+  // 结果表优先；未生成时回退到明细计数（迁移前 / R2 模式）
+  const counts = {
+    total: overview?.recordCount ?? records.length,
+    profit: overview?.profitCount ?? records.filter(r => r.profitPercent > 0).length,
+    loss: overview?.lossCount ?? records.filter(r => r.profitPercent < 0).length,
+    flat: overview?.flatCount ?? records.filter(r => r.profitPercent === 0).length,
   };
 
   const analysisItems = [
@@ -170,19 +170,35 @@ export const AnalysisTabsView: React.FC = () => {
         >
           + 新增页签
         </button>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="ml-auto px-3 py-1.5 text-sm text-blue-600 border border-blue-300 rounded hover:bg-blue-50 disabled:opacity-50"
+          title="在数据库中重新计算全部统计结果表"
+        >
+          {refreshing ? '更新中...' : '更新统计数据'}
+        </button>
       </div>
+
+      {/* 结果表缺失提示：统计一律先落库再读取，不在页面里现算 */}
+      {((!overview && records.length > 0) || (!!activeTab && !activeRow)) && (
+        <div className="px-3 py-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded">
+          统计数据尚未生成：点击右上角「更新统计数据」，由数据库计算并写入结果表。
+        </div>
+      )}
 
       {/* 自定义页签信源提示 */}
       {activeTab && (
         <div className="flex items-center justify-between text-xs text-gray-500">
           <span>
-            数据范围已固定 · 合并序列数：{activeTab.groups.length} · 记录数：{tabResult?.count ?? 0}（并集去重）
+            数据范围已固定 · 合并序列数：{activeTab.groups.length} · 记录数：{activeRow?.recordCount ?? 0}（并集去重）
           </span>
           <span className="flex items-center gap-2">
             {tabStale && <span className="text-amber-600">数据已更新</span>}
             <button
-              onClick={refreshTab}
-              className="px-2 py-1 text-blue-600 border border-blue-300 rounded hover:bg-blue-50"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="px-2 py-1 text-blue-600 border border-blue-300 rounded hover:bg-blue-50 disabled:opacity-50"
             >
               更新
             </button>
@@ -198,19 +214,19 @@ export const AnalysisTabsView: React.FC = () => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-blue-50 rounded-lg p-4">
                 <p className="text-sm text-blue-600 font-medium">总交易记录</p>
-                <p className="text-2xl font-bold text-blue-900">{records.length}</p>
+                <p className="text-2xl font-bold text-blue-900">{counts.total}</p>
               </div>
               <div className="bg-green-50 rounded-lg p-4">
                 <p className="text-sm text-green-600 font-medium">盈利交易</p>
-                <p className="text-2xl font-bold text-green-900">{records.filter(r => r.profitPercent > 0).length}</p>
+                <p className="text-2xl font-bold text-green-900">{counts.profit}</p>
               </div>
               <div className="bg-red-50 rounded-lg p-4">
                 <p className="text-sm text-red-600 font-medium">亏损交易</p>
-                <p className="text-2xl font-bold text-red-900">{records.filter(r => r.profitPercent < 0).length}</p>
+                <p className="text-2xl font-bold text-red-900">{counts.loss}</p>
               </div>
               <div className="bg-gray-50 rounded-lg p-4">
                 <p className="text-sm text-gray-600 font-medium">持平交易</p>
-                <p className="text-2xl font-bold text-gray-900">{records.filter(r => r.profitPercent === 0).length}</p>
+                <p className="text-2xl font-bold text-gray-900">{counts.flat}</p>
               </div>
             </div>
           </div>

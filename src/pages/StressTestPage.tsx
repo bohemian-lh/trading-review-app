@@ -3,18 +3,10 @@ import { Plus, Pencil, Trash2, Play, Loader2 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
-import { useRecordsStore, useStressTestStore, useDatasetStore } from '@/stores';
-import { saveStressSeriesToR2 } from '@/hooks/useStoreSync';
-import { useOnDemandCompute } from '@/hooks/useOnDemandCompute';
+import { useRecordsStore, useStressTestStore } from '@/stores';
+import { saveStressSeriesToR2, refreshStats } from '@/hooks/useStoreSync';
 import type { StressSeries } from '@/types';
-import {
-  mergeGroupRecords, computeCumulativeProfitFromItems, computeGrowthProfitRatiosFromItems,
-  type MergedSeriesItem,
-} from '@/services/analysisTabService';
-import {
-  computeSkewness, computeKurtosis, computeJarqueBera,
-  type MonteCarloResult, type MonteCarloConfig,
-} from '@/services/stressStatisticsService';
+import type { MonteCarloResult, MonteCarloConfig } from '@/services/stressStatisticsService';
 import { SeriesLineChart } from '@/components/analysis/SeriesLineChart';
 import { StressSeriesModal } from '@/components/stress/StressSeriesModal';
 
@@ -27,7 +19,8 @@ interface ComputedSeries {
   label: string;
   color: string;
   count: number;
-  merged: MergedSeriesItem[];
+  values: number[];
+  positions: number[];
   cumulative: (number | null)[];
   growth: (number | null)[];
   skewness: number;
@@ -115,12 +108,14 @@ const McResultCard: React.FC<{
 );
 
 const StressTestPage: React.FC = () => {
-  const records = useRecordsStore(s => s.records);
   const series = useStressTestStore(s => s.series);
+  const analysisResults = useRecordsStore(s => s.analysisResults);
+  const datasetVersion = useRecordsStore(s => s.version);
 
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<StressSeries | null>(null);
   const [overlay, setOverlay] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   // 蒙特卡洛参数
   const [initialCapital, setInitialCapital] = useState(10000);
@@ -131,34 +126,38 @@ const StressTestPage: React.FC = () => {
   const [mcRunning, setMcRunning] = useState<string | null>(null);
   const [mcError, setMcError] = useState<string | null>(null);
 
-  const currentDatasetId = useDatasetStore(s => s.currentDatasetId);
-  const stressKey = series.length > 0 ? `${currentDatasetId}:stress` : null;
-  const { result: stressResult, refresh: refreshStress, isStale: stressStale } = useOnDemandCompute(
-    stressKey,
-    [records, series],
-    () => {
-      const latestSeries = useStressTestStore.getState().series;
-      const latestRecords = useRecordsStore.getState().records;
-      return latestSeries.map((s, i): ComputedSeries => {
-        const merged = mergeGroupRecords(latestRecords, s.groups);
-        const vals = merged.map(it => it.value);
-        return {
-          key: s.id,
-          label: s.name,
-          color: SERIES_COLORS[i % SERIES_COLORS.length],
-          count: merged.length,
-          merged,
-          cumulative: computeCumulativeProfitFromItems(merged).map(p => p.value),
-          growth: computeGrowthProfitRatiosFromItems(merged).map(p => p.value),
-          skewness: computeSkewness(vals),
-          kurtosis: computeKurtosis(vals),
-          jb: computeJarqueBera(vals),
-        };
-      });
-    },
-  );
+  // 压测结果直接取结果表：曲线、偏度/峰度/JB、信源值序列都在数据库中预先算好
+  const computedSeries = useMemo<ComputedSeries[]>(() => series.map((s, i) => {
+    const row = analysisResults[`stress:${s.id}`];
+    return {
+      key: s.id,
+      label: s.name,
+      color: SERIES_COLORS[i % SERIES_COLORS.length],
+      count: row?.recordCount ?? 0,
+      values: row?.values ?? [],
+      positions: row?.positions ?? [],
+      cumulative: row?.cumulative ?? [],
+      growth: row?.growth ?? [],
+      skewness: row?.skewness ?? 0,
+      kurtosis: row?.kurtosis ?? 0,
+      jb: { jb: row?.jb ?? 0, pValue: row?.jbPValue ?? 1 },
+    };
+  }), [series, analysisResults]);
 
-  const computedSeries = stressResult ?? [];
+  const stressStale = series.some(s => {
+    const row = analysisResults[`stress:${s.id}`];
+    return !!row && typeof datasetVersion === 'number' && row.sourceVersion < datasetVersion;
+  });
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const result = await refreshStats({ kinds: ['stress'] });
+      if (!result.ok) window.alert(result.error || '统计数据更新失败');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const cumulativeSeries = useMemo(() => computedSeries.map(x => ({
     key: x.key, label: x.label, color: x.color, values: x.cumulative,
@@ -183,6 +182,8 @@ const StressTestPage: React.FC = () => {
     setShowModal(false);
     setEditing(null);
     await saveStressSeriesToR2(useStressTestStore.getState().series);
+    // 新增/修改配置 → 结果表新增或更新一行
+    await refreshStats({ kinds: ['stress'], ids: [s.id] });
   };
 
   const handleDeleteSeries = async (id: string) => {
@@ -190,13 +191,17 @@ const StressTestPage: React.FC = () => {
     useStressTestStore.getState().deleteSeries(id);
     setMcResults(prev => { const n = { ...prev }; delete n[id]; return n; });
     await saveStressSeriesToR2(useStressTestStore.getState().series);
+    // 全量重算压测系列，顺带清理已删除配置的结果行
+    await refreshStats({ kinds: ['stress'] });
   };
 
   const runMonteCarlo = (seriesId: string, mode: 'with' | 'without') => {
     const input = computedSeries.find(x => x.key === seriesId);
-    if (!input || input.merged.length === 0) return;
-    const returns = input.merged.map(it => it.value);
-    const positions = input.merged.map(it => (typeof it.record.positionSize === 'number' ? Math.min(100, Math.max(0, it.record.positionSize)) : 33));
+    if (!input || input.values.length === 0) return;
+    const returns = input.values;
+    const positions = input.positions.length === input.values.length
+      ? input.positions
+      : input.values.map(() => 33);
     const seed = seedInput.trim() !== '' ? parseInt(seedInput, 10) : Math.floor(Math.random() * 0x7fffffff);
     const config: MonteCarloConfig = {
       initialCapital,
@@ -249,10 +254,11 @@ const StressTestPage: React.FC = () => {
           <div className="flex items-center gap-3">
             {stressStale && <span className="text-xs text-amber-600">数据已更新</span>}
             <button
-              onClick={refreshStress}
-              className="px-2 py-1 text-xs text-blue-600 border border-blue-300 rounded hover:bg-blue-50"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="px-2 py-1 text-xs text-blue-600 border border-blue-300 rounded hover:bg-blue-50 disabled:opacity-50"
             >
-              更新
+              {refreshing ? '更新中...' : '更新'}
             </button>
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" checked={overlay} onChange={e => setOverlay(e.target.checked)} className="rounded" />
@@ -283,6 +289,12 @@ const StressTestPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {series.length > 0 && series.some(s => !analysisResults[`stress:${s.id}`]) && (
+        <div className="px-3 py-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded">
+          压测统计尚未生成：点击「更新」，由数据库计算并写入结果表。
+        </div>
+      )}
 
       {series.length > 0 && (
         <>
@@ -407,7 +419,7 @@ const StressTestPage: React.FC = () => {
                   <div className="flex items-center gap-2 mb-2">
                     <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: x.color }} />
                     <span className="font-medium text-gray-900">{x.label}</span>
-                    <span className="text-xs text-gray-500">（{x.merged.length} 笔）</span>
+                    <span className="text-xs text-gray-500">（{x.values.length} 笔）</span>
                   </div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <McResultCard title="有放回（Bootstrap）" result={res.with} running={mcRunning === `${x.key}:with`} onRun={() => runMonteCarlo(x.key, 'with')} />

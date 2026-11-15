@@ -108,7 +108,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                   {useCustom ? (
                     <Input
                       type="text"
-                      value={value === 'N/A' ? 'N/A' : (value !== undefined ? String(value) : '')}
+                      value={value === 'N/A' ? 'N/A' : (typeof value === 'number' ? String(value) : '')}
                       onChange={(e) => onTheoreticalFieldChange(dim.id, e.target.value)}
                       placeholder="输入数值或 N/A"
                     />

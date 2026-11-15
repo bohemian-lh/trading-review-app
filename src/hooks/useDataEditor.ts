@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useRecordsStore } from '@/stores/recordsStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useImageDirectory } from '@/hooks/useImageDirectory';
-import { saveNow, scheduleSaveNow, updateCycleStats } from '@/hooks/useStoreSync';
+import { refreshStats, scheduleSaveNow, updateCycleStats } from '@/hooks/useStoreSync';
 import { useAnalysisResult, useMonthlyAnalysis } from '@/hooks/useAnalysis';
 import type { TradingRecord, TradingRecordInput, AnalysisResult, MonthlyAnalysis, ParsedTradeData, FieldConfig } from '@/types';
 import { getDefaultOpenDate } from '@/utils/dateUtils';
@@ -173,7 +173,13 @@ export function useDataEditor() {
   const refreshCycleStats = async () => {
     if (records.length === 0) { setUpdateStatus('error'); setUpdateMessage('没有数据需要处理'); return; }
     setUpdateStatus('loading'); setUpdateMessage('正在更新统计数据...');
-    try { updateCycleStats(); await saveNow(); setUpdateStatus('success'); setUpdateMessage('统计数据已更新'); }
+    try {
+      // 周期统计仍在浏览器生成；总览 / 月度 / 维度 / 页签 / 压测结果由服务端 SQL 重算
+      updateCycleStats();
+      const result = await refreshStats();
+      if (!result.ok) throw new Error(result.error || '统计数据更新失败');
+      setUpdateStatus('success'); setUpdateMessage('统计数据已更新');
+    }
     catch (error) { setUpdateStatus('error'); setUpdateMessage(error instanceof Error ? error.message : '更新失败'); }
     setTimeout(() => { setUpdateStatus('idle'); setUpdateMessage(''); }, 5000);
   };

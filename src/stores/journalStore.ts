@@ -1,5 +1,7 @@
 // 交易日志 + 快照 Zustand store
-// 写入策略：乐观更新 + 合并提交（同一批操作只发一次增量请求）
+// 写入策略：乐观更新 + 出站队列（outbox）+ 合并提交
+// 每次变更先写入 IndexedDB 出站队列，再更新 UI；
+// 服务端严格 ACK（success 且返回 version）后才清理队列，刷新/断网可重放。
 import { create } from 'zustand';
 import type { TradingJournal, CustomStrategy, JournalConfigSnapshot, JournalStageConfig, JournalStrategyGroup, JournalDraft } from '@/types';
 import { DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS } from '@/types';
@@ -11,8 +13,11 @@ import {
   loadWatchlist,
   saveWatchlist,
   JournalConflictError,
+  CollectionConflictError,
 } from '@/services/journalService';
 import type { JournalOp } from '@/services/journalService';
+import { outboxKey, outboxList, outboxPut, outboxRemove } from '@/services/journalOutbox';
+import type { JournalOutboxEntry } from '@/services/journalOutbox';
 import { generateId } from '@/utils';
 import { useRecordsStore } from '@/stores/recordsStore';
 
@@ -27,6 +32,8 @@ interface JournalState {
   syncState: 'idle' | 'saving' | 'error';
   syncError: string | null;
   lastSyncedAt: number | null;
+  /** 尚未被服务端确认的日志条数，用于页头提示 */
+  pendingCount: number;
 
   init: (datasetId: string) => Promise<void>;
   createSnapshot: (stages: JournalStageConfig[], datasetId: string) => Promise<JournalConfigSnapshot | null>;
@@ -156,11 +163,11 @@ const FLUSH_DEBOUNCE = 600;
 const FLUSH_MAX_WAIT = 2000;
 const MAX_RETRY = 3;
 
-type TouchedOp = { op: 'upsert' | 'delete'; seq: number };
+type TouchedEntry = JournalOutboxEntry;
 
 let currentDatasetId: string | null = null;
 
-let touched = new Map<string, TouchedOp>();
+let touched = new Map<string, TouchedEntry>();
 let opSeq = 0;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -174,11 +181,15 @@ let snapshotsDirty = false;
 let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 let snapshotFlushing = false;
 let snapshotAgain = false;
+/** 快照集合的服务端版本，用于 CAS 保存 */
+let snapshotsVersion = 0;
 
 let watchlistDirty = false;
 let watchlistTimer: ReturnType<typeof setTimeout> | null = null;
 let watchlistFlushing = false;
 let watchlistAgain = false;
+/** 关注列表的服务端版本，用于 CAS 保存 */
+let watchlistVersion = 0;
 
 function getState() {
   return useJournalStore.getState();
@@ -193,7 +204,7 @@ function settleSyncState(): void {
   if (flushing || snapshotFlushing || watchlistFlushing) return;
   if (hasPendingWrites()) return;
   if (getState().syncState === 'saving') {
-    useJournalStore.setState({ syncState: 'idle', syncError: null });
+    useJournalStore.setState({ syncState: 'idle', syncError: null, pendingCount: touched.size });
   }
 }
 
@@ -209,23 +220,57 @@ function resetQueues(): void {
   conflictRetried = false;
   snapshotsDirty = false;
   watchlistDirty = false;
+  useJournalStore.setState({ pendingCount: 0 });
 }
 
-function markTouched(id: string, op: 'upsert' | 'delete'): void {
+/**
+ * 记录一条待同步变更：先构造完整出站条目并写入 IndexedDB，再驱动 UI 与提交。
+ * 返回是否真正落盘；调用方（如新建日志）可据此决定是否删除本地草稿。
+ */
+function markTouched(id: string, op: 'upsert' | 'delete'): Promise<boolean> {
+  const datasetId = currentDatasetId;
+  if (!datasetId) return Promise.resolve(false);
+
   opSeq += 1;
-  touched.set(id, { op, seq: opSeq });
-  if (!firstTouchAt) firstTouchAt = Date.now();
   const state = getState();
-  if (state.syncState !== 'saving' || state.syncError) {
-    useJournalStore.setState({ syncState: 'saving', syncError: null });
-  }
+  const journal = op === 'upsert' ? state.journals.find(j => j.id === id) ?? null : null;
+  const snapshot = journal?.snapshotId
+    ? state.snapshots.find(s => s.snapshotId === journal.snapshotId) ?? null
+    : null;
+
+  const entry: TouchedEntry = {
+    key: outboxKey(datasetId, id),
+    datasetId,
+    journalId: id,
+    op,
+    journal,
+    snapshot,
+    opId: `${opSeq}_${Date.now()}`,
+    updatedAt: Date.now(),
+  };
+
+  touched.set(id, entry);
+  if (!firstTouchAt) firstTouchAt = Date.now();
+  useJournalStore.setState({
+    syncState: 'saving',
+    syncError: null,
+    pendingCount: touched.size,
+  });
   scheduleFlush();
+  return outboxPut(entry);
 }
 
-function clearSent(sent: Map<string, TouchedOp>): void {
+async function clearSent(sent: Map<string, TouchedEntry>): Promise<void> {
+  const keys: string[] = [];
   for (const [id, entry] of sent) {
-    if (touched.get(id)?.seq === entry.seq) touched.delete(id);
+    // 期间又被改动过则保留，等待下一轮提交
+    if (touched.get(id)?.opId === entry.opId) {
+      touched.delete(id);
+      keys.push(entry.key);
+    }
   }
+  await outboxRemove(keys);
+  useJournalStore.setState({ pendingCount: touched.size });
 }
 
 function scheduleFlush(): void {
@@ -275,12 +320,11 @@ async function flushJournals(keepalive = false): Promise<void> {
       ops.push({ op: 'delete', id });
       continue;
     }
-    const journal = getState().journals.find(j => j.id === id);
-    if (journal) ops.push({ op: 'upsert', journal });
+    if (entry.journal) ops.push({ op: 'upsert', journal: entry.journal });
   }
 
   if (ops.length === 0) {
-    clearSent(sent);
+    await clearSent(sent);
     flushing = false;
     return;
   }
@@ -292,7 +336,7 @@ async function flushJournals(keepalive = false): Promise<void> {
       clearTimeout(retryTimer);
       retryTimer = null;
     }
-    clearSent(sent);
+    await clearSent(sent);
     retryCount = 0;
     conflictRetried = false;
     firstTouchAt = 0;
@@ -302,6 +346,7 @@ async function flushJournals(keepalive = false): Promise<void> {
       syncState: remaining ? 'saving' : 'idle',
       syncError: null,
       lastSyncedAt: Date.now(),
+      pendingCount: touched.size,
     });
     collectOrphanSnapshots();
     if (remaining) scheduleFlush();
@@ -358,13 +403,23 @@ async function flushSnapshots(): Promise<void> {
   snapshotsDirty = false;
   const datasetId = currentDatasetId;
   try {
-    await saveSnapshots(datasetId, getState().snapshots);
+    const result = await saveSnapshots(datasetId, getState().snapshots, snapshotsVersion);
+    snapshotsVersion = result.version;
   } catch (e) {
-    snapshotsDirty = true;
-    useJournalStore.setState({
-      syncState: 'error',
-      syncError: e instanceof Error ? e.message : '快照同步失败',
-    });
+    if (e instanceof CollectionConflictError) {
+      // 服务端已被其它页面推进：以服务端为准，避免互相覆盖
+      snapshotsVersion = e.version;
+      useJournalStore.setState({
+        snapshots: e.items as JournalConfigSnapshot[],
+        syncError: '快照已被其它页面修改，已同步为最新内容',
+      });
+    } else {
+      snapshotsDirty = true;
+      useJournalStore.setState({
+        syncState: 'error',
+        syncError: e instanceof Error ? e.message : '快照同步失败',
+      });
+    }
   } finally {
     snapshotFlushing = false;
     if (snapshotAgain) {
@@ -394,13 +449,22 @@ async function flushWatchlist(): Promise<void> {
   watchlistDirty = false;
   const datasetId = currentDatasetId;
   try {
-    await saveWatchlist(datasetId, getState().watchlist);
+    const result = await saveWatchlist(datasetId, getState().watchlist, watchlistVersion);
+    watchlistVersion = result.version;
   } catch (e) {
-    watchlistDirty = true;
-    useJournalStore.setState({
-      syncState: 'error',
-      syncError: e instanceof Error ? e.message : '关注列表同步失败',
-    });
+    if (e instanceof CollectionConflictError) {
+      watchlistVersion = e.version;
+      useJournalStore.setState({
+        watchlist: e.items as string[],
+        syncError: '关注列表已被其它页面修改，已同步为最新内容',
+      });
+    } else {
+      watchlistDirty = true;
+      useJournalStore.setState({
+        syncState: 'error',
+        syncError: e instanceof Error ? e.message : '关注列表同步失败',
+      });
+    }
   } finally {
     watchlistFlushing = false;
     if (watchlistAgain) {
@@ -443,6 +507,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
   syncState: 'idle',
   syncError: null,
   lastSyncedAt: null,
+  pendingCount: 0,
 
   init: async (datasetId: string) => {
     // 切换数据集前先把旧数据写完；未写完则中止切换，避免改动写进新数据集
@@ -456,28 +521,65 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     currentDatasetId = datasetId;
     resetQueues();
 
-    set({ loading: true, error: null, syncError: null, syncState: 'idle' });
+    set({ loading: true, error: null, syncError: null, syncState: 'idle', pendingCount: 0 });
     try {
-      const [journalData, snapshots, watchlist] = await Promise.all([
+      const [journalData, snapshotData, watchlistData, pending] = await Promise.all([
         loadJournals(datasetId),
         loadSnapshots(datasetId),
         loadWatchlist(datasetId),
+        outboxList(datasetId),
       ]);
+      const snapshots = snapshotData.snapshots;
+      snapshotsVersion = snapshotData.version;
+      watchlistVersion = watchlistData.version;
       // 阶段名称始终从 fieldConfig 取，快照仅用于历史日志渲染
       const fc = useRecordsStore.getState().fieldConfig;
       const stageNames = fc.journalStrategyConfig?.length ? fc.journalStrategyConfig : DEFAULT_JOURNAL_STAGES;
       const sharedGroups = fc.sharedJournalStrategyGroups ?? DEFAULT_SHARED_STRATEGY_GROUPS;
       const activeStages = buildActiveStages(stageNames, sharedGroups);
-      const fixedJournals = journalData.journals.map(migrateJournal);
+
+      // 服务端数据 → 叠加出站队列中尚未确认的变更 → 作为首屏状态
+      const merged = new Map<string, TradingJournal>();
+      for (const journal of journalData.journals) merged.set(journal.id, migrateJournal(journal));
+
+      const recoveredSnapshots: JournalConfigSnapshot[] = [];
+      for (const entry of pending) {
+        touched.set(entry.journalId, entry);
+        if (entry.op === 'delete') {
+          merged.delete(entry.journalId);
+          continue;
+        }
+        if (!entry.journal) continue;
+        merged.set(entry.journalId, migrateJournal(entry.journal));
+        const snap = entry.snapshot;
+        if (
+          snap &&
+          !snapshots.some(s => s.snapshotId === snap.snapshotId) &&
+          !recoveredSnapshots.some(s => s.snapshotId === snap.snapshotId)
+        ) {
+          recoveredSnapshots.push(snap);
+        }
+      }
+
+      const hasPending = touched.size > 0;
+      if (hasPending) firstTouchAt = Date.now();
       set({
-        journals: fixedJournals,
-        snapshots,
+        journals: [...merged.values()],
+        snapshots: recoveredSnapshots.length ? [...snapshots, ...recoveredSnapshots] : snapshots,
         activeStages,
-        watchlist: Array.isArray(watchlist) ? watchlist : [],
+        watchlist: Array.isArray(watchlistData.watchlist) ? watchlistData.watchlist : [],
         version: journalData.version,
         loading: false,
         lastSyncedAt: Date.now(),
+        pendingCount: touched.size,
+        syncState: hasPending ? 'saving' : 'idle',
       });
+
+      if (hasPending) {
+        // 恢复的日志可能引用了只在本地存在的新快照，一并补传
+        if (recoveredSnapshots.length) markSnapshotsDirty();
+        scheduleFlush();
+      }
     } catch (e: any) {
       set({ error: e.message, loading: false });
     }
@@ -528,8 +630,9 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       createdAt: new Date().toISOString(),
     };
     set({ journals: [...get().journals, newJournal] });
-    markTouched(newJournal.id, 'upsert');
-    localStorage.removeItem(`${DRAFT_PREFIX}${draft.entryId}`);
+    // 只有出站队列真正落盘后才删除草稿，避免「提交后刷新」既没推送到服务端也丢了输入
+    const durable = await markTouched(newJournal.id, 'upsert');
+    if (durable) localStorage.removeItem(`${DRAFT_PREFIX}${draft.entryId}`);
   },
 
   // 提交日志 → status: 'submitted'（最终态）
@@ -539,7 +642,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       j.id === journalId ? { ...j, status: 'submitted' as const } : j
     );
     set({ journals: newJournals });
-    markTouched(journalId, 'upsert');
+    void markTouched(journalId, 'upsert');
   },
 
   // 撤回提交 → status: 'draft'（回退到中间态）
@@ -549,7 +652,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       j.id === journalId ? { ...j, status: 'draft' as const } : j
     );
     set({ journals: newJournals });
-    markTouched(journalId, 'upsert');
+    void markTouched(journalId, 'upsert');
   },
 
   // 编辑 draft 日志
@@ -559,7 +662,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       j.id === journalId ? { ...j, ...partial } : j
     );
     set({ journals: newJournals });
-    markTouched(journalId, 'upsert');
+    void markTouched(journalId, 'upsert');
   },
 
   updateJournalRecordId: async (journalId: string, recordId: string | undefined, datasetId: string) => {
@@ -568,13 +671,13 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       j.id === journalId ? { ...j, recordId } : j
     );
     set({ journals: newJournals });
-    markTouched(journalId, 'upsert');
+    void markTouched(journalId, 'upsert');
   },
 
   deleteJournal: async (journalId: string, datasetId: string) => {
     currentDatasetId = datasetId;
     set({ journals: get().journals.filter(j => j.id !== journalId) });
-    markTouched(journalId, 'delete');
+    void markTouched(journalId, 'delete');
     // 孤儿快照在写回成功后再回收，避免删除失败导致历史日志失去配置引用
   },
 

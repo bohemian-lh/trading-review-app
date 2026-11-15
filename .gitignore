@@ -32,6 +32,16 @@ coverage/
 .wrangler/
 workers/_assets/
 
+# 本地工具链（无系统 Node 时用于执行 wrangler，不提交）
+.tools/
+.npm-cache/
+
+# D1 备份产物
+backups/
+
+# 由 scripts/generate-schema-sql.mjs 生成
+schema.sql
+
 # Wrangler 配置（包含敏感信息，使用 wrangler.toml.example 作为模板）
 wrangler.toml
 
