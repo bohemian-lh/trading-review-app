@@ -32,6 +32,12 @@ function groupSignature(groups: any[]): string {
   );
 }
 
+/** 兼容旧版 { filter, source } 结构：没有 groups 时视为单组 merge */
+function normalizeGroups(item: any): any[] {
+  if (Array.isArray(item?.groups) && item.groups.length > 0) return item.groups;
+  return [{ filter: item?.filter ?? {}, source: item?.source, mode: 'merge' }];
+}
+
 const SERIES_GUARD_WHERE = 'WHERE (SELECT write_token FROM series_meta WHERE dataset_id = ? AND kind = ?) = ?';
 const SERIES_GUARD_AND = 'AND (SELECT write_token FROM series_meta WHERE dataset_id = ? AND kind = ?) = ?';
 
@@ -140,7 +146,7 @@ export async function saveSeries(
   }
 
   incoming.forEach((item: any, position: number) => {
-    const groups = Array.isArray(item.groups) ? item.groups : [];
+    const groups = normalizeGroups(item);
     const prev = existingById.get(String(item.id));
     const rowChanged =
       !prev ||
@@ -242,7 +248,7 @@ export async function upsertSeriesForMigration(db: any, datasetId: string, kind:
         )
         .bind(datasetId, kind, String(item.id), item.name ?? '', position, Math.trunc(Number(item.createdAt ?? 0)), now),
     );
-    const groups = Array.isArray(item.groups) ? item.groups : [];
+    const groups = normalizeGroups(item);
     groups.forEach((group: any, seq: number) => {
       statements.push(
         db

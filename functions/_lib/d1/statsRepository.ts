@@ -263,103 +263,102 @@ ON CONFLICT(dataset_id, month) DO UPDATE SET
   computed_at = excluded.computed_at`;
 }
 
-// ─── 曲线结果（默认维度 / 页签 / 压测系列）────────────────────────
-interface SeriesStatementOptions {
-  kind: 'dimension' | 'tab' | 'stress';
-  id: string;
-  /** 追加到 WITH 之后的 CTE 定义（必须包含 s） */
-  ctes: string;
-  stress: boolean;
-}
+// ─── 曲线结果（默认维度 / 页签）────────────────────────────────
+// D1 禁用了 power/sqrt/exp 等数学函数，压测的偏度/峰度/JB 放到 Worker 里算。
+const CUMULATIVE_SQL = `(SELECT COALESCE(json_group_array(val), '[]') FROM (
+    SELECT ROUND(SUM(v) OVER (ORDER BY open_date, id ROWS UNBOUNDED PRECEDING), 2) AS val
+      FROM s
+     ORDER BY open_date, id
+  ))`;
+const CYCLE_SQL = `(SELECT COALESCE(json_group_array(val), '[]') FROM (
+    SELECT ${ratioV3(pSum('v'), lSum('v'))} AS val
+      FROM (
+        SELECT CAST((ROW_NUMBER() OVER (ORDER BY open_date, id) - 1) / ${CYCLE_SIZE} AS INTEGER) AS period, v
+          FROM s
+      )
+     GROUP BY period
+     ORDER BY period
+  ))`;
+const GROWTH_SQL = `(SELECT COALESCE(json_group_array(val), '[]') FROM (
+    SELECT ${ratioV3('p', 'l')} AS val
+      FROM (
+        SELECT SUM(CASE WHEN v > 0 THEN v ELSE 0 END) OVER (ORDER BY open_date, id ROWS UNBOUNDED PRECEDING) AS p,
+               SUM(CASE WHEN v < 0 THEN -v ELSE 0 END) OVER (ORDER BY open_date, id ROWS UNBOUNDED PRECEDING) AS l
+          FROM s
+         ORDER BY open_date, id
+      )
+  ))`;
+const VALUES_SQL = `(SELECT COALESCE(json_group_array(v), '[]') FROM (SELECT v FROM s ORDER BY open_date, id))`;
+const POSITIONS_SQL = `(SELECT COALESCE(json_group_array(position_size), '[]') FROM (SELECT position_size FROM s ORDER BY open_date, id))`;
 
-function buildSeriesStatement(opts: SeriesStatementOptions): string {
-  const { kind, id, ctes, stress } = opts;
-
-  const cumulative = `(SELECT COALESCE(json_group_array(val), '[]') FROM (
-      SELECT ROUND(SUM(v) OVER (ORDER BY open_date, id ROWS UNBOUNDED PRECEDING), 2) AS val
-        FROM s
-       ORDER BY open_date, id
-    ))`;
-
-  const cycle = `(SELECT COALESCE(json_group_array(val), '[]') FROM (
-      SELECT ${ratioV3(pSum('v'), lSum('v'))} AS val
-        FROM (
-          SELECT CAST((ROW_NUMBER() OVER (ORDER BY open_date, id) - 1) / ${CYCLE_SIZE} AS INTEGER) AS period, v
-            FROM s
-        )
-       GROUP BY period
-       ORDER BY period
-    ))`;
-
-  const growth = `(SELECT COALESCE(json_group_array(val), '[]') FROM (
-      SELECT ${ratioV3('p', 'l')} AS val
-        FROM (
-          SELECT SUM(CASE WHEN v > 0 THEN v ELSE 0 END) OVER (ORDER BY open_date, id ROWS UNBOUNDED PRECEDING) AS p,
-                 SUM(CASE WHEN v < 0 THEN -v ELSE 0 END) OVER (ORDER BY open_date, id ROWS UNBOUNDED PRECEDING) AS l
-            FROM s
-           ORDER BY open_date, id
-        )
-    ))`;
-
-  const values = `(SELECT COALESCE(json_group_array(v), '[]') FROM (SELECT v FROM s ORDER BY open_date, id))`;
-  const positions = stress
-    ? `(SELECT COALESCE(json_group_array(position_size), '[]') FROM (SELECT position_size FROM s ORDER BY open_date, id))`
-    : `'[]'`;
-
-  const statsCtes = stress
-    ? `,
-moments AS (
-  SELECT COUNT(*) AS n, AVG(v) AS mu, AVG(v * v) AS e2, AVG(v * v * v) AS e3, AVG(v * v * v * v) AS e4 FROM s
-),
-central AS (
-  SELECT n, mu,
-         e2 - mu * mu AS m2,
-         e3 - 3 * mu * e2 + 2 * mu * mu * mu AS m3,
-         e4 - 4 * mu * e3 + 6 * mu * mu * e2 - 3 * mu * mu * mu * mu AS m4
-    FROM moments
-),
-mstats AS (
-  SELECT n, m2, m3, m4,
-         CASE WHEN n < 3 OR m2 IS NULL OR m2 <= 0 THEN 0
-              ELSE (sqrt(n * (n - 1.0)) / (n - 2.0)) * (m3 / power(m2, 1.5)) END AS sk,
-         CASE WHEN n < 4 OR m2 IS NULL OR m2 <= 0 THEN 0
-              ELSE ((n - 1.0) / ((n - 2.0) * (n - 3.0))) * ((n + 1.0) * (m4 / (m2 * m2) - 3.0) + 6.0) END AS ku
-    FROM central
-),
-jstats AS (
-  SELECT n, sk, ku, CASE WHEN n < 3 THEN 0 ELSE (n / 6.0) * (sk * sk + ku * ku / 4.0) END AS jb FROM mstats
-)`
-    : '';
-
-  const skewness = stress
-    ? `(SELECT CASE WHEN n < 3 OR m2 IS NULL OR m2 <= 0 THEN 0
-        ELSE (sqrt(n * (n - 1.0)) / (n - 2.0)) * (m3 / power(m2, 1.5)) END FROM mstats)`
-    : 'NULL';
-  const kurtosis = stress
-    ? `(SELECT CASE WHEN n < 4 OR m2 IS NULL OR m2 <= 0 THEN 0
-        ELSE ((n - 1.0) / ((n - 2.0) * (n - 3.0))) * ((n + 1.0) * (m4 / (m2 * m2) - 3.0) + 6.0) END FROM mstats)`
-    : 'NULL';
-  const jb = stress ? '(SELECT jb FROM jstats)' : 'NULL';
-  const jbP = stress ? '(SELECT CASE WHEN n < 3 THEN 1 ELSE exp(-jb / 2.0) END FROM jstats)' : 'NULL';
-
+function buildSeriesStatement(kind: 'dimension' | 'tab', id: string, ctes: string): string {
   return `WITH ${BASE_CTE},
-${ctes}${statsCtes}
+${ctes}
 INSERT INTO analysis_results (${RESULT_COLUMNS})
 SELECT ?1, ${sqlStr(kind)}, ${sqlStr(id)},
   (SELECT COUNT(*) FROM s),
-  ${values},
-  ${positions},
-  ${cumulative},
-  ${cycle},
-  ${growth},
-  ${skewness},
-  ${kurtosis},
-  ${jb},
-  ${jbP},
+  ${VALUES_SQL},
+  '[]',
+  ${CUMULATIVE_SQL},
+  ${CYCLE_SQL},
+  ${GROWTH_SQL},
+  NULL, NULL, NULL, NULL,
   ?2, ?3
 FROM (SELECT 1)
 WHERE (SELECT version FROM record_meta WHERE dataset_id = ?1) = ?2
 ON CONFLICT(dataset_id, config_kind, config_id) DO UPDATE SET ${RESULT_UPDATE}`;
+}
+
+/** 压测系列：SQL 只算序列，偏度/峰度/JB 由 Worker 计算 */
+function buildSeriesSelect(ctes: string): string {
+  return `WITH ${BASE_CTE},
+${ctes}
+SELECT (SELECT COUNT(*) FROM s) AS record_count,
+  ${VALUES_SQL} AS values_json,
+  ${POSITIONS_SQL} AS positions_json,
+  ${CUMULATIVE_SQL} AS cumulative,
+  ${CYCLE_SQL} AS cycle,
+  ${GROWTH_SQL} AS growth`;
+}
+
+function buildStressInsert(): string {
+  return `INSERT INTO analysis_results (${RESULT_COLUMNS})
+SELECT ?1, 'stress', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
+FROM (SELECT 1)
+WHERE (SELECT version FROM record_meta WHERE dataset_id = ?1) = ?13
+ON CONFLICT(dataset_id, config_kind, config_id) DO UPDATE SET ${RESULT_UPDATE}`;
+}
+
+function computeStressStats(values: number[]) {
+  const n = values.length;
+  if (n === 0) return { skewness: 0, kurtosis: 0, jb: 0, jbPValue: 1 };
+
+  let sum = 0;
+  for (const v of values) sum += v;
+  const mu = sum / n;
+
+  let m2 = 0;
+  let m3 = 0;
+  let m4 = 0;
+  for (const v of values) {
+    const d = v - mu;
+    m2 += d * d;
+    m3 += d * d * d;
+    m4 += d * d * d * d;
+  }
+  m2 /= n;
+  m3 /= n;
+  m4 /= n;
+
+  const skewness = n < 3 || m2 === 0
+    ? 0
+    : (Math.sqrt(n * (n - 1)) / (n - 2)) * (m3 / Math.pow(m2, 1.5));
+  const kurtosis = n < 4 || m2 === 0
+    ? 0
+    : ((n - 1) / ((n - 2) * (n - 3))) * ((n + 1) * (m4 / (m2 * m2) - 3) + 6);
+  const jb = n < 3 ? 0 : (n / 6) * (skewness * skewness + kurtosis * kurtosis / 4);
+  const jbPValue = n < 3 ? 1 : Math.exp(-jb / 2);
+  return { skewness, kurtosis, jb, jbPValue };
 }
 
 function buildDimensionCtes(predicate: string): string {
@@ -613,12 +612,7 @@ export async function recomputeStats(
   if (wanted.has('dimension')) {
     const dimensions = defaultDimensions(config);
     for (const dim of dimensions) {
-      statements.push(bind(buildSeriesStatement({
-        kind: 'dimension',
-        id: dim.key,
-        ctes: buildDimensionCtes(dim.predicate),
-        stress: false,
-      })));
+      statements.push(bind(buildSeriesStatement('dimension', dim.key, buildDimensionCtes(dim.predicate))));
     }
     const keep = dimensions.map(d => sqlStr(d.key)).join(', ');
     statements.push(bindPrune(
@@ -635,12 +629,34 @@ export async function recomputeStats(
     const selected = ids ? configs.filter(item => ids.has(item.id)) : configs;
 
     for (const item of selected) {
-      statements.push(bind(buildSeriesStatement({
-        kind,
-        id: item.id,
-        ctes: buildSeriesCtes(item.groups, dims),
-        stress: kind === 'stress',
-      })));
+      const ctes = buildSeriesCtes(item.groups, dims);
+      if (kind === 'tab') {
+        statements.push(bind(buildSeriesStatement('tab', item.id, ctes)));
+        continue;
+      }
+
+      // 压测：SQL 只取序列，偏度/峰度/JB 在 Worker 里算（D1 禁用了 power/sqrt/exp）
+      const row = await db.prepare(buildSeriesSelect(ctes)).bind(datasetId).first();
+      const values = parseJson(row?.values_json, []);
+      const stats = computeStressStats(Array.isArray(values) ? values : []);
+      statements.push(
+        db.prepare(buildStressInsert()).bind(
+          datasetId,
+          item.id,
+          Number(row?.record_count ?? 0),
+          row?.values_json ?? '[]',
+          row?.positions_json ?? '[]',
+          row?.cumulative ?? '[]',
+          row?.cycle ?? '[]',
+          row?.growth ?? '[]',
+          stats.skewness,
+          stats.kurtosis,
+          stats.jb,
+          stats.jbPValue,
+          version,
+          now,
+        ),
+      );
     }
 
     // 只有全量重算时才清理已删除配置
