@@ -42,10 +42,54 @@ async function apiGet<T>(endpoint: string, datasetId: string): Promise<T> {
   return data as T;
 }
 
-/** 加载所有日志（含服务端版本号，用于增量写冲突检测） */
-export async function loadJournals(datasetId: string): Promise<{ journals: TradingJournal[]; version: number }> {
-  const data = await apiGet<{ success: boolean; journals: TradingJournal[]; version?: number }>('/api/journals', datasetId);
-  return { journals: data.journals || [], version: typeof data.version === 'number' ? data.version : 0 };
+/** 日志分页查询参数（服务端分页：页码优先，cursor 仅保留兼容） */
+export interface JournalPageQuery {
+  limit?: number;
+  /** 页码起点 = (页码 - 1) * limit */
+  offset?: number;
+  cursor?: string | null;
+  status?: string;
+  fromDay?: string;
+  toDay?: string;
+  code?: string;
+  sort?: 'asc' | 'desc';
+  /** manual = 「当前交易」的手动顺序（sort_order），默认按日期 */
+  orderBy?: 'date' | 'manual';
+}
+
+export interface JournalPage {
+  journals: TradingJournal[];
+  version: number;
+  nextCursor: string | null;
+  total: number;
+}
+
+/** 按需加载一页日志 */
+export async function loadJournalPage(
+  datasetId: string,
+  query: JournalPageQuery = {},
+): Promise<JournalPage> {
+  const params = new URLSearchParams({ dataset: datasetId });
+  params.set('limit', String(query.limit ?? 50));
+  if (typeof query.offset === 'number' && query.offset > 0) params.set('offset', String(query.offset));
+  if (query.cursor) params.set('cursor', query.cursor);
+  if (query.status) params.set('status', query.status);
+  if (query.fromDay) params.set('from', query.fromDay);
+  if (query.toDay) params.set('to', query.toDay);
+  if (query.code) params.set('code', query.code);
+  if (query.sort) params.set('sort', query.sort);
+  if (query.orderBy === 'manual') params.set('order', 'manual');
+
+  const res = await fetch(`${API_BASE}/api/journals?${params.toString()}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (data?.success !== true) throw new Error(data?.error || '读取失败');
+  return {
+    journals: Array.isArray(data.journals) ? data.journals : [],
+    version: typeof data.version === 'number' ? data.version : 0,
+    nextCursor: typeof data.nextCursor === 'string' ? data.nextCursor : null,
+    total: typeof data.total === 'number' ? data.total : 0,
+  };
 }
 
 /** 提交增量操作，仅上传变更条目 */

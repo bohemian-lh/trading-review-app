@@ -57,6 +57,8 @@ export interface TradingJournal {
   strategyOrder: Record<string, string[]>; // groupId -> strategyId[] 自定义策略排序，为空时按配置默认顺序
   snapshotId: string;      // 写入时的配置快照 ID
   status: 'draft' | 'submitted';  // draft=中间态, submitted=已完成
+  /** 「当前交易」的手动排序序号（服务端 sort_order）；未手动排序时为空，按日期排 */
+  sortOrder?: number;
   createdAt: string;
 }
 

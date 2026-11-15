@@ -2,6 +2,7 @@ import React from 'react';
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { TradingJournal } from '@/types';
 import { GAIN_PRICE_INDEXES, getClosePrice, computeGainSegments, resolvePriceCodeSegments } from '@/utils/journalHelpers';
+import { wrapRuns, cardTextWidth, cellTextWidth, type PdfTextRun } from '@/utils/pdfTextWrap';
 
 // 中文字体注册已移至 utils/pdfFonts.ts，由 generateJournalPdfBlob 调用
 // ensurePdfFontsRegistered 统一注册并预加载。
@@ -32,6 +33,8 @@ interface Props {
 const PRICE_LABELS = ['', '', '目标位：', '固定目标位：', '压力1：', '压力2：', '趋势最低点：'];
 const ROW_COLORS = ['#f0fdf4', '#fefce8', '#eff6ff']; // green50/yellow50/blue50
 const ROWS_PER_PAGE = 25;
+// A4 横向可用宽度（pt）：842 - 左右 padding 各 30；与 PdfPreviewModal 保持一致
+const PAGE_CONTENT_WIDTH = 782;
 
 // ─── 样式 ──────────────────────────────────────────────────────────
 const s = StyleSheet.create({
@@ -93,12 +96,6 @@ const s = StyleSheet.create({
     color: '#1d4ed8',
     marginBottom: 1,
   },
-  gainText: {
-    color: '#dc2626',
-  },
-  hardStopText: {
-    color: '#dc2626',
-  },
   cardBase: {
     padding: '1 3',
     borderRadius: 2,
@@ -159,12 +156,14 @@ const s = StyleSheet.create({
 });
 
 // ─── 策略卡片 ──────────────────────────────────────────────────────
+// 中文没有空格，react-pdf 的断行器不会在字符间断行，必须自己按字体度量分行（见 pdfTextWrap）
 const StrategyCardPdf: React.FC<{
   item: StrategyItem;
   journal: TradingJournal;
   spacing?: number;
   priceLevelCodes?: Record<number, string>;
-}> = ({ item, journal, spacing, priceLevelCodes }) => {
+  maxTextWidth: number;
+}> = ({ item, journal, spacing, priceLevelCodes, maxTextWidth }) => {
   const sid = item.strategyId;
   // 隐藏的策略不在 PDF 中渲染（网页端其余场景仍正常显示）
   if (journal.strategyHidden?.includes(sid)) return null;
@@ -182,23 +181,33 @@ const StrategyCardPdf: React.FC<{
   else if (isRedText) color = '#dc2626'; // red-600
   else if (item.isCustom) color = '#7e22ce'; // purple-700
 
+  const fontSize = 7;
+  const textRuns: PdfTextRun[] = resolvePriceCodeSegments(item.text, journal.priceLevels, priceLevelCodes)
+    .map(seg => ({ text: seg.text, color: seg.isHardStop ? '#dc2626' : undefined }));
+  const lines = wrapRuns(textRuns, maxTextWidth, fontSize, isBold ? 700 : 400);
+
   return (
     <View style={cardStyle}>
-      <Text style={{
-        fontSize: 7,
-        fontWeight: isBold ? 'bold' as const : 'normal' as const,
-        color,
-      }}>
-        {resolvePriceCodeSegments(item.text, journal.priceLevels, priceLevelCodes).map((seg, i) => (
-          <Text key={i} style={seg.isHardStop ? { color: '#dc2626' } : {}}>{seg.text}</Text>
-        ))}
-      </Text>
+      {lines.map((line, i) => (
+        <Text
+          key={i}
+          style={{
+            fontSize,
+            fontWeight: isBold ? 'bold' as const : 'normal' as const,
+            color,
+          }}
+        >
+          {line.map((seg, j) => (
+            <Text key={j} style={seg.color ? { color: seg.color } : {}}>{seg.text}</Text>
+          ))}
+        </Text>
+      ))}
     </View>
   );
 };
 
 // ─── 价格上涨 ──────────────────────────────────────────────────────
-const PriceLevelsPdf: React.FC<{ journal: TradingJournal }> = ({ journal }) => {
+const PriceLevelsPdf: React.FC<{ journal: TradingJournal; maxTextWidth: number }> = ({ journal, maxTextWidth }) => {
   const levels = journal.priceLevels || [];
   const closePrice = getClosePrice(levels);
   return (
@@ -209,15 +218,22 @@ const PriceLevelsPdf: React.FC<{ journal: TradingJournal }> = ({ journal }) => {
         const segments = gainSegments ?? (val ? [{ text: val, isGain: false }] : null);
         const effectiveLabel = i === 1 && val ? '硬止损：' : label;
         const isHardStop = i === 1 && !!val;
+        const runs: PdfTextRun[] = [{ text: effectiveLabel }];
+        for (const seg of segments ?? []) {
+          runs.push({ text: seg.text, color: seg.isGain || isHardStop ? '#dc2626' : undefined });
+        }
+        // 价位值也可能很长（带涨幅百分比），同样按字符换行，避免越过列线
+        const lines = wrapRuns(runs, maxTextWidth, 6);
         return (
-          <Text key={i} style={val ? s.priceLineVal : s.priceLine}>
-            {effectiveLabel}
-            {segments?.map((seg, j) =>
-              seg.isGain
-                ? <Text key={j} style={s.gainText}>{seg.text}</Text>
-                : <Text key={j} style={isHardStop ? s.hardStopText : {}}>{seg.text}</Text>
-            )}
-          </Text>
+          <View key={i}>
+            {lines.map((line, li) => (
+              <Text key={li} style={val ? s.priceLineVal : s.priceLine}>
+                {line.map((seg, si) => (
+                  <Text key={si} style={seg.color ? { color: seg.color } : {}}>{seg.text}</Text>
+                ))}
+              </Text>
+            ))}
+          </View>
         );
       })}
     </>
@@ -358,13 +374,16 @@ const DataRow: React.FC<{
 }> = ({ row, groupIds, rowIdx, colWidths, rowSpacing, priceLevelCodes }) => {
   const { journal, grouped } = row;
   const bgColor = ROW_COLORS[rowIdx % ROW_COLORS.length];
+  // 列宽：未指定时按页宽等分；文字可用宽度要扣掉单元格/卡片的内边距与边框
+  const columnWidth = (idx: number) =>
+    colWidths?.[idx] ?? Math.round(PAGE_CONTENT_WIDTH / (groupIds.length + 1));
 
   return (
     <View style={[s.row, { backgroundColor: bgColor }]} wrap={false}>
       {/* 名称列 */}
       <View style={bodyCellStyle(0, groupIds.length, colWidths)}>
         <Text style={s.stockName}>{journal.stockName || '-'}</Text>
-        <PriceLevelsPdf journal={journal} />
+        <PriceLevelsPdf journal={journal} maxTextWidth={cellTextWidth(columnWidth(0))} />
       </View>
       {/* 策略组列 */}
       {groupIds.map((gid, i) => {
@@ -378,6 +397,7 @@ const DataRow: React.FC<{
                 journal={journal}
                 spacing={rowSpacing}
                 priceLevelCodes={priceLevelCodes}
+                maxTextWidth={cardTextWidth(columnWidth(i + 1))}
               />
             ))}
           </View>

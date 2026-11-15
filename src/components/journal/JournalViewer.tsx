@@ -3,6 +3,8 @@ import { Trash2, Link, Undo2, ArrowUpDown } from 'lucide-react';
 import { useRecordsStore } from '@/stores';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
+import { r2StorageService } from '@/services/r2Service';
+import { Pagination } from '@/components/common/Pagination';
 import { groupStrategies, applySort, resolvePriceCodeSegments, type StrategyItem } from '@/utils/journalHelpers';
 import type { TradingJournal } from '@/types';
 
@@ -46,18 +48,29 @@ function saveColSettings(s: ColSettings) {
 }
 
 // ─── 匹配记录弹出面板 ──────────────────────────────────────────────
+// 记录已改为服务端分页，这里按「日期 / 代码」实时查询候选，而不是读本地缓存
+interface MatchCandidate {
+  id: string;
+  openDate: string;
+  stockName: string;
+  stockCode: string;
+}
+
 const MatchPopover: React.FC<{
-  records: Array<{ id: string; openDate: string; stockName: string; stockCode: string }>;
+  defaultDay?: string;
   currentRecordId?: string;
   anchorX: number;
   anchorY: number;
   onSelect: (recordId: string | undefined) => void;
   onClose: () => void;
-}> = ({ records, currentRecordId, anchorX, anchorY, onSelect, onClose }) => {
+}> = ({ defaultDay, currentRecordId, anchorX, anchorY, onSelect, onClose }) => {
+  const datasetId = useDatasetStore(s => s.currentDatasetId);
   const popoverRef = useRef<HTMLDivElement>(null);
-  const [matchDate, setMatchDate] = useState('');
+  const [matchDate, setMatchDate] = useState((defaultDay ?? '').replace(/-/g, '').slice(0, 8));
   const [matchCode, setMatchCode] = useState('');
   const [sortAsc, setSortAsc] = useState(false);
+  const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
+  const [loading, setLoading] = useState(false);
 
   // 点击外部关闭
   useEffect(() => {
@@ -70,19 +83,47 @@ const MatchPopover: React.FC<{
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
-  // 筛选 + 排序
+  // 筛选条件变化时按需查询服务端（把已输入的日期换算成区间下推，避免只取最近 N 条）
+  useEffect(() => {
+    if (!datasetId) return;
+    const digits = matchDate.replace(/-/g, '');
+    // 8 位=当天，6 位=当月，4 位=当年；更短的输入本地兜底过滤
+    const range = digits.length === 8
+      ? { fromDay: digits, toDay: digits }
+      : digits.length === 6
+        ? { fromDay: `${digits}01`, toDay: `${digits}31` }
+        : digits.length === 4
+          ? { fromDay: `${digits}0101`, toDay: `${digits}1231` }
+          : {};
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      const result = await r2StorageService.getRecords(datasetId, {
+        ...range,
+        code: matchCode || undefined,
+        limit: 200,
+        sort: sortAsc ? 'asc' : 'desc',
+      });
+      if (cancelled) return;
+      setCandidates((result.records ?? []).map(r => ({
+        id: r.id,
+        openDate: r.openDate,
+        stockName: r.stockName,
+        stockCode: r.stockCode,
+      })));
+      setLoading(false);
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [datasetId, matchDate, matchCode, sortAsc]);
+
   const visibleRecords = useMemo(() => {
-    let result = records.filter(r => {
-      if (matchDate && !r.openDate.includes(matchDate.replace(/-/g, ''))) return false;
-      if (matchCode && !r.stockCode.includes(matchCode)) return false;
-      return true;
-    });
-    result = [...result].sort((a, b) => {
-      const cmp = a.openDate.localeCompare(b.openDate);
-      return sortAsc ? cmp : -cmp;
-    });
-    return result;
-  }, [records, matchDate, matchCode, sortAsc]);
+    const digits = matchDate.replace(/-/g, '');
+    if (!digits || digits.length === 8) return candidates;
+    return candidates.filter(r => r.openDate.replace(/-/g, '').includes(digits));
+  }, [candidates, matchDate]);
 
   // 计算位置，不超出视口
   const popX = Math.min(anchorX + 8, window.innerWidth - 280);
@@ -133,7 +174,9 @@ const MatchPopover: React.FC<{
 
       {/* 记录列表 */}
       <div className="max-h-48 overflow-y-auto border-t pt-1">
-        {visibleRecords.length === 0 ? (
+        {loading ? (
+          <div className="text-xs text-gray-400 text-center py-2">查询中…</div>
+        ) : visibleRecords.length === 0 ? (
           <div className="text-xs text-gray-400 text-center py-2">无匹配记录</div>
         ) : (
           visibleRecords.map(r => (
@@ -160,6 +203,9 @@ export const JournalViewer: React.FC = () => {
   const records = useRecordsStore(s => s.records);
   const priceLevelCodes = useRecordsStore(s => s.fieldConfig.priceLevelCodes);
   const journals = useJournalStore(s => s.journals);
+  const journalPage = useJournalStore(s => s.journalPage);
+  const loadPage = useJournalStore(s => s.loadPage);
+  const goToPage = useJournalStore(s => s.goToPage);
   const snapshots = useJournalStore(s => s.snapshots);
   const activeStages = useJournalStore(s => s.activeStages);
   const deleteJournal = useJournalStore(s => s.deleteJournal);
@@ -250,35 +296,41 @@ export const JournalViewer: React.FC = () => {
     return map;
   }, [activeStages]);
 
-  const filtered = useMemo(() => {
-    const from = toDayKey(dateFrom);
-    const to = toDayKey(dateTo);
-    const result = journals.filter(j => {
-      if (j.status !== 'submitted') return false;
-      // 开单时间区间：含首含尾，按天比较
-      if (from || to) {
-        const day = toDayKey(j.openDate);
-        if (!day) return false;
-        if (from && day < from) return false;
-        if (to && day > to) return false;
-      }
-      if (filterCode && !j.stockCode.includes(filterCode)) return false;
-      return true;
-    });
-    return result.sort((a, b) => {
-      const cmp = toDayKey(a.openDate).localeCompare(toDayKey(b.openDate));
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-  }, [journals, dateFrom, dateTo, filterCode, sortDir]);
+  // 服务端分页：筛选 / 排序变化时重新拉第一页（输入类条件防抖 300ms）
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadPage(
+        'submitted',
+        { fromDay: toDayKey(dateFrom), toDay: toDayKey(dateTo), code: filterCode.trim(), sort: sortDir },
+        datasetId,
+      );
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [datasetId, dateFrom, dateTo, filterCode, sortDir, loadPage]);
+
+  const journalById = useMemo(() => new Map(journals.map(j => [j.id, j])), [journals]);
+
+  // 行内容来自缓存，顺序来自分页视图；视图不是「已存储日志」时不渲染残留 id
+  const rows = useMemo(() => {
+    if (journalPage.status !== 'submitted') return [] as TradingJournal[];
+    const list: TradingJournal[] = [];
+    for (const id of journalPage.ids) {
+      const journal = journalById.get(id);
+      if (journal) list.push(journal);
+    }
+    return list;
+  }, [journalPage.status, journalPage.ids, journalById]);
+
+  const hasFilter = !!(dateFrom || dateTo || filterCode.trim());
 
   // 每条日志的分组结果只算一次，避免筛选/弹层等交互触发整表重复计算
   const groupedById = useMemo(() => {
     const map: Record<string, Record<string, StrategyItem[]>> = {};
-    for (const journal of filtered) {
+    for (const journal of rows) {
       map[journal.id] = groupStrategies(journal, activeStages, snapshots);
     }
     return map;
-  }, [filtered, activeStages, snapshots]);
+  }, [rows, activeStages, snapshots]);
 
   const handleDelete = async (journalId: string) => {
     if (!confirm('确认删除此条日志？')) return;
@@ -295,18 +347,13 @@ export const JournalViewer: React.FC = () => {
     setMatchingJournalId(null);
   };
 
-  // 记录索引：避免每行都线性遍历全部交易记录
+  // 记录索引：用于展示已关联记录的名称（只覆盖已加载的分页）
   const recordById = useMemo(() => new Map(records.map(r => [r.id, r])), [records]);
 
   const getLinkedRecord = (journal: TradingJournal) => {
     if (!journal.recordId) return null;
     return recordById.get(journal.recordId) ?? null;
   };
-
-  // 用于匹配弹窗的记录数据
-  const allRecords = useMemo(() =>
-    records.map(r => ({ id: r.id, openDate: r.openDate, stockName: r.stockName, stockCode: r.stockCode })),
-  [records]);
 
   // ─── 只读策略卡片（无交互）─────────────────────────────────────────
   const renderStrategyCard = (text: string, strategyId: string, journal: TradingJournal, isCustom: boolean) => {
@@ -403,18 +450,24 @@ export const JournalViewer: React.FC = () => {
           开单时间：{sortDir === 'asc' ? '升序' : '降序'}
         </button>
         <div className="text-sm text-gray-400 pb-2">
-          共 {filtered.length} 条
+          共 {journalPage.total} 条 · 第 {journalPage.page}/{journalPage.totalPages} 页
         </div>
       </div>
 
-      {filtered.length === 0 && (
+      {journalPage.loading && (
+        <div className="text-center py-8 text-gray-400">加载中…</div>
+      )}
+      {!journalPage.loading && journalPage.error && (
+        <div className="text-center py-8 text-red-500">加载失败：{journalPage.error}</div>
+      )}
+      {!journalPage.loading && !journalPage.error && rows.length === 0 && (
         <div className="text-center py-12 text-gray-400">
-          {journals.filter(j => j.status === 'submitted').length === 0 ? '暂无已提交的日志' : '无匹配结果'}
+          {hasFilter ? '无匹配结果' : '暂无已提交的日志'}
         </div>
       )}
 
       {/* 表格 */}
-      {filtered.length > 0 && (
+      {rows.length > 0 && (
       <div className="overflow-x-auto rounded-lg bg-gray-100" style={{ padding: '4px' }}>
         <table className="border-separate text-sm" style={{ tableLayout: 'fixed', borderSpacing: '0 4px' }}>
           <thead>
@@ -439,7 +492,7 @@ export const JournalViewer: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((journal, idx) => {
+            {rows.map((journal, idx) => {
               const grouped = groupedById[journal.id] || {};
               const stageName = activeStages.find(s => s.stageId === journal.stage)?.stageName || journal.stage;
               const linkedRecord = getLinkedRecord(journal);
@@ -455,9 +508,9 @@ export const JournalViewer: React.FC = () => {
                       {journal.openDate || '-'} | {stageName}
                     </div>
                     <div className="text-xs mt-0.5">
-                      {linkedRecord ? (
+                      {journal.recordId ? (
                         <span className="text-green-600">
-                          已关联: {linkedRecord.stockName}({linkedRecord.stockCode})
+                          已关联: {(linkedRecord ?? journal).stockName}({(linkedRecord ?? journal).stockCode})
                         </span>
                       ) : (
                         <span className="text-orange-400">未关联</span>
@@ -545,11 +598,22 @@ export const JournalViewer: React.FC = () => {
       </div>
       )}
 
+      {/* 页码分页：1 2 3 4 … + 跳转指定页 */}
+      {journalPage.total > 0 && (
+        <Pagination
+          currentPage={journalPage.page}
+          totalPages={journalPage.totalPages}
+          pageSize={journalPage.pageSize}
+          total={journalPage.total}
+          onPageChange={(page) => void goToPage(page, datasetId)}
+        />
+      )}
+
       {/* 匹配记录弹窗 */}
       {matchingJournalId && (
         <MatchPopover
-          records={allRecords}
-          currentRecordId={journals.find(j => j.id === matchingJournalId)?.recordId}
+          defaultDay={rows.find(j => j.id === matchingJournalId)?.openDate}
+          currentRecordId={rows.find(j => j.id === matchingJournalId)?.recordId}
           anchorX={matchAnchor.x}
           anchorY={matchAnchor.y}
           onSelect={(recordId) => handleMatch(matchingJournalId, recordId)}

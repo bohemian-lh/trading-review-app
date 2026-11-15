@@ -3,7 +3,7 @@
 // 作用：记录变更先落盘到本地队列，再请求服务端；请求失败或页面被关掉时，
 //      刷新后仍能把未确认的改动重放上去，避免「界面显示已保存、实际没落库」。
 import type { RecordsSavePayload } from '@/services/r2Service';
-import type { TradingRecord, MonthlyAnalysis, CycleStats } from '@/types';
+import type { TradingRecord, MonthlyAnalysis } from '@/types';
 
 const DB_NAME = 'trading-records-outbox';
 const DB_VERSION = 1;
@@ -19,17 +19,9 @@ export interface RecordsOutboxEntry {
   monthlyUpserts: Record<string, MonthlyAnalysis>;
   monthlyDeletes: Record<string, true>;
   monthlyUseCustom?: boolean;
-  cycleStatsUpserts: Record<string, CycleStats>;
-  cycleStatsDeletes: Record<string, { statType: string; cycleId: string }>;
-  cycleStatsGeneratedAt?: number | null;
-  cycleStatsGeneratedAtSet: boolean;
   /** 本次队列快照的标识，用于 ACK 时判断期间是否有新改动 */
   opId: string;
   updatedAt: number;
-}
-
-export function cycleEntryKey(statType: string, cycleId: string): string {
-  return `${statType}::${cycleId}`;
 }
 
 function emptyEntry(datasetId: string): RecordsOutboxEntry {
@@ -40,9 +32,6 @@ function emptyEntry(datasetId: string): RecordsOutboxEntry {
     customAnalysisSet: false,
     monthlyUpserts: {},
     monthlyDeletes: {},
-    cycleStatsUpserts: {},
-    cycleStatsDeletes: {},
-    cycleStatsGeneratedAtSet: false,
     opId: '',
     updatedAt: 0,
   };
@@ -127,8 +116,6 @@ export async function recordsOutboxMerge(
     deletes: { ...existing.deletes },
     monthlyUpserts: { ...existing.monthlyUpserts },
     monthlyDeletes: { ...existing.monthlyDeletes },
-    cycleStatsUpserts: { ...existing.cycleStatsUpserts },
-    cycleStatsDeletes: { ...existing.cycleStatsDeletes },
     opId: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     updatedAt: Date.now(),
   };
@@ -159,23 +146,6 @@ export async function recordsOutboxMerge(
   }
   if (payload.monthlyUseCustom !== undefined) next.monthlyUseCustom = payload.monthlyUseCustom;
 
-  for (const item of payload.cycleStatsUpserts ?? []) {
-    if (!item || typeof item.cycleId !== 'string' || typeof item.statType !== 'string') continue;
-    const key = cycleEntryKey(item.statType, item.cycleId);
-    next.cycleStatsUpserts[key] = item;
-    delete next.cycleStatsDeletes[key];
-  }
-  for (const item of payload.cycleStatsDeletes ?? []) {
-    if (!item) continue;
-    const key = cycleEntryKey(item.statType, item.cycleId);
-    delete next.cycleStatsUpserts[key];
-    next.cycleStatsDeletes[key] = item;
-  }
-  if (payload.cycleStatsGeneratedAt !== undefined) {
-    next.cycleStatsGeneratedAt = payload.cycleStatsGeneratedAt;
-    next.cycleStatsGeneratedAtSet = true;
-  }
-
   await putEntry(next);
   return next;
 }
@@ -200,10 +170,7 @@ export function entryHasChanges(entry: RecordsOutboxEntry): boolean {
     entry.customAnalysisSet ||
     Object.keys(entry.monthlyUpserts).length > 0 ||
     Object.keys(entry.monthlyDeletes).length > 0 ||
-    entry.monthlyUseCustom !== undefined ||
-    Object.keys(entry.cycleStatsUpserts).length > 0 ||
-    Object.keys(entry.cycleStatsDeletes).length > 0 ||
-    entry.cycleStatsGeneratedAtSet
+    entry.monthlyUseCustom !== undefined
   );
 }
 
@@ -222,12 +189,6 @@ export function entryToPayload(entry: RecordsOutboxEntry, baseVersion: number): 
   if (monthlyUpserts.length > 0) payload.monthlyUpserts = monthlyUpserts;
   if (monthlyDeletes.length > 0) payload.monthlyDeletes = monthlyDeletes;
   if (entry.monthlyUseCustom !== undefined) payload.monthlyUseCustom = entry.monthlyUseCustom;
-
-  const cycleUpserts = Object.values(entry.cycleStatsUpserts);
-  const cycleDeletes = Object.values(entry.cycleStatsDeletes);
-  if (cycleUpserts.length > 0) payload.cycleStatsUpserts = cycleUpserts;
-  if (cycleDeletes.length > 0) payload.cycleStatsDeletes = cycleDeletes;
-  if (entry.cycleStatsGeneratedAtSet) payload.cycleStatsGeneratedAt = entry.cycleStatsGeneratedAt ?? null;
 
   return payload;
 }

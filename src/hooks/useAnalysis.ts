@@ -1,83 +1,85 @@
 import { useMemo } from 'react';
-import type { AnalysisResult, MonthlyAnalysis, TradingRecord } from '@/types';
+import type { AnalysisResult, MonthlyAnalysis } from '@/types';
 import { useRecordsStore } from '@/stores/recordsStore';
-import { calculateProfitRatio, calculateAvgProfitRatio, calculateTotalProfit, computeAnalysisResult } from '@/utils/calculations';
-import { extractMonth } from '@/utils/dateUtils';
+
+/**
+ * 统计结果一律来自服务端预计算（/api/stats）。
+ *
+ * 历史实现会在结果表为空时用内存里的 records 现算，但记录已经改成按页加载，
+ * 那样算出来的是"当前页"的数字，看起来正常却完全错误 —— 所以这里不再回退，
+ * 缺失时返回空结构，由页面提示"尚未生成统计"。
+ */
+const EMPTY_ANALYSIS: AnalysisResult = {
+  systemProfitRatio: 'N/A',
+  systemNoMistakeProfitRatio: 'N/A',
+  systemWithMistakeProfitRatio: 'N/A',
+  nonSystemProfitRatio: 'N/A',
+  systemProfitAvgHoldDays: 'N/A',
+  systemLossAvgHoldDays: 'N/A',
+  nonSystemProfitAvgHoldDays: 'N/A',
+  nonSystemLossAvgHoldDays: 'N/A',
+  tradingTypeRatios: {},
+  trendFeatureRatios: {},
+  aggregateRatios: {},
+  theoreticalProfitRatios: {},
+};
 
 export function useAnalysisResult(): AnalysisResult {
-  const records = useRecordsStore((s) => s.records);
   const customAnalysis = useRecordsStore((s) => s.customAnalysis);
   const fieldConfig = useRecordsStore((s) => s.fieldConfig);
   const overview = useRecordsStore((s) => s.statOverview);
 
   return useMemo(() => {
     if (customAnalysis.useCustom) return customAnalysis.data;
-    // 结果表优先：读取即取数，不再从明细重算
-    if (overview) {
-      // 结果表只包含出现过的键；按配置补齐缺失项，保证展示与本地计算一致
-      const tradingTypeRatios = { ...overview.tradingTypeRatios };
-      for (const type of fieldConfig.tradingTypes) {
-        if (type !== '未知' && tradingTypeRatios[type] === undefined) tradingTypeRatios[type] = 0;
-      }
-      const trendFeatureRatios = { ...overview.trendFeatureRatios };
-      for (const feature of fieldConfig.trendFeatures) {
-        if (feature !== '未知' && trendFeatureRatios[feature] === undefined) trendFeatureRatios[feature] = 0;
-      }
-      const aggregateRatios = { ...overview.aggregateRatios };
-      for (const rule of fieldConfig.aggregateRules) {
-        if (aggregateRatios[rule.name] === undefined) aggregateRatios[rule.name] = 0;
-      }
-      const theoreticalProfitRatios = { ...overview.theoreticalProfitRatios };
-      for (const dim of fieldConfig.theoreticalDimensions) {
-        if (theoreticalProfitRatios[dim.id] === undefined) theoreticalProfitRatios[dim.id] = 'N/A';
-      }
+    if (!overview) return EMPTY_ANALYSIS;
 
-      return {
-        systemProfitRatio: overview.systemProfitRatio,
-        systemNoMistakeProfitRatio: overview.systemNoMistakeProfitRatio,
-        systemWithMistakeProfitRatio: overview.systemWithMistakeProfitRatio,
-        nonSystemProfitRatio: overview.nonSystemProfitRatio,
-        systemProfitAvgHoldDays: overview.systemProfitAvgHoldDays,
-        systemLossAvgHoldDays: overview.systemLossAvgHoldDays,
-        nonSystemProfitAvgHoldDays: overview.nonSystemProfitAvgHoldDays,
-        nonSystemLossAvgHoldDays: overview.nonSystemLossAvgHoldDays,
-        tradingTypeRatios,
-        trendFeatureRatios,
-        aggregateRatios,
-        theoreticalProfitRatios,
-      };
+    // 结果表只包含出现过的键；按配置补齐缺失项，保证展示与配置一致
+    const tradingTypeRatios = { ...overview.tradingTypeRatios };
+    for (const type of fieldConfig.tradingTypes) {
+      if (type !== '未知' && tradingTypeRatios[type] === undefined) tradingTypeRatios[type] = 0;
     }
-    return computeAnalysisResult(records, fieldConfig);
-  }, [records, customAnalysis, fieldConfig, overview]);
+    const trendFeatureRatios = { ...overview.trendFeatureRatios };
+    for (const feature of fieldConfig.trendFeatures) {
+      if (feature !== '未知' && trendFeatureRatios[feature] === undefined) trendFeatureRatios[feature] = 0;
+    }
+    const aggregateRatios = { ...overview.aggregateRatios };
+    for (const rule of fieldConfig.aggregateRules) {
+      if (aggregateRatios[rule.name] === undefined) aggregateRatios[rule.name] = 0;
+    }
+    const theoreticalProfitRatios = { ...overview.theoreticalProfitRatios };
+    for (const dim of fieldConfig.theoreticalDimensions) {
+      if (theoreticalProfitRatios[dim.id] === undefined) theoreticalProfitRatios[dim.id] = 'N/A';
+    }
+
+    return {
+      systemProfitRatio: overview.systemProfitRatio,
+      systemNoMistakeProfitRatio: overview.systemNoMistakeProfitRatio,
+      systemWithMistakeProfitRatio: overview.systemWithMistakeProfitRatio,
+      nonSystemProfitRatio: overview.nonSystemProfitRatio,
+      systemProfitAvgHoldDays: overview.systemProfitAvgHoldDays,
+      systemLossAvgHoldDays: overview.systemLossAvgHoldDays,
+      nonSystemProfitAvgHoldDays: overview.nonSystemProfitAvgHoldDays,
+      nonSystemLossAvgHoldDays: overview.nonSystemLossAvgHoldDays,
+      tradingTypeRatios,
+      trendFeatureRatios,
+      aggregateRatios,
+      theoreticalProfitRatios,
+    };
+  }, [customAnalysis, fieldConfig, overview]);
 }
 
 export function useMonthlyAnalysis(): MonthlyAnalysis[] {
-  const records = useRecordsStore((s) => s.records);
   const customMonthly = useRecordsStore((s) => s.customMonthly);
   const statMonthly = useRecordsStore((s) => s.statMonthly);
 
   return useMemo(() => {
     if (customMonthly.useCustom) return customMonthly.data;
-    // 结果表优先：没有结果表（迁移前 / R2 模式）才回退到浏览器计算
-    if (statMonthly.length > 0) return statMonthly;
-    const monthMap = new Map<string, TradingRecord[]>();
-    for (const r of records) {
-      const month = extractMonth(r.openDate);
-      if (!monthMap.has(month)) monthMap.set(month, []);
-      monthMap.get(month)!.push(r);
-    }
-    const months = Array.from(monthMap.keys()).sort();
-    return months.map(month => {
-      const monthRecords = monthMap.get(month)!;
-      return {
-        month,
-        systemProfitRatio: calculateProfitRatio(monthRecords, '是'),
-        systemNoMistakeProfitRatio: calculateProfitRatio(monthRecords, '是', '否'),
-        systemWithMistakeProfitRatio: calculateProfitRatio(monthRecords, '是', '是'),
-        nonSystemProfitRatio: calculateProfitRatio(monthRecords, '否'),
-        avgProfitRatio: calculateAvgProfitRatio(monthRecords),
-        totalProfit: calculateTotalProfit(monthRecords),
-      };
-    });
-  }, [records, customMonthly, statMonthly]);
+    // 与总览同理：不再用当前页记录现算，结果表为空就返回空
+    return statMonthly;
+  }, [customMonthly, statMonthly]);
+}
+
+/** 统计结果是否已生成（用于页面提示，避免把空表当成“没有数据”） */
+export function useHasServerStats(): boolean {
+  return useRecordsStore((s) => !!s.statOverview);
 }

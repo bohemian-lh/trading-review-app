@@ -9,6 +9,8 @@
 //   用一次性令牌而非 `version = base + 1` 做守卫：两个并发写会算出同一个 next 版本号，
 //   仅用版本号无法区分「自己抢到」还是「别人抢到但版本号恰好相同」。
 
+import { clampLimit, dayExpr, keysetWhere, makeCursor, normalizeDay, parseCursor } from './pagination';
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -30,6 +32,7 @@ function journalPayload(journal: any): string {
     status,
     snapshotId,
     recordId,
+    sortOrder,
     createdAt,
     ...rest
   } = journal ?? {};
@@ -39,14 +42,24 @@ function journalPayload(journal: any): string {
 /**
  * 单条日志 upsert。
  * guardToken 为 null 时不做版本守卫（迁移 / 全量覆盖场景）。
+ *
+ * sort_order：客户端显式传序号就按序号写；没传时
+ *   - 新插入的 draft 由 SQL 取「当前最大值 + 10」（排到「当前交易」末尾）
+ *   - 已存在的行保持原序号（不能因为一次编辑把老数据顶到末尾）
+ *   - 其它状态（已存储日志）没有序号就写 0，该列对它们无意义
  */
 function buildUpsert(db: any, datasetId: string, journal: any, guardToken: string | null) {
   const now = nowIso();
+  // 守卫参数固定排在最后（?13），VALUES 只写列值，避免占位符与列数错位
   const guard = guardToken === null
     ? ''
-    : 'WHERE (SELECT write_token FROM journal_datasets WHERE dataset_id = ?1) = ?12';
-  const sql = `INSERT INTO journals (dataset_id, id, open_date, stock_code, stock_name, status, snapshot_id, record_id, payload, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+    : 'WHERE (SELECT write_token FROM journal_datasets WHERE dataset_id = ?1) = ?13';
+  const sql = `INSERT INTO journals (dataset_id, id, open_date, stock_code, stock_name, status, snapshot_id, record_id, sort_order, payload, created_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+       CASE WHEN ?6 = 'draft'
+         THEN COALESCE(?9, (SELECT COALESCE(MAX(sort_order), 0) + 10 FROM journals WHERE dataset_id = ?1 AND status = 'draft'))
+         ELSE COALESCE(?9, 0) END,
+       ?10, ?11, ?12)
      ON CONFLICT(dataset_id, id) DO UPDATE SET
        open_date   = excluded.open_date,
        stock_code  = excluded.stock_code,
@@ -54,6 +67,11 @@ function buildUpsert(db: any, datasetId: string, journal: any, guardToken: strin
        status      = excluded.status,
        snapshot_id = excluded.snapshot_id,
        record_id   = excluded.record_id,
+       sort_order  = CASE
+         WHEN ?6 = 'draft' AND journals.status <> 'draft'
+           THEN COALESCE(?9, (SELECT COALESCE(MAX(sort_order), 0) + 10 FROM journals WHERE dataset_id = ?1 AND status = 'draft'))
+         ELSE COALESCE(?9, journals.sort_order)
+       END,
        payload     = excluded.payload,
        updated_at  = excluded.updated_at
      ${guard}`;
@@ -67,12 +85,29 @@ function buildUpsert(db: any, datasetId: string, journal: any, guardToken: strin
     journal.status ?? 'submitted',
     journal.snapshotId ?? null,
     journal.recordId ?? null,
+    typeof journal.sortOrder === 'number' && Number.isFinite(journal.sortOrder) ? journal.sortOrder : null,
     journalPayload(journal),
     journal.createdAt ?? now,
     now,
   ];
   if (guardToken !== null) params.push(guardToken);
   return db.prepare(sql).bind(...params);
+}
+
+function journalFromRow(row: any): any {
+  // 列字段 + payload 余量重新拼成完整对象；sort_order 以列为准
+  return {
+    id: row.id,
+    openDate: row.open_date,
+    stockCode: row.stock_code,
+    stockName: row.stock_name,
+    status: row.status,
+    snapshotId: row.snapshot_id ?? undefined,
+    recordId: row.record_id ?? undefined,
+    createdAt: row.created_at,
+    ...JSON.parse(row.payload || '{}'),
+    sortOrder: typeof row.sort_order === 'number' ? row.sort_order : 0,
+  };
 }
 
 export async function getJournals(db: any, datasetId: string): Promise<{ journals: any[]; version: number }> {
@@ -86,24 +121,153 @@ export async function getJournals(db: any, datasetId: string): Promise<{ journal
   const journals: any[] = [];
   for (const row of rows?.results ?? []) {
     try {
-      // 列字段 + payload 余量重新拼成完整对象
-      journals.push({
-        id: row.id,
-        openDate: row.open_date,
-        stockCode: row.stock_code,
-        stockName: row.stock_name,
-        status: row.status,
-        snapshotId: row.snapshot_id ?? undefined,
-        recordId: row.record_id ?? undefined,
-        createdAt: row.created_at,
-        ...JSON.parse(row.payload || '{}'),
-      });
+      journals.push(journalFromRow(row));
     } catch (e) {
       // 单行损坏不应拖垮整表读取，但要留下可定位的日志
       console.error('journal row parse failed:', datasetId, row.id, e);
     }
   }
   return { journals, version: typeof versionRow?.version === 'number' ? versionRow.version : 0 };
+}
+
+/** 按 id 取指定日志（冲突重放只回传受影响的行，避免整表传输） */
+export async function getJournalsByIds(db: any, datasetId: string, ids: string[]): Promise<any[]> {
+  const unique = [...new Set(ids.filter(id => typeof id === 'string' && id))];
+  if (unique.length === 0) return [];
+  const rows: any[] = [];
+  for (const part of chunk(unique)) {
+    const placeholders = part.map((_, i) => `?${i + 2}`).join(',');
+    const result = await db
+      .prepare(`SELECT * FROM journals WHERE dataset_id = ?1 AND id IN (${placeholders})`)
+      .bind(datasetId, ...part)
+      .all();
+    rows.push(...(result?.results ?? []));
+  }
+  return rows.map(journalFromRow);
+}
+
+export interface JournalPageOptions {
+  limit?: number;
+  cursor?: string | null;
+  /** 页码分页：与 cursor 互斥，传了 offset 就按 LIMIT/OFFSET 取页（界面需要跳页） */
+  offset?: number | null;
+  status?: string | null;
+  fromDay?: string | null;
+  toDay?: string | null;
+  code?: string | null;
+  sort?: 'asc' | 'desc';
+  /**
+   * 排序方式：
+   * - date（默认）：按开单日 / created_at / id，支持游标
+   * - manual：「当前交易」视图的手动顺序，按 sort_order 升序（同序时按日期倒序）；
+   *   该模式只用 offset 分页，不回传游标
+   */
+  orderBy?: 'date' | 'manual';
+}
+
+/**
+ * 日志分页。
+ * 排序键：开单日（YYYYMMDD）→ created_at → id；
+ * 游标格式 `${day}|${created_at}|${id}`，不含竖线，可安全放在 query string 里。
+ * cursor 与 offset 二选一：offset 模式直接跳页，不再回传游标。
+ */
+export async function getJournalPage(
+  db: any,
+  datasetId: string,
+  options: JournalPageOptions = {},
+): Promise<{ journals: any[]; version: number; nextCursor: string | null; total: number }> {
+  const limit = clampLimit(options.limit);
+  const sort = options.sort === 'asc' ? 'asc' : 'desc';
+  const dir = sort.toUpperCase();
+  const day = dayExpr('open_date');
+
+  const where: string[] = ['dataset_id = ?'];
+  const params: any[] = [datasetId];
+
+  if (options.status) {
+    where.push('status = ?');
+    params.push(options.status);
+  }
+  if (options.fromDay) {
+    const fromDay = normalizeDay(options.fromDay);
+    if (fromDay) {
+      where.push(`${day} >= ?`);
+      params.push(fromDay);
+    }
+  }
+  if (options.toDay) {
+    const toDay = normalizeDay(options.toDay);
+    if (toDay) {
+      where.push(`${day} <= ?`);
+      params.push(toDay);
+    }
+  }
+  if (options.code) {
+    where.push('stock_code LIKE ?');
+    params.push(`%${options.code}%`);
+  }
+
+  const filters = where.join(' AND ');
+  const [versionRow, totalRow] = await Promise.all([
+    db.prepare('SELECT version FROM journal_datasets WHERE dataset_id = ?1').bind(datasetId).first(),
+    db.prepare(`SELECT COUNT(*) AS c FROM journals WHERE ${filters}`).bind(...params).first(),
+  ]);
+
+  const pageWhere = [...where];
+  const pageParams = [...params];
+  const offsetValue = Number(options.offset);
+  const offset = Number.isFinite(offsetValue) && offsetValue > 0 ? Math.trunc(offsetValue) : 0;
+  // 手动排序只用于「当前交易」，方向固定，不支持游标（与 offset 一样按页取）
+  const manual = options.orderBy === 'manual';
+  // offset 模式用于页码跳转，此时忽略游标（两种翻页方式不能混用）
+  const cursor = offset > 0 || manual ? null : parseCursor(options.cursor ?? null, 3);
+  if (cursor) {
+    const keyset = keysetWhere([day, 'created_at', 'id'], cursor, sort);
+    pageWhere.push(keyset.sql);
+    pageParams.push(...keyset.params);
+  }
+
+  const orderSql = manual
+    ? `sort_order ASC, ${day} DESC, created_at DESC, id DESC`
+    : `${day} ${dir}, created_at ${dir}, id ${dir}`;
+
+  const rows = await db
+    .prepare(
+      `SELECT * FROM journals
+        WHERE ${pageWhere.join(' AND ')}
+        ORDER BY ${orderSql}
+        LIMIT ?${offset > 0 ? ' OFFSET ?' : ''}`,
+    )
+    .bind(...pageParams, limit + 1, ...(offset > 0 ? [offset] : []))
+    .all();
+
+  const raw = rows?.results ?? [];
+  const hasMore = raw.length > limit;
+  const pageRows = hasMore ? raw.slice(0, limit) : raw;
+  const journals: any[] = [];
+  for (const row of pageRows) {
+    try {
+      journals.push(journalFromRow(row));
+    } catch (e) {
+      console.error('journal row parse failed:', datasetId, row.id, e);
+    }
+  }
+
+  const last = pageRows[pageRows.length - 1];
+  const nextCursor = !manual && offset === 0 && hasMore && last
+    ? makeCursor([
+        String(last.open_date ?? '').replace(/-/g, '').slice(0, 8),
+        last.created_at,
+        last.id,
+      ])
+    : null;
+
+  return {
+    journals,
+    version: typeof versionRow?.version === 'number' ? versionRow.version : 0,
+    nextCursor,
+    total: Number(totalRow?.c ?? 0),
+  };
 }
 
 export type ApplyOpsResult =
@@ -118,13 +282,14 @@ export async function applyJournalOps(
   ops: any[],
 ): Promise<ApplyOpsResult> {
   if (!Array.isArray(ops) || ops.length === 0) {
-    const current = await getJournals(db, datasetId);
-    return { ok: true, version: current.version };
+    const row = await db.prepare('SELECT version FROM journal_datasets WHERE dataset_id = ?1').bind(datasetId).first();
+    return { ok: true, version: typeof row?.version === 'number' ? row.version : 0 };
   }
 
   const now = nowIso();
   const nextVersion = baseVersion + 1;
   const token = crypto.randomUUID();
+
   const statements: any[] = [
     db
       .prepare('INSERT INTO journal_datasets (dataset_id, version, write_token, updated_at) VALUES (?1, 0, ?2, ?3) ON CONFLICT(dataset_id) DO NOTHING')
@@ -158,8 +323,15 @@ export async function applyJournalOps(
   const results = await db.batch(statements);
   const bumped = results?.[1]?.meta?.changes ?? 0;
   if (bumped !== 1) {
-    const latest = await getJournals(db, datasetId);
-    return { ok: false, version: latest.version, journals: latest.journals };
+    const versionRow = await db.prepare('SELECT version FROM journal_datasets WHERE dataset_id = ?1').bind(datasetId).first();
+    const affectedIds = ops
+      .map(op => (op?.op === 'delete' ? op.id : op?.journal?.id))
+      .filter((id): id is string => typeof id === 'string');
+    return {
+      ok: false,
+      version: typeof versionRow?.version === 'number' ? versionRow.version : 0,
+      journals: await getJournalsByIds(db, datasetId, affectedIds),
+    };
   }
   return { ok: true, version: nextVersion };
 }

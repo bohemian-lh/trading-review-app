@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { r2StorageService } from '@/services/r2Service';
 import type { RecordsSavePayload } from '@/services/r2Service';
-import { useRecordsStore, migrateRecord } from '@/stores/recordsStore';
+import { useRecordsStore, migrateRecord, RECORDS_PAGE_SIZE, DEFAULT_RECORD_QUERY } from '@/stores/recordsStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useAnalysisTabStore } from '@/stores/analysisTabStore';
@@ -13,75 +13,48 @@ import {
   type AnalysisTab,
   type StressSeries,
   type MonthlyAnalysis,
-  type CycleStats,
   type TradingRecord,
 } from '@/types';
-import { generateCycleStats } from '@/services/cycleStatsService';
 import { fetchStats, recomputeStats } from '@/services/statsService';
 import {
   recordsOutboxGet,
   recordsOutboxMerge,
   recordsOutboxClear,
   recordsOutboxReset,
+  entryHasChanges,
   entryToPayload,
-  cycleEntryKey,
 } from '@/services/recordsOutbox';
 import type { RecordsOutboxEntry } from '@/services/recordsOutbox';
 
 // ─── 增量保存基线 ──────────────────────────────────────────────────
-// 记录编辑只上行真正变化的条目：以「上次成功落盘的内容」为基线做差集，
-// 避免每次保存都序列化并上传全部记录。
+// 记录本身已改为「按 id 待写集合」（recordsStore.pendingUpserts / pendingDeletes），
+// 这里只跟踪不适合做待写集合的小集合：自定义分析、月度数据。
 interface RecordsBaseline {
-  records: Map<string, string>;
   customAnalysis: string;
   monthly: Map<string, string>;
   monthlyUseCustom: boolean;
-  cycleStats: Map<string, string>;
-  cycleStatsGeneratedAt: number | null;
 }
 
 let recordsBaseline: RecordsBaseline | null = null;
 
-function cycleKey(statType: string, cycleId: string): string {
-  return `${statType}::${cycleId}`;
-}
-
 function snapshotBaseline(state: any): RecordsBaseline {
-  const records = new Map<string, string>();
-  for (const record of state.records ?? []) records.set(record.id, JSON.stringify(record));
-
   const monthly = new Map<string, string>();
   for (const item of state.customMonthly?.data ?? []) monthly.set(item.month, JSON.stringify(item));
 
-  const cycleStats = new Map<string, string>();
-  for (const [statType, list] of Object.entries(state.cycleStats ?? {})) {
-    for (const item of (list as CycleStats[]) ?? []) {
-      cycleStats.set(cycleKey((item as any).statType ?? statType, item.cycleId), JSON.stringify(item));
-    }
-  }
-
   return {
-    records,
     customAnalysis: JSON.stringify(state.customAnalysis ?? null),
     monthly,
     monthlyUseCustom: !!state.customMonthly?.useCustom,
-    cycleStats,
-    cycleStatsGeneratedAt: state.cycleStatsGeneratedAt ?? null,
   };
 }
 
-/** 计算相对基线的增量；无任何变化时返回 null（不发起请求） */
+/** 只上行本地待写集合；不再遍历全表做差集 */
 function buildRecordsPayload(state: any): RecordsSavePayload | null {
   if (!recordsBaseline) recordsBaseline = snapshotBaseline(state);
   const base = recordsBaseline;
 
-  const upserts: TradingRecord[] = [];
-  const seenRecords = new Set<string>();
-  for (const record of state.records ?? []) {
-    seenRecords.add(record.id);
-    if (base.records.get(record.id) !== JSON.stringify(record)) upserts.push(record);
-  }
-  const deletes = [...base.records.keys()].filter(id => !seenRecords.has(id));
+  const upserts: TradingRecord[] = Object.values(state.pendingUpserts ?? {});
+  const deletes = Object.keys(state.pendingDeletes ?? {});
 
   const monthlyUpserts: MonthlyAnalysis[] = [];
   const seenMonths = new Set<string>();
@@ -91,39 +64,17 @@ function buildRecordsPayload(state: any): RecordsSavePayload | null {
   }
   const monthlyDeletes = [...base.monthly.keys()].filter(month => !seenMonths.has(month));
 
-  const cycleStatsUpserts: CycleStats[] = [];
-  const seenCycles = new Set<string>();
-  for (const [statType, list] of Object.entries(state.cycleStats ?? {})) {
-    for (const item of (list as CycleStats[]) ?? []) {
-      const type = (item as any).statType ?? statType;
-      const key = cycleKey(type, item.cycleId);
-      seenCycles.add(key);
-      const normalized = { ...item, statType: type } as CycleStats;
-      if (base.cycleStats.get(key) !== JSON.stringify(normalized)) cycleStatsUpserts.push(normalized);
-    }
-  }
-  const cycleStatsDeletes = [...base.cycleStats.keys()]
-    .filter(key => !seenCycles.has(key))
-    .map(key => {
-      const index = key.indexOf('::');
-      return { statType: key.slice(0, index), cycleId: key.slice(index + 2) };
-    });
-
   const customAnalysisChanged = JSON.stringify(state.customAnalysis ?? null) !== base.customAnalysis;
   const monthlyUseCustom = !!state.customMonthly?.useCustom;
   const monthlyUseChanged = monthlyUseCustom !== base.monthlyUseCustom;
-  const generatedAtChanged = (state.cycleStatsGeneratedAt ?? null) !== base.cycleStatsGeneratedAt;
 
   const hasChanges =
     upserts.length > 0 ||
     deletes.length > 0 ||
     monthlyUpserts.length > 0 ||
     monthlyDeletes.length > 0 ||
-    cycleStatsUpserts.length > 0 ||
-    cycleStatsDeletes.length > 0 ||
     customAnalysisChanged ||
-    monthlyUseChanged ||
-    generatedAtChanged;
+    monthlyUseChanged;
 
   if (!hasChanges) return null;
 
@@ -134,9 +85,6 @@ function buildRecordsPayload(state: any): RecordsSavePayload | null {
   if (monthlyUpserts.length > 0) payload.monthlyUpserts = monthlyUpserts;
   if (monthlyDeletes.length > 0) payload.monthlyDeletes = monthlyDeletes;
   if (monthlyUseChanged) payload.monthlyUseCustom = monthlyUseCustom;
-  if (cycleStatsUpserts.length > 0) payload.cycleStatsUpserts = cycleStatsUpserts;
-  if (cycleStatsDeletes.length > 0) payload.cycleStatsDeletes = cycleStatsDeletes;
-  if (generatedAtChanged) payload.cycleStatsGeneratedAt = state.cycleStatsGeneratedAt ?? null;
   return payload;
 }
 
@@ -152,71 +100,65 @@ function commitBaseline(): void {
  */
 function applyPayloadToBaseline(payload: RecordsSavePayload): void {
   if (!recordsBaseline) return;
-  for (const record of payload.upserts ?? []) recordsBaseline.records.set(record.id, JSON.stringify(record));
-  for (const id of payload.deletes ?? []) recordsBaseline.records.delete(id);
   if (payload.customAnalysis !== undefined) {
     recordsBaseline.customAnalysis = JSON.stringify(payload.customAnalysis ?? null);
   }
   for (const item of payload.monthlyUpserts ?? []) recordsBaseline.monthly.set(item.month, JSON.stringify(item));
   for (const month of payload.monthlyDeletes ?? []) recordsBaseline.monthly.delete(month);
   if (payload.monthlyUseCustom !== undefined) recordsBaseline.monthlyUseCustom = payload.monthlyUseCustom;
-  for (const item of payload.cycleStatsUpserts ?? []) {
-    if (!item?.statType || !item?.cycleId) continue;
-    recordsBaseline.cycleStats.set(cycleKey(item.statType, item.cycleId), JSON.stringify(item));
-  }
-  for (const item of payload.cycleStatsDeletes ?? []) {
-    recordsBaseline.cycleStats.delete(cycleKey(item.statType, item.cycleId));
-  }
-  if (payload.cycleStatsGeneratedAt !== undefined) {
-    recordsBaseline.cycleStatsGeneratedAt = payload.cycleStatsGeneratedAt ?? null;
-  }
 }
 
 /** 批量导入等「已在别处落盘」的场景，调用它把基线对齐到当前状态 */
 export function markRecordsSynced(): void {
   commitBaseline();
+  useRecordsStore.getState().clearPendingRecords();
   const datasetId = useDatasetStore.getState().currentDatasetId;
   if (datasetId) void recordsOutboxReset(datasetId);
 }
 
-/** 把待发队列叠加到服务端快照上，用于刷新后恢复「已改但未确认」的数据 */
-function applyOutboxToLoadedState(loaded: any, entry: RecordsOutboxEntry): any {
-  const records = new Map<string, TradingRecord>();
-  for (const record of loaded.records ?? []) records.set(record.id, record);
-  for (const record of Object.values(entry.upserts)) records.set(record.id, record);
-  for (const id of Object.keys(entry.deletes)) records.delete(id);
+/** 出站队列 → 待写集合：刷新后恢复「已改但未确认」的记录 */
+function pendingFromOutbox(entry: RecordsOutboxEntry | null): {
+  pendingUpserts: Record<string, TradingRecord>;
+  pendingDeletes: Record<string, true>;
+} {
+  return {
+    pendingUpserts: { ...(entry?.upserts ?? {}) },
+    pendingDeletes: { ...(entry?.deletes ?? {}) },
+  };
+}
+
+/** 服务端行 + 本地待写覆盖 */
+function applyPendingToRows(
+  rows: TradingRecord[],
+  pendingUpserts: Record<string, TradingRecord>,
+  pendingDeletes: Record<string, true>,
+): TradingRecord[] {
+  const map = new Map(rows.filter(r => !pendingDeletes[r.id]).map(r => [r.id, r]));
+  for (const record of Object.values(pendingUpserts)) map.set(record.id, record);
+  return [...map.values()];
+}
+
+/**
+ * 出站队列里未确认的自定义分析 / 月度数据叠加到服务端快照上。
+ * 只返回这两类集合：周期统计由 /api/stats 负责，不能被记录接口的 meta 覆盖。
+ */
+function applyOutboxCollections(
+  loaded: any,
+  entry: RecordsOutboxEntry | null,
+): { customAnalysis: any; customMonthly: any } {
+  if (!entry) return { customAnalysis: loaded.customAnalysis, customMonthly: loaded.customMonthly };
 
   const monthly = new Map<string, MonthlyAnalysis>();
   for (const item of loaded.customMonthly?.data ?? []) monthly.set(item.month, item);
   for (const item of Object.values(entry.monthlyUpserts)) monthly.set(item.month, item);
   for (const month of Object.keys(entry.monthlyDeletes)) monthly.delete(month);
 
-  const cycles = new Map<string, CycleStats>();
-  for (const [statType, list] of Object.entries(loaded.cycleStats ?? {})) {
-    for (const item of (list as CycleStats[]) ?? []) {
-      cycles.set(cycleEntryKey((item as any).statType ?? statType, item.cycleId), item);
-    }
-  }
-  for (const [key, item] of Object.entries(entry.cycleStatsUpserts)) cycles.set(key, item as CycleStats);
-  for (const key of Object.keys(entry.cycleStatsDeletes)) cycles.delete(key);
-
-  const cycleStats: Record<string, CycleStats[]> = {};
-  for (const item of cycles.values()) {
-    const statType = (item as any).statType ?? '';
-    (cycleStats[statType] ||= []).push(item);
-  }
-
   return {
-    records: [...records.values()],
     customAnalysis: entry.customAnalysisSet ? entry.customAnalysis : loaded.customAnalysis,
     customMonthly: {
       useCustom: entry.monthlyUseCustom ?? loaded.customMonthly?.useCustom ?? false,
       data: [...monthly.values()],
     },
-    cycleStats,
-    cycleStatsGeneratedAt: entry.cycleStatsGeneratedAtSet
-      ? entry.cycleStatsGeneratedAt
-      : loaded.cycleStatsGeneratedAt,
   };
 }
 
@@ -224,34 +166,75 @@ async function persistRecords(keepalive = false, retried = false): Promise<void>
   const datasetId = useDatasetStore.getState().currentDatasetId;
   if (!datasetId) return;
 
-  const delta = buildRecordsPayload(useRecordsStore.getState());
-  if (!delta) return;
+  const state = useRecordsStore.getState();
+  const delta = buildRecordsPayload(state);
 
-  // 写前日志：先把变更落盘到本地出站队列，再请求服务端
-  const entry = await recordsOutboxMerge(datasetId, delta);
-  const payload = entryToPayload(entry, useRecordsStore.getState().version ?? 0);
+  // 内存里没有新差异时，仍要看一眼出站队列：上一次请求可能已在服务端成功但响应丢失
+  const stored = await recordsOutboxGet(datasetId);
+  if (!delta && !(stored && entryHasChanges(stored))) return;
+  const entry = delta ? await recordsOutboxMerge(datasetId, delta) : stored!;
+  if (!entryHasChanges(entry)) return;
+  const payload = entryToPayload(entry, state.version ?? 0);
 
   useUIStore.getState().setSaving(true);
   try {
     const result = await r2StorageService.saveRecords(datasetId, payload, keepalive);
     if (result.success) {
+      saveRetryCount = 0;
+      // 请求返回时已经切到别的数据集：只清理本数据集的 outbox，
+      // 不要用旧库的 payload 去动当前库的基线与待写集合
+      if (useDatasetStore.getState().currentDatasetId !== datasetId) {
+        await recordsOutboxClear(datasetId, entry.opId);
+        return;
+      }
       useRecordsStore.getState().setVersion(result.version ?? null);
       useUIStore.getState().setError(null);
       // 只把本次提交的内容记为已落盘，保存期间的新改动留给下一轮
       applyPayloadToBaseline(payload);
+      useRecordsStore.getState().ackPendingRecords(payload.upserts ?? [], payload.deletes ?? []);
       await recordsOutboxClear(datasetId, entry.opId);
+      // 删除会让当前页缺行、甚至页码越界：服务端确认后回填一次
+      if ((payload.deletes ?? []).length > 0) {
+        const latest = useRecordsStore.getState();
+        void latest.loadRecordPage(datasetId, { offset: latest.recordPage.offset });
+      }
     } else if (result.conflict && typeof result.version === 'number' && !retried) {
       // 版本被其它页面推进：用服务端返回的版本号把同一批待发变更重放一次，
       // 不覆盖本地状态，避免把用户刚做的改动冲掉。
       useRecordsStore.getState().setVersion(result.version);
       await persistRecords(keepalive, true);
     } else {
-      useUIStore.getState().setError(result.error || result.message || '保存失败');
+      scheduleSaveRetry(result.error || result.message || '保存失败');
     }
   } catch (e) {
-    useUIStore.getState().setError(e instanceof Error ? e.message : '保存失败，请检查网络连接');
+    scheduleSaveRetry(e instanceof Error ? e.message : '保存失败，请检查网络连接');
   } finally {
     useUIStore.getState().setSaving(false);
+  }
+}
+
+/**
+ * 保存失败退避重试：改动此时只活在内存与 outbox 里，不主动重试就要等到下一次编辑
+ * 或刷新页面才会再次上行。重试次数有上限，耗尽后把错误显式抛给用户。
+ */
+const MAX_SAVE_RETRIES = 4;
+let saveRetryCount = 0;
+
+function scheduleSaveRetry(message: string): void {
+  saveRetryCount += 1;
+  if (saveRetryCount <= MAX_SAVE_RETRIES) {
+    useUIStore.getState().setError(`${message}（正在重试 ${saveRetryCount}/${MAX_SAVE_RETRIES}）`);
+    scheduleSaveNow(1000 * 2 ** (saveRetryCount - 1));
+    return;
+  }
+  saveRetryCount = 0;
+  useUIStore.getState().setError(`${message}（已重试 ${MAX_SAVE_RETRIES} 次，请检查网络后重新编辑）`);
+}
+
+/** 等待在飞的保存结束，供「切数据集 / 重新加载」等必须落盘的场景使用 */
+async function waitForSaveIdle(): Promise<void> {
+  while (savingInFlight) {
+    await new Promise(resolve => setTimeout(resolve, 50));
   }
 }
 
@@ -261,20 +244,20 @@ async function persistRecords(keepalive = false, retried = false): Promise<void>
  * - 提供 loadFromR2 / switchDataset 用于初始化和切换
  */
 export function useStoreSync() {
-  const records = useRecordsStore(s => s.records);
+  const pendingUpserts = useRecordsStore(s => s.pendingUpserts);
+  const pendingDeletes = useRecordsStore(s => s.pendingDeletes);
   const customAnalysis = useRecordsStore(s => s.customAnalysis);
   const customMonthly = useRecordsStore(s => s.customMonthly);
-  const cycleStats = useRecordsStore(s => s.cycleStats);
   const currentDatasetId = useDatasetStore(s => s.currentDatasetId);
 
   const isInitialized = useUIStore(s => s.isInitialized);
 
-  // 任意数据变化都排进同一条保存流水线：由基线差集决定是否真的发请求。
-  // 刻意不依赖 version：它在保存成功后会被写回，若纳入依赖会导致每次保存后再空跑一轮全量比对。
+  // 只有待写集合 / 自定义集合变化才排保存：翻页加载不会再触发空跑
+  // 刻意不依赖 version：它在保存成功后会被写回，若纳入依赖会导致每次保存后再跑一轮。
   useEffect(() => {
     if (!isInitialized) return; // 初始化完成前不触发自动保存
     scheduleSaveNow();
-  }, [records, customAnalysis, customMonthly, cycleStats, currentDatasetId, isInitialized]);
+  }, [pendingUpserts, pendingDeletes, customAnalysis, customMonthly, currentDatasetId, isInitialized]);
 
   // 全局兜底落盘：任意页面关页/切后台都尽量把待保存变更送出去（不局限于数据编辑页）
   useEffect(() => {
@@ -319,19 +302,31 @@ export async function initializeFromR2(): Promise<void> {
 }
 
 /**
- * 切换到指定数据集
+ * 切换到指定数据集。
+ * 必须先落盘当前数据集的待保存变更：切换后内存 pending 会被新数据集的出站队列替换，
+ * 未落盘的改动既不在 outbox 也不在服务端，会直接丢失。
  */
 export async function switchDataset(datasetId: string): Promise<void> {
-  // 取消正在进行的防抖保存
   useUIStore.getState().setLoading(true);
+  // 先等在飞的保存结束，再把当前数据集的待保存变更落盘（写入 outbox 是本地操作，很快）。
+  // 加超时兜底：网络挂起时不能把切换数据集永久卡住 —— 此时改动已在 outbox 里，
+  // 下次打开旧数据集会自动重放，不会丢。
+  await withTimeout(waitForSaveIdle(), 5000);
+  await withTimeout(saveNow(), 5000);
   useDatasetStore.getState().setCurrentDatasetId(datasetId);
   await loadDatasetData(datasetId);
   useUIStore.getState().setLoading(false);
 }
 
-// 记录按 200 条一页拉取（API 上限），逐页累积后交给 store：
-// 统计、压测、导出都基于这份全量数据在浏览器里计算，一个数据集一次会话只拉一遍。
-const RECORDS_PAGE_SIZE = 200;
+/** 给必须等待但对失败不敏感的操作加超时上限 */
+function withTimeout(task: Promise<unknown>, ms: number): Promise<void> {
+  return Promise.race([
+    task.then(() => undefined).catch(() => undefined),
+    new Promise<void>(resolve => setTimeout(resolve, ms)),
+  ]);
+}
+
+// 首屏只取一页；翻页按需请求（recordsStore.loadRecordPage），导出时才 fetchAllRecords
 const MAX_PAGES = 5000;
 
 /** 配置 / 页签 / 压测系列各自的服务端版本，用于 CAS 保存 */
@@ -341,15 +336,17 @@ const serverVersions = {
   stress: new Map<string, number>(),
 };
 
-async function fetchAllRecords(datasetId: string): Promise<{ first: any; records: TradingRecord[] }> {
+/**
+ * 明确需要全量时才调用（导出、字段配置批量重映射、整体覆盖）。
+ * 用户主动触发的动作，循环翻页拉完即用，不常驻内存。
+ */
+export async function fetchAllRecords(datasetId: string): Promise<TradingRecord[]> {
   const records: TradingRecord[] = [];
   const seen = new Set<string>();
   let cursor: string | null = null;
-  let first: any = null;
 
   for (let page = 0; page < MAX_PAGES; page += 1) {
-    const result = await r2StorageService.getRecords(datasetId, cursor, RECORDS_PAGE_SIZE);
-    if (!first) first = result;
+    const result = await r2StorageService.getRecords(datasetId, { cursor, limit: 200, sort: 'desc' });
     if (!result.success) break;
 
     // 去重 + 终止保护：服务端若返回重复页，这里不会无限翻页
@@ -357,7 +354,7 @@ async function fetchAllRecords(datasetId: string): Promise<{ first: any; records
     for (const record of result.records ?? []) {
       if (seen.has(record.id)) continue;
       seen.add(record.id);
-      records.push(record);
+      records.push(migrateRecord(record));
       added += 1;
     }
 
@@ -366,21 +363,25 @@ async function fetchAllRecords(datasetId: string): Promise<{ first: any; records
     cursor = nextCursor;
   }
 
-  return { first, records };
+  return records;
 }
 
 async function loadDatasetData(datasetId: string): Promise<void> {
+  // 切库瞬间先清掉上一个数据集的内存视图：避免旧库的行/筛选在异步加载期间被写回，
+  // 也避免写路径把旧库的 pending 当成新库的数据上行。
+  useRecordsStore.getState().resetRecordView();
   try {
-    // 记录分页拉取与配置/页签/压测系列/统计结果并行，减少首屏串行等待
-    const [recordPages, configResult, tabsResult, stressResult, statsSnapshot] = (await Promise.all([
-      fetchAllRecords(datasetId),
+    // 首屏只拉一页记录（带 meta 拿版本/月份选项），其余配置/页签/压测/统计并行
+    const initialPageSize = useRecordsStore.getState().recordPage.pageSize || RECORDS_PAGE_SIZE;
+    const [recordPage, configResult, tabsResult, stressResult, statsSnapshot, pending] = await Promise.all([
+      r2StorageService.getRecords(datasetId, { limit: initialPageSize, sort: 'desc', meta: true }),
       r2StorageService.getConfig(datasetId),
       r2StorageService.getTabs(datasetId),
       r2StorageService.getStressSeries(datasetId),
       fetchStats(datasetId),
-    ])) as any[];
+      recordsOutboxGet(datasetId),
+    ]);
 
-    const result = recordPages.first ?? { success: false };
     const fieldConfig = configResult.success && configResult.config
       ? migrateFieldConfig(configResult.config)
       : { ...DEFAULT_FIELD_CONFIG };
@@ -403,46 +404,68 @@ async function loadDatasetData(datasetId: string): Promise<void> {
         : []
     );
 
-    const loaded = result.success
-      ? {
-          records: (recordPages.records as TradingRecord[]).map(migrateRecord),
-          version: result.version || 0,
-          customAnalysis: result.customAnalysis || { useCustom: false, data: {} as any },
-          customMonthly: result.customMonthly || { useCustom: false, data: [] },
-          cycleStats: result.cycleStats || {},
-          cycleStatsGeneratedAt: result.cycleStatsGeneratedAt || null,
-        }
-      : {
-          records: [],
-          version: 0,
-          customAnalysis: { useCustom: false, data: {} as any },
-          customMonthly: { useCustom: false, data: [] },
-          cycleStats: {},
-          cycleStatsGeneratedAt: null,
-        };
+    const serverRecords = recordPage.success
+      ? (recordPage.records ?? []).map(migrateRecord)
+      : [];
+
+    const loaded = {
+      version: recordPage.version || 0,
+      customAnalysis: recordPage.customAnalysis || { useCustom: false, data: {} as any },
+      customMonthly: recordPage.customMonthly || { useCustom: false, data: [] },
+    };
 
     // 基线 = 服务端真相；出站队列里未确认的改动叠加后仍保持「脏」，等下一轮提交
     recordsBaseline = snapshotBaseline(loaded);
 
-    const pending = await recordsOutboxGet(datasetId);
-    const merged = pending ? applyOutboxToLoadedState(loaded, pending) : loaded;
+    const collections = applyOutboxCollections(loaded, pending);
+    const { pendingUpserts, pendingDeletes } = pendingFromOutbox(pending);
 
-    // 预计算统计结果（D1）：读取即取数，缺失时由 useAnalysis 回退到浏览器计算
+    // 预计算统计结果（D1）：读取即取数
     if (statsSnapshot) {
       useRecordsStore.getState().setStats({
         overview: statsSnapshot.overview ?? null,
         monthly: statsSnapshot.monthly ?? [],
         results: statsSnapshot.analysisResults ?? [],
+        cycles: statsSnapshot.cycleStats ?? {},
+        cycleStatsGeneratedAt: statsSnapshot.cycleStatsGeneratedAt ?? null,
+        stale: statsSnapshot.staleKinds ?? [],
       });
     } else {
-      useRecordsStore.getState().setStats({ overview: null, monthly: [], results: [] });
+      useRecordsStore.getState().setStats({ overview: null, monthly: [], results: [], cycles: {}, stale: [] });
     }
+    const statsStale = statsSnapshot?.staleKinds ?? [];
 
-    // 记录状态最后写入：出站队列里有未确认改动时，统计结果必然已经过期
-    useRecordsStore.setState({ ...merged, fieldConfig, statsNeedUpdate: !!pending });
+    // 本地新建但还没上行成功的行，服务端页里没有，补到视图最前面
+    const pageIds = serverRecords.filter(r => !pendingDeletes[r.id]).map(r => r.id);
+    const seenIds = new Set(pageIds);
+    const offlineIds = Object.keys(pendingUpserts).filter(id => !seenIds.has(id) && !pendingDeletes[id]);
+
+    useRecordsStore.setState({
+      records: applyPendingToRows(serverRecords, pendingUpserts, pendingDeletes),
+      recordPage: {
+        ids: [...offlineIds, ...pageIds],
+        total: typeof recordPage.total === 'number' ? recordPage.total : serverRecords.length,
+        datasetTotal: typeof recordPage.datasetTotal === 'number' ? recordPage.datasetTotal : serverRecords.length,
+        months: recordPage.months ?? [],
+        offset: 0,
+        pageSize: initialPageSize,
+        loading: false,
+        error: recordPage.success ? null : (recordPage.message || '读取记录失败'),
+      },
+      // 切数据集：查询条件回到默认，避免把上一个数据集的筛选带到新数据集
+      recordQuery: { ...DEFAULT_RECORD_QUERY },
+      // 版本必须同步到新数据集，否则下一次保存会带着旧库版本号必然冲突
+      version: typeof recordPage.version === 'number' ? recordPage.version : null,
+      pendingUpserts,
+      pendingDeletes,
+      ...collections,
+      fieldConfig,
+      // 待保存改动或统计落后都算“需要更新统计”
+      statsNeedUpdate: statsStale.length > 0 || (!!pending && entryHasChanges(pending)),
+    });
 
     // 上次没送出去的改动，进入页面后立刻重放
-    if (pending) scheduleSaveNow(0);
+    if (pending && entryHasChanges(pending)) scheduleSaveNow(0);
   } catch (e) {
     useUIStore.getState().setError(e instanceof Error ? e.message : '切换数据集失败');
   }
@@ -530,7 +553,7 @@ export async function refreshStats(
     await saveNow();
     result = await recomputeStats(datasetId, options);
   }
-  // 未启用 D1：统计回退到浏览器计算，周期统计仍然有效，不报错
+  // 未启用 D1：统计不可用（R2 模式已停用），不视为错误
   if (!result.ok && result.unsupported) return { ok: true };
   if (!result.ok) return { ok: false, error: result.error || '统计数据更新失败' };
 
@@ -540,24 +563,12 @@ export async function refreshStats(
       overview: snapshot.overview,
       monthly: snapshot.monthly,
       results: snapshot.analysisResults,
+      cycles: snapshot.cycleStats,
+      cycleStatsGeneratedAt: snapshot.cycleStatsGeneratedAt,
+      stale: snapshot.staleKinds,
     });
   }
   return { ok: true };
-}
-
-/**
- * 独立导出 updateCycleStats（需要 generateCycleStats）
- */
-export function updateCycleStats(): void {
-  const state = useRecordsStore.getState();
-  const cleanRecords = state.records.map(r => ({ ...r, hasCycleStats: false, cycleId: undefined }));
-  const { result, updatedRecords } = generateCycleStats(cleanRecords, state.fieldConfig, state.cycleStats);
-  useRecordsStore.setState({
-    records: updatedRecords,
-    cycleStats: result.stats,
-    cycleStatsGeneratedAt: result.generatedAt,
-    statsNeedUpdate: false,
-  });
 }
 
 // ─── 合并保存（乐观更新后的后台落盘）───────────────────────────────

@@ -3,17 +3,14 @@
 import { ensureSchemaReady } from '../_lib/d1/schema';
 import { getWatchlist, replaceWatchlist } from '../_lib/d1/journalRepository';
 import { shouldUseD1 } from '../_lib/d1/store';
+import { corsHeaders as buildCorsHeaders } from '../_lib/http/cors';
 
 export async function onRequest(context: any) {
   const { request, env } = context;
   const url = new URL(request.url);
   const datasetId = url.searchParams.get('dataset');
 
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  };
+  const corsHeaders = buildCorsHeaders(request, env);
 
   if (request.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

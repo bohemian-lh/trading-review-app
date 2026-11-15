@@ -25,18 +25,14 @@ interface SortConfig {
 }
 
 export const DataEditor: React.FC = () => {
-  const { records, cycleStats, fieldConfig, statsNeedUpdate, isSaving, imageDir, recordEditor, stats, analysis, monthly } = useDataEditor();
+  const { records, cycleStats, fieldConfig, statsNeedUpdate, isSaving, imageDir, recordPaging, recordEditor, stats, analysis, monthly } = useDataEditor();
 
   // ---- 视图态 ----
   const [activeTab, setActiveTab] = useState<'table1' | 'table2' | 'table3' | 'table4'>('table1');
-  const [filters, setFilters] = useState<Filters>({ month: '', tradingType: '', trendFeatures: '', patternFeatures: '' });
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'openDate', direction: 'desc' });
   const [isImageImportModalOpen, setIsImageImportModalOpen] = useState(false);
   const [isQuickCalcOpen, setIsQuickCalcOpen] = useState(false);
   const [imagePreviewImages, setImagePreviewImages] = useState<string[]>([]);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
-  const [page, setPage] = useState(1);
-  const PAGE_SIZE = 50;
 
   // 页面隐藏/卸载前把待保存的记录落盘
   useEffect(() => {
@@ -52,48 +48,53 @@ export const DataEditor: React.FC = () => {
     };
   }, []);
 
-  // ---- sort ----
+  // ---- 筛选 / 排序 / 翻页：全部下推服务端 ----
+  // 查询条件只存在 store 里（recordQuery），组件不再各存一份，
+  // 否则路由切走再回来会出现“筛选框是空的、表格却是筛选后的数据”。
+  const filters: Filters = useMemo(() => ({
+    month: recordPaging.query.fromDay ? recordPaging.query.fromDay.slice(0, 6) : '',
+    tradingType: recordPaging.query.tradingType,
+    trendFeatures: recordPaging.query.trendFeature,
+    patternFeatures: recordPaging.query.patternFeature,
+  }), [recordPaging.query]);
+
+  const sortConfig: SortConfig = useMemo(() => ({
+    key: recordPaging.query.sortKey,
+    direction: recordPaging.query.sort,
+  }), [recordPaging.query.sortKey, recordPaging.query.sort]);
+
+  const buildQuery = (nextFilters: Filters, nextSort: SortConfig) => ({
+    fromDay: nextFilters.month ? `${nextFilters.month}01` : '',
+    toDay: nextFilters.month ? `${nextFilters.month}31` : '',
+    tradingType: nextFilters.tradingType,
+    trendFeature: nextFilters.trendFeatures,
+    patternFeature: nextFilters.patternFeatures,
+    sortKey: nextSort.key ?? 'openDate',
+    sort: nextSort.direction,
+  });
+
   const handleSort = (key: 'openDate' | 'stockCode') => {
-    setSortConfig(prev => {
-      if (prev.key === key) return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' } as SortConfig;
-      return { key, direction: key === 'openDate' ? 'desc' : 'asc' } as SortConfig;
-    });
+    const next: SortConfig = sortConfig.key === key
+      ? { key, direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' }
+      : { key, direction: key === 'openDate' ? 'desc' : 'asc' };
+    recordPaging.applyQuery(buildQuery(filters, next));
   };
 
-  // ---- filter + sort + pagination ----
-  const filteredRecords = useMemo(() => {
-    let result = records.filter(record => {
-      if (filters.month && !record.openDate.startsWith(filters.month)) return false;
-      if (filters.tradingType && record.tradingType !== filters.tradingType) return false;
-      if (filters.trendFeatures && !record.trendFeatures.includes(filters.trendFeatures)) return false;
-      if (filters.patternFeatures && !record.patternFeatures.includes(filters.patternFeatures)) return false;
-      return true;
-    });
+  const handleFilterChange = (next: Filters) => {
+    recordPaging.applyQuery(buildQuery(next, sortConfig));
+  };
 
-    if (sortConfig.key) {
-      result = [...result].sort((a, b) => {
-        const aValue = a[sortConfig.key!];
-        const bValue = b[sortConfig.key!];
-        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
-      });
-    }
-    return result;
-  }, [records, filters, sortConfig]);
+  const handleResetFilters = () => {
+    recordPaging.applyQuery(buildQuery(
+      { month: '', tradingType: '', trendFeatures: '', patternFeatures: '' },
+      sortConfig,
+    ));
+  };
 
-  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
-  const paginatedRecords = useMemo(
-    () => filteredRecords.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filteredRecords, page],
+  const monthOptions = useMemo(
+    () => recordPaging.months.map(m => ({ value: m, label: `${m.slice(0, 4)}-${m.slice(4, 6)}` })),
+    [recordPaging.months],
   );
-  useEffect(() => { setPage(1); }, [filteredRecords.length]);
-
-  const monthOptions = useMemo(() => {
-    const months = new Set<string>();
-    records.forEach(r => { if (r.openDate?.length >= 6) months.add(r.openDate.slice(0, 6)); });
-    return Array.from(months).sort().map(m => ({ value: m, label: `${m.slice(0, 4)}-${m.slice(4, 6)}` }));
-  }, [records]);
 
   // ---- render ----
   return (
@@ -128,63 +129,92 @@ export const DataEditor: React.FC = () => {
       </div>
 
       {activeTab === 'table1' && (
-        <TradeRecordTable
-          records={records}
-          paginatedRecords={paginatedRecords}
-          filteredCount={filteredRecords.length}
-          totalRecords={records.length}
-          page={page}
-          totalPages={totalPages}
-          onPageChange={setPage}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-          filters={filters}
-          monthOptions={monthOptions}
-          onFilterChange={setFilters}
-          onResetFilters={() => setFilters({ month: '', tradingType: '', trendFeatures: '', patternFeatures: '' })}
-          imgHasHandle={!!imageDir.handle}
-          imgPath={imageDir.path}
-          onSelectImageDir={imageDir.selectDirectory}
-          statsNeedUpdate={statsNeedUpdate}
-          updateStatus={stats.updateStatus}
-          updateMessage={stats.updateMessage}
-          onUpdateStats={stats.refreshCycleStats}
-          isSaving={isSaving}
-          onAddRecord={() => recordEditor.openRecordModal()}
-          onEditRecord={recordEditor.openRecordModal}
-          onDeleteRecord={recordEditor.deleteRecord}
-          onImageImport={() => setIsImageImportModalOpen(true)}
-          onPreviewImages={(images) => { setImagePreviewImages(images); setIsImagePreviewOpen(true); }}
-        />
+        <>
+          <TradeRecordTable
+            records={records}
+            filteredCount={recordPaging.total}
+            totalRecords={recordPaging.datasetTotal}
+            page={recordPaging.page}
+            pageSize={recordPaging.pageSize}
+            totalPages={recordPaging.totalPages}
+            loading={recordPaging.loading}
+            onPageChange={recordPaging.goToPage}
+            onPageSizeChange={recordPaging.setPageSize}
+            sortConfig={sortConfig}
+            onSort={handleSort}
+            filters={filters}
+            monthOptions={monthOptions}
+            onFilterChange={handleFilterChange}
+            onResetFilters={handleResetFilters}
+            imgHasHandle={!!imageDir.handle}
+            imgPath={imageDir.path}
+            onSelectImageDir={imageDir.selectDirectory}
+            statsNeedUpdate={statsNeedUpdate}
+            updateStatus={stats.updateStatus}
+            updateMessage={stats.updateMessage}
+            onUpdateStats={stats.refreshCycleStats}
+            isSaving={isSaving}
+            onAddRecord={() => recordEditor.openRecordModal()}
+            onEditRecord={recordEditor.openRecordModal}
+            onDeleteRecord={recordEditor.deleteRecord}
+            onImageImport={() => setIsImageImportModalOpen(true)}
+            onPreviewImages={(images) => { setImagePreviewImages(images); setIsImagePreviewOpen(true); }}
+          />
+
+          {recordPaging.error && (
+            <div className="flex items-center gap-3 text-sm text-red-600">
+              <span>{recordPaging.error}</span>
+              <button
+                type="button"
+                onClick={recordPaging.reload}
+                disabled={recordPaging.loading}
+                className="px-2 py-1 border border-red-300 rounded hover:bg-red-50 disabled:opacity-50"
+              >
+                重试
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {activeTab === 'table2' && (
-        <AnalysisPanel
-          useCustom={analysis.useCustom}
-          customData={analysis.customData}
-          computedData={analysis.computedData}
-          theoreticalDimensions={fieldConfig.theoreticalDimensions}
-          onToggleUseCustom={analysis.toggleUseCustom}
-          onFieldChange={analysis.changeAnalysisField}
-          onTheoreticalFieldChange={analysis.changeTheoreticalField}
-          onSyncFromComputed={analysis.syncFromComputed}
-        />
+        <>
+          {!stats.hasServerStats && <StatsMissingHint onUpdate={stats.refreshCycleStats} />}
+          <AnalysisPanel
+            useCustom={analysis.useCustom}
+            customData={analysis.customData}
+            computedData={analysis.computedData}
+            theoreticalDimensions={fieldConfig.theoreticalDimensions}
+            onToggleUseCustom={analysis.toggleUseCustom}
+            onFieldChange={analysis.changeAnalysisField}
+            onTheoreticalFieldChange={analysis.changeTheoreticalField}
+            onSyncFromComputed={analysis.syncFromComputed}
+          />
+        </>
       )}
 
       {activeTab === 'table3' && (
-        <MonthlyAnalysisPanel
-          useCustom={monthly.useCustom}
-          customData={monthly.customData}
-          computedData={monthly.computedData}
-          onToggleUseCustom={monthly.toggleUseCustom}
-          onSyncFromComputed={monthly.syncFromComputed}
-          onAddMonthly={() => monthly.openMonthlyModal()}
-          onEditMonthly={monthly.openMonthlyModal}
-          onDeleteMonthly={monthly.deleteMonthly}
-        />
+        <>
+          {!stats.hasServerStats && <StatsMissingHint onUpdate={stats.refreshCycleStats} />}
+          <MonthlyAnalysisPanel
+            useCustom={monthly.useCustom}
+            customData={monthly.customData}
+            computedData={monthly.computedData}
+            onToggleUseCustom={monthly.toggleUseCustom}
+            onSyncFromComputed={monthly.syncFromComputed}
+            onAddMonthly={() => monthly.openMonthlyModal()}
+            onEditMonthly={monthly.openMonthlyModal}
+            onDeleteMonthly={monthly.deleteMonthly}
+          />
+        </>
       )}
 
-      {activeTab === 'table4' && <CycleStatsPanel cycleStats={cycleStats} />}
+      {activeTab === 'table4' && (
+        <>
+          {Object.keys(cycleStats).length === 0 && <StatsMissingHint onUpdate={stats.refreshCycleStats} />}
+          <CycleStatsPanel cycleStats={cycleStats} />
+        </>
+      )}
 
       <RecordModal
         isOpen={recordEditor.isModalOpen}
@@ -234,3 +264,19 @@ export const DataEditor: React.FC = () => {
     </div>
   );
 };
+
+/**
+ * 统计结果尚未生成时的提示。
+ * 记录改为分页加载后，前端不再具备“用全量明细现算”的能力，必须显式让服务端重算。
+ */
+const StatsMissingHint: React.FC<{ onUpdate: () => void }> = ({ onUpdate }) => (
+  <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+    <span>统计数据尚未生成，当前展示为空。请按最新记录重算一次后再查看。</span>
+    <button
+      onClick={onUpdate}
+      className="shrink-0 px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700"
+    >
+      立即更新统计
+    </button>
+  </div>
+);

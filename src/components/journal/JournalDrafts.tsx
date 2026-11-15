@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings, Maximize, Minimize, Download, Plus, EyeOff } from 'lucide-react';
+import { Bold, AlertTriangle, Sun, Send, Trash2, Edit2, X, Settings, Maximize, Minimize, Download, Plus, EyeOff, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
 import { useJournalStore } from '@/stores/journalStore';
 import { useDatasetStore } from '@/stores/datasetStore';
 import { useRecordsStore } from '@/stores';
 import { StrategyCard } from './StrategyCard';
+import { Pagination } from '@/components/common/Pagination';
 import type { JournalRow } from '@/utils/JournalPdfDocument';
 import { groupStrategies, type StrategyItem, applySort, extractNumbers, getClosePrice, computeGainSegments, GAIN_PRICE_INDEXES, resolvePriceCodeSegments } from '@/utils/journalHelpers';
 import type { TradingJournal, CustomStrategy } from '@/types';
@@ -135,6 +136,10 @@ const StrategyPopover: React.FC<{
 // ─── 组件 ──────────────────────────────────────────────────────────
 export const JournalDrafts: React.FC = () => {
   const journals = useJournalStore(s => s.journals);
+  const journalPage = useJournalStore(s => s.journalPage);
+  const loadPage = useJournalStore(s => s.loadPage);
+  const goToPage = useJournalStore(s => s.goToPage);
+  const reorderDrafts = useJournalStore(s => s.reorderDrafts);
   const snapshots = useJournalStore(s => s.snapshots);
   const activeStages = useJournalStore(s => s.activeStages);
   const createSnapshot = useJournalStore(s => s.createSnapshot);
@@ -174,6 +179,9 @@ export const JournalDrafts: React.FC = () => {
     overId: string | null;
   } | null>(null);
 
+  // ─── 行级拖拽排序（与上面的策略卡拖拽互不影响）──────────────────
+  const [rowDrag, setRowDrag] = useState<{ id: string; overId: string | null; after: boolean } | null>(null);
+
   // 价位卡片内联编辑状态
   const [editingPrice, setEditingPrice] = useState<{ journalId: string; index: number } | null>(null);
   const [editingPriceValue, setEditingPriceValue] = useState('');
@@ -204,7 +212,53 @@ export const JournalDrafts: React.FC = () => {
     }
   };
 
-  const drafts = useMemo(() => journals.filter(j => j.status === 'draft'), [journals]);
+  // 服务端分页：进入本页按需拉第一页（status=draft），行内容从缓存解析
+  useEffect(() => {
+    void loadPage('draft', {}, datasetId);
+  }, [datasetId, loadPage]);
+
+  const { drafts, draftTotal } = useMemo(() => {
+    const byId = new Map(journals.map(j => [j.id, j]));
+    const list: TradingJournal[] = [];
+    const seen = new Set<string>();
+    if (journalPage.status === 'draft') {
+      for (const id of journalPage.ids) {
+        const journal = byId.get(id);
+        if (!journal || journal.status !== 'draft') continue;
+        seen.add(id);
+        list.push(journal);
+      }
+    }
+    // 本地刚创建 / 尚未同步的草稿不属于任何服务端分页，单独收集后追加到列表末尾
+    const localDrafts = journals
+      .filter(j => j.status === 'draft' && !seen.has(j.id))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    const serverTotal = journalPage.status === 'draft' ? journalPage.total : 0;
+    // 新行（服务端未定序）排到末尾，与服务端「当前交易」底部一致
+    return { drafts: [...list, ...localDrafts], draftTotal: serverTotal + localDrafts.length };
+  }, [journals, journalPage.status, journalPage.ids, journalPage.total]);
+
+  // ─── 「当前交易」手动排序 ─────────────────────────────────────
+  // 把 movedId 放到 targetId 前/后，其它行相对顺序不变
+  const dropDraftAt = (movedId: string, targetId: string, after: boolean) => {
+    const ids = drafts.map(d => d.id).filter(id => id !== movedId);
+    const targetIdx = ids.indexOf(targetId);
+    if (targetIdx < 0) return;
+    ids.splice(after ? targetIdx + 1 : targetIdx, 0, movedId);
+    setRowDrag(null);
+    void reorderDrafts(movedId, ids, datasetId);
+  };
+
+  // 上移 / 下移：与相邻行交换位置
+  const moveDraft = (movedId: string, delta: -1 | 1) => {
+    const ids = drafts.map(d => d.id);
+    const from = ids.indexOf(movedId);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    const [moved] = ids.splice(from, 1);
+    ids.splice(to, 0, moved);
+    void reorderDrafts(movedId, ids, datasetId);
+  };
 
   // 策略组顺序与名称：跟随字段编辑中的配置顺序
   const groupIds = useMemo(
@@ -662,8 +716,22 @@ export const JournalDrafts: React.FC = () => {
 
   if (drafts.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-400">
-        暂无当前交易，请先在「填写提交」中创建
+      <div className="space-y-3">
+        <div className="text-center py-12 text-gray-400">
+          {journalPage.status === 'draft' && journalPage.loading
+            ? '加载中…'
+            : '暂无当前交易，请先在「填写提交」中创建'}
+        </div>
+        {/* 页码跳转可能落到空页（例如本页被清空），保留分页入口以便返回 */}
+        {journalPage.status === 'draft' && journalPage.total > 0 && (
+          <Pagination
+            currentPage={journalPage.page}
+            totalPages={journalPage.totalPages}
+            pageSize={journalPage.pageSize}
+            total={journalPage.total}
+            onPageChange={(page) => void goToPage(page, datasetId)}
+          />
+        )}
       </div>
     );
   }
@@ -673,7 +741,7 @@ export const JournalDrafts: React.FC = () => {
       {/* ─── 头部：计数 + 设置 ───────────────────────────────── */}
       {!isFullscreen && (
       <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-500">{drafts.length} 条当前交易</div>
+        <div className="text-sm text-gray-500">{draftTotal} 条当前交易</div>
         <div className="relative flex items-center gap-1">
           <button
             onClick={() => {
@@ -794,7 +862,7 @@ export const JournalDrafts: React.FC = () => {
       <div ref={tableContainerRef} className={`overflow-x-auto rounded-lg ${isFullscreen ? 'h-screen flex flex-col bg-white p-4' : 'bg-gray-100'}`} style={isFullscreen ? undefined : { padding: `${settings.rowSpacing}px` }}>
         {isFullscreen && (
           <div className="flex items-center justify-between mb-3 shrink-0">
-            <span className="text-sm font-medium text-gray-700">{drafts.length} 条当前交易</span>
+            <span className="text-sm font-medium text-gray-700">{draftTotal} 条当前交易</span>
             <button
               onClick={toggleFullscreen}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs transition-colors text-gray-500 hover:bg-gray-100"
@@ -967,10 +1035,71 @@ export const JournalDrafts: React.FC = () => {
               }
 
               // 紧凑模式
+              const isRowDragging = rowDrag?.id === journal.id;
+              const isRowDragOver = rowDrag?.overId === journal.id;
               return (
-                <tr key={journal.id} className={`${rowColor} transition-colors`}>
+                <tr
+                  key={journal.id}
+                  className={`${rowColor} transition-colors ${isRowDragging ? 'opacity-50' : ''} ${
+                    isRowDragOver ? 'ring-2 ring-inset ring-blue-400' : ''
+                  }`}
+                  onDragOver={(e) => {
+                    if (!rowDrag || rowDrag.id === journal.id) return;
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const after = e.clientY > rect.top + rect.height / 2;
+                    setRowDrag(prev =>
+                      prev && (prev.overId !== journal.id || prev.after !== after)
+                        ? { ...prev, overId: journal.id, after }
+                        : prev,
+                    );
+                  }}
+                  onDragLeave={() => {
+                    if (!rowDrag) return;
+                    setRowDrag(prev => (prev && prev.overId === journal.id ? { ...prev, overId: null, after: false } : prev));
+                  }}
+                  onDrop={(e) => {
+                    if (!rowDrag || rowDrag.id === journal.id) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropDraftAt(rowDrag.id, journal.id, rowDrag.after);
+                  }}
+                >
                   <td className="px-3 py-1 border border-gray-200 align-top" style={getCellStyle('name')}>
-                    {journal.stockName || '-'}
+                    <div className="flex items-start justify-between gap-1">
+                      <span className="truncate">{journal.stockName || '-'}</span>
+                      <div className="flex items-center gap-0.5 shrink-0 text-gray-300">
+                        <span
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.effectAllowed = 'move';
+                            e.dataTransfer.setData('text/plain', journal.id);
+                            setRowDrag({ id: journal.id, overId: null, after: false });
+                          }}
+                          onDragEnd={() => setRowDrag(null)}
+                          className="cursor-grab active:cursor-grabbing hover:text-gray-500"
+                          title="拖动调整顺序"
+                        >
+                          <GripVertical className="h-3.5 w-3.5" />
+                        </span>
+                        <button
+                          onClick={() => moveDraft(journal.id, -1)}
+                          disabled={idx === 0}
+                          className="hover:text-gray-500 disabled:opacity-30"
+                          title="上移"
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => moveDraft(journal.id, 1)}
+                          disabled={idx === drafts.length - 1}
+                          className="hover:text-gray-500 disabled:opacity-30"
+                          title="下移"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
                     <div className="flex flex-col gap-0.5 mt-1">
                       {PRICE_LEVELS.map(pl => {
                         const userValue = (journal.priceLevels || [])[pl.index] || '';
@@ -1059,6 +1188,17 @@ export const JournalDrafts: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* 页码分页：1 2 3 4 … + 跳转指定页 */}
+      {journalPage.status === 'draft' && journalPage.total > 0 && (
+        <Pagination
+          currentPage={journalPage.page}
+          totalPages={journalPage.totalPages}
+          pageSize={journalPage.pageSize}
+          total={journalPage.total}
+          onPageChange={(page) => void goToPage(page, datasetId)}
+        />
+      )}
 
       {/* ─── 后续可关注 ─────────────────────────────────────── */}
       <div className="rounded-lg bg-white border border-gray-200 p-3">

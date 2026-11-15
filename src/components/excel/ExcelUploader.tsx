@@ -6,8 +6,7 @@ import { useRecordsStore, useDatasetStore, useUIStore } from '@/stores';
 import { useAnalysisResult, useMonthlyAnalysis } from '@/hooks/useAnalysis';
 import { useImageDirectory } from '@/hooks/useImageDirectory';
 import { r2StorageService } from '@/services/r2Service';
-import type { RecordsSavePayload } from '@/services/r2Service';
-import { markRecordsSynced } from '@/hooks/useStoreSync';
+import { fetchAllRecords, markRecordsSynced, saveNow } from '@/hooks/useStoreSync';
 import type { TradingRecord, StorageFile, UploadProgress } from '@/types';
 
 const TABLE_OPTIONS: { value: ImportTableType; label: string; description: string }[] = [
@@ -44,7 +43,8 @@ export const ExcelUploader: React.FC = () => {
     console.log('isModalOpen changed:', isModalOpen);
   }, [isModalOpen]);
 
-  const records = useRecordsStore(s => s.records);
+  // 数据集全量条数（不受当前筛选影响）
+  const recordTotal = useRecordsStore(s => s.recordPage.datasetTotal);
   const fieldConfig = useRecordsStore(s => s.fieldConfig);
   const customAnalysis = useRecordsStore(s => s.customAnalysis);
   const customMonthly = useRecordsStore(s => s.customMonthly);
@@ -79,12 +79,13 @@ export const ExcelUploader: React.FC = () => {
 
     try {
       console.log('Testing R2 connection...');
-      const result = await r2StorageService.getRecords(currentDatasetId || 'default');
+      // 只取 1 条探测连通性，总数用 total（分页后 records 只是首页）
+      const result = await r2StorageService.getRecords(currentDatasetId || 'default', { limit: 1 });
       console.log('Connection test result:', result);
 
       if (result.success) {
         setConnectionStatus('success');
-        setConnectionMessage(`连接成功！R2 中有 ${result.records?.length || 0} 条记录`);
+        setConnectionMessage(`连接成功！当前数据集共 ${result.total ?? 0} 条记录`);
       } else {
         setConnectionStatus('error');
         setConnectionMessage(`连接失败: ${result.message}`);
@@ -98,7 +99,7 @@ export const ExcelUploader: React.FC = () => {
       setConnectionStatus('idle');
       setConnectionMessage('');
     }, 5000);
-  }, []);
+  }, [currentDatasetId]);
 
   const processFile = useCallback(async (file: File) => {
     console.log('=== processFile START ===');
@@ -180,7 +181,7 @@ export const ExcelUploader: React.FC = () => {
     console.log('=== handleConfirmImport START ===');
     console.log('handleConfirmImport called');
     console.log('previewData:', previewData ? 'exists' : 'null');
-    console.log('records currently in store:', records.length);
+    console.log('records total in dataset:', recordTotal);
     console.log('importMode:', importMode);
     console.log('uploadToR2:', uploadToR2);
     console.log('fileToImport:', fileToImport?.name);
@@ -204,64 +205,78 @@ export const ExcelUploader: React.FC = () => {
         console.log('Step 1: Skipping file upload (uploadToR2 is false or no file)');
       }
 
-      let newRecords: TradingRecord[];
+      // 只上行导入产生的记录；覆盖模式交给服务端按 id 差量整体替换
+      const incoming = previewData.records;
+      const datasetId = currentDatasetId || 'default';
+      const withStats = selectedTable !== 'table1';
 
+      let saveResult;
       if (importMode === 'overwrite') {
-        console.log('Step 2: Using overwrite mode, new records:', previewData.records.length);
-        // 覆盖模式：先删除所有旧记录的本地图片
-        const oldRecords = useRecordsStore.getState().records;
+        // 覆盖是破坏性操作：二次确认，并说清会连带清理什么
+        const confirmed = confirm(
+          `覆盖导入会删除当前数据集中不在导入文件里的全部记录（当前共 ${recordTotal} 条），`
+          + '并清理这些记录的本地图片。\n\n确定继续吗？',
+        );
+        if (!confirmed) {
+          setLoading(false);
+          return;
+        }
+
+        // 旧图片要按“全量”清理：本地只有当前页缓存，不能用它判断
+        const oldRecords = await fetchAllRecords(datasetId);
         for (const r of oldRecords) {
           if (r.imagePrefix) imgDir.deleteImages(r.imagePrefix).catch(() => {});
         }
-        newRecords = previewData.records;
+        saveResult = await r2StorageService.replaceRecords(datasetId, incoming, {
+          customAnalysis: withStats ? customAnalysis : undefined,
+          customMonthly: withStats ? customMonthly : undefined,
+        });
       } else {
-        console.log('Step 2: Using append mode, existing:', records.length, 'new:', previewData.records.length);
-        newRecords = [...records, ...previewData.records];
+        // 先把内存里其他未保存的改动落盘，避免随后 markRecordsSynced 把它们一起清掉
+        await saveNow();
+        saveResult = await r2StorageService.saveRecords(datasetId, {
+          baseVersion: useRecordsStore.getState().version ?? 0,
+          upserts: incoming,
+          ...(withStats
+            ? {
+                customAnalysis,
+                monthlyUpserts: customMonthly?.data ?? [],
+                monthlyUseCustom: customMonthly?.useCustom,
+              }
+            : {}),
+        });
       }
 
-      // 只上行导入产生的记录；覆盖模式下删除「导出后确实消失」的旧记录
-      const incoming = previewData.records;
-      const incomingIds = new Set(incoming.map(r => r.id));
-      const removedIds = importMode === 'overwrite'
-        ? records.filter(r => !incomingIds.has(r.id)).map(r => r.id)
-        : [];
-
-      const payload: RecordsSavePayload = {
-        baseVersion: useRecordsStore.getState().version ?? 0,
-        upserts: incoming,
-        deletes: removedIds,
-      };
-      // 表2/表3 导入会同时改动统计结果，仅在此时一并提交
-      if (selectedTable !== 'table1') {
-        payload.customAnalysis = customAnalysis;
-        payload.monthlyUpserts = customMonthly?.data ?? [];
-        payload.monthlyUseCustom = customMonthly?.useCustom;
-        payload.cycleStatsUpserts = Object.entries(cycleStats ?? {}).flatMap(([statType, list]) =>
-          (list ?? []).map(item => ({ ...item, statType: item.statType ?? statType })),
-        );
-        payload.cycleStatsGeneratedAt = useRecordsStore.getState().cycleStatsGeneratedAt ?? null;
-      }
-
-      console.log('Step 3: Saving to R2, upserts:', incoming.length, 'deletes:', removedIds.length);
-      const saveResult = await r2StorageService.saveRecords(currentDatasetId || 'default', payload);
       console.log('Step 3: Save result:', { success: saveResult.success, message: saveResult.message });
 
       if (!saveResult.success) {
         throw new Error(saveResult.message);
       }
 
-      console.log('Step 4: Updating local store...');
-      useRecordsStore.setState({
-        records: newRecords,
-      });
-      // 导入已落盘，刷新增量基线，避免下一次保存把整批数据再传一遍
-      markRecordsSynced();
+      // 直连保存在此绕过了自动保存，版本号必须回写，否则下一次保存必然 409
+      if (typeof saveResult.version === 'number') {
+        useRecordsStore.getState().setVersion(saveResult.version);
+      }
+
+      const summary = importMode === 'overwrite'
+        ? `已替换 ${saveResult.replaced ?? incoming.length} 条，删除 ${saveResult.removed ?? 0} 条。`
+        : `已导入 ${incoming.length} 条。`;
+
+      console.log('Step 4: refetching first page...');
+      // 导入已落盘：覆盖模式清空队列（旧改动对应已删除的数据），追加模式只清本次导入的行
+      if (importMode === 'overwrite') {
+        markRecordsSynced();
+      } else {
+        useRecordsStore.getState().ackPendingRecords(incoming, []);
+      }
+      await useRecordsStore.getState().loadRecordPage(datasetId, { offset: 0, meta: true });
       useUIStore.setState({ currentFileName: fileToImport?.name || null, error: null });
 
       console.log('Step 5: Import completed successfully!');
       setIsModalOpen(false);
       setPreviewData(null);
       setFileToImport(null);
+      alert(summary);
     } catch (err) {
       console.error('❌ Import failed:', err);
       setError(err instanceof Error ? err.message : '导入失败');
@@ -271,13 +286,26 @@ export const ExcelUploader: React.FC = () => {
     }
   };
 
-  const handleExport = useCallback(() => {
-    if (records.length === 0) {
-      setError('没有数据可导出');
+  const handleExport = useCallback(async () => {
+    if (!currentDatasetId) {
+      setError('未选择数据集');
       return;
     }
-    exportAllToExcel(records, analysis, monthlyAnalysis, currentFileName || '交易复盘数据.xlsx', customAnalysis, customMonthly, cycleStats, fieldConfig.theoreticalDimensions);
-  }, [records, analysis, monthlyAnalysis, currentFileName, customAnalysis, customMonthly, cycleStats, fieldConfig.theoreticalDimensions, setError]);
+    try {
+      // 导出需要全量：此时才按需逐页拉取，不常驻内存
+      setLoading(true);
+      const all = await fetchAllRecords(currentDatasetId);
+      if (all.length === 0) {
+        setError('没有数据可导出');
+        return;
+      }
+      exportAllToExcel(all, analysis, monthlyAnalysis, currentFileName || '交易复盘数据.xlsx', customAnalysis, customMonthly, cycleStats, fieldConfig.theoreticalDimensions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '导出失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentDatasetId, analysis, monthlyAnalysis, currentFileName, customAnalysis, customMonthly, cycleStats, fieldConfig.theoreticalDimensions, setError, setLoading]);
 
   const handleUploadToR2 = useCallback(async (file: File) => {
     try {
@@ -553,7 +581,7 @@ export const ExcelUploader: React.FC = () => {
             <Database className="mr-2 h-4 w-4" />
             生成测试数据 Excel
           </Button>
-          {records.length > 0 && (
+          {recordTotal > 0 && (
             <Button variant="secondary" onClick={handleExport} className="flex items-center justify-center">
               <Download className="mr-2 h-4 w-4" />
               导出 Excel
@@ -562,14 +590,14 @@ export const ExcelUploader: React.FC = () => {
         </div>
       </div>
 
-      {records.length > 0 && (
+      {recordTotal > 0 && (
         <div className="flex items-center justify-between bg-gray-50 rounded-lg p-4">
           <div>
             <p className="text-sm font-medium text-gray-900">
               {currentFileName || '未命名文件'}
             </p>
             <p className="text-xs text-gray-500">
-              共 {records.length} 条交易记录
+              共 {recordTotal} 条交易记录
             </p>
           </div>
         </div>
@@ -621,7 +649,7 @@ export const ExcelUploader: React.FC = () => {
             <div className="bg-red-50 rounded-lg p-4">
               <p className="text-sm font-medium text-red-700 mb-1">⚠️ 注意</p>
               <p className="text-sm text-red-600">
-                覆盖模式将删除现有的 {records.length} 条记录，此操作不可撤销。
+                覆盖模式将删除现有的 {recordTotal} 条记录，此操作不可撤销。
               </p>
             </div>
           )}

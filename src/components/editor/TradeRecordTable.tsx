@@ -67,13 +67,19 @@ function saveHiddenColumns(hidden: string[]) {
 }
 
 interface TradeRecordTableProps {
+  /** 当前页的行（服务端分页下发） */
   records: TradingRecord[];
-  paginatedRecords: TradingRecord[];
+  /** 当前筛选条件下的总条数（服务端 COUNT） */
   filteredCount: number;
+  /** 数据集全量条数（不受筛选影响） */
   totalRecords: number;
   page: number;
+  pageSize: number;
   totalPages: number;
+  /** 当前页正在请求 */
+  loading: boolean;
   onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
   sortConfig: SortConfig;
   onSort: (key: 'openDate' | 'stockCode') => void;
   filters: Filters;
@@ -97,12 +103,14 @@ interface TradeRecordTableProps {
 
 export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
   records,
-  paginatedRecords,
   filteredCount,
   totalRecords,
   page,
+  pageSize,
   totalPages,
+  loading,
   onPageChange,
+  onPageSizeChange,
   sortConfig,
   onSort,
   filters,
@@ -281,7 +289,7 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
             <Button
               variant={statsNeedUpdate ? "primary" : "secondary"}
               onClick={onUpdateStats}
-              disabled={updateStatus === 'loading' || records.length === 0}
+              disabled={updateStatus === 'loading' || totalRecords === 0}
             >
               <RefreshCw className={`mr-2 h-4 w-4 ${updateStatus === 'loading' ? 'animate-spin' : ''}`} />
               {statsNeedUpdate ? "更新统计数据" : "手动更新统计数据"}
@@ -357,8 +365,20 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
           </div>
         </div>
 
-        <div className="mt-4 text-sm text-gray-600">
-          共 {filteredCount} 条记录 (总计 {totalRecords} 条) · 第 {page}/{totalPages} 页
+        <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
+          <span>共 {filteredCount} 条记录 (总计 {totalRecords} 条) · 第 {page}/{totalPages} 页</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">每页</span>
+            <Select
+              value={String(pageSize)}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              options={[
+                { value: '50', label: '50' },
+                { value: '100', label: '100' },
+                { value: '200', label: '200' },
+              ]}
+            />
+          </div>
         </div>
       </div>
 
@@ -432,14 +452,16 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {paginatedRecords.length === 0 ? (
+                {records.length === 0 ? (
                   <tr>
                     <td colSpan={totalColumns} className="px-4 py-8 text-center text-gray-500">
-                      {records.length === 0 ? '暂无数据，请导入Excel或添加记录' : '无符合筛选条件的记录'}
+                      {loading
+                        ? '加载中...'
+                        : totalRecords === 0 ? '暂无数据，请导入Excel或添加记录' : '无符合筛选条件的记录'}
                     </td>
                   </tr>
                 ) : (
-                  paginatedRecords.map((record) => (
+                  records.map((record) => (
                     <React.Fragment key={record.id}>
                     <tr className="hover:bg-gray-50">
                       {isVisible('openDate') && (
@@ -592,7 +614,7 @@ export const TradeRecordTable: React.FC<TradeRecordTableProps> = ({
             </table>
           </div>
         </div>
-        <Pagination currentPage={page} totalPages={totalPages} onPageChange={onPageChange} pageSize={50} total={filteredCount} />
+        <Pagination currentPage={page} totalPages={totalPages} onPageChange={onPageChange} pageSize={pageSize} total={filteredCount} />
       </div>
     </div>
   );

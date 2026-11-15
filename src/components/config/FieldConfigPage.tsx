@@ -1,10 +1,11 @@
 import React, { useState, useCallback } from 'react';
 import { Settings, Plus, Trash2, Save, X, GripVertical } from 'lucide-react';
-import { useRecordsStore, useAnalysisTabStore } from '@/stores';
-import { saveFieldConfigToR2, saveTabsToR2 } from '@/hooks/useStoreSync';
+import { useRecordsStore, useAnalysisTabStore, useDatasetStore } from '@/stores';
+import { fetchAllRecords, saveFieldConfigToR2, saveNow, saveTabsToR2 } from '@/hooks/useStoreSync';
+import { r2StorageService } from '@/services/r2Service';
 import { generateId } from '@/utils';
 import { convertRecordForDimensionChange } from '@/utils/theoreticalRatio';
-import type { FieldConfig, AggregateRule, TheoreticalDimension, JournalStageConfig, JournalStrategyGroup, MindsetRow, DecisionCheckItem, AnalysisTab } from '@/types';
+import type { TradingRecord, FieldConfig, AggregateRule, TheoreticalDimension, JournalStageConfig, JournalStrategyGroup, MindsetRow, DecisionCheckItem, AnalysisTab } from '@/types';
 import { DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS, DEFAULT_MINDSET_ROWS, DEFAULT_FIELD_CONFIG, getSourceDimensionId } from '@/types';
 
 // 7 个价位的语义标签（用于字段配置中编辑代码）
@@ -25,7 +26,7 @@ type PendingConfig = {
 
 export const FieldConfigPage: React.FC = () => {
   const fieldConfig = useRecordsStore(s => s.fieldConfig);
-  const records = useRecordsStore(s => s.records);
+  const currentDatasetId = useDatasetStore(s => s.currentDatasetId);
   const setFieldConfig = useRecordsStore(s => s.setFieldConfig);
 
   const [pending, setPending] = useState<PendingConfig>({
@@ -173,11 +174,10 @@ export const FieldConfigPage: React.FC = () => {
       setMessage({ type: 'error', text: '「未知」类型不可删除' });
       return;
     }
-    const count = records.filter(r => r.tradingType === type).length;
     const usedInRules = pending.aggregateRules.filter(r => r.includedTypes.includes(type));
     const confirmMsg = [
       `确定删除交易类型「${type}」？`,
-      count > 0 ? `\n${count} 条记录将被标记为「未知」` : '',
+      '使用该类型的记录将被标记为「未知」',
       usedInRules.length > 0 ? `\n将从聚合规则「${usedInRules.map(r => r.name).join('、')}」中移除` : '',
     ].filter(Boolean).join('');
     
@@ -212,8 +212,7 @@ export const FieldConfigPage: React.FC = () => {
       setMessage({ type: 'error', text: '「未知」类型不可删除' });
       return;
     }
-    const count = records.filter(r => r.trendFeatures.includes(type)).length;
-    if (!confirm(`确定删除趋势特征「${type}」？\n${count} 条记录将被标记为「未知」`)) return;
+    if (!confirm(`确定删除趋势特征「${type}」？\n使用该特征的记录将移除该标记`)) return;
     setPending(p => ({ ...p, trendFeatures: p.trendFeatures.filter(e => e !== type) }));
     setMessage(null);
   };
@@ -236,8 +235,7 @@ export const FieldConfigPage: React.FC = () => {
       setMessage({ type: 'error', text: `「${type}」为固定标记，不可删除` });
       return;
     }
-    const count = records.filter(r => r.patternFeatures.includes(type)).length;
-    if (!confirm(`确定删除模式特征「${type}」？\n${count} 条记录将移除该标记`)) return;
+    if (!confirm(`确定删除模式特征「${type}」？\n相关记录将移除该标记`)) return;
     setPending(p => ({ ...p, patternFeatures: p.patternFeatures.filter(e => e !== type) }));
     setMessage(null);
   };
@@ -349,41 +347,60 @@ export const FieldConfigPage: React.FC = () => {
       // 维度定义（名称除外）变化时，按新语义换算历史值，保证最终值不变
       const dimensionsChanged = JSON.stringify(fieldConfig.theoreticalDimensions) !== JSON.stringify(pending.theoreticalDimensions);
       if (deletedTradingTypes.length > 0 || deletedTrendFeatures.length > 0 || deletedPatternFeatures.length > 0 || dimensionsChanged) {
-        useRecordsStore.getState().setRecords(
-          records.map(r => {
-            let changed = false;
-            let tradingType = r.tradingType;
-            let trendFeatures = r.trendFeatures;
-            let patternFeatures = r.patternFeatures;
-            let theoreticalProfitRatios = r.theoreticalProfitRatios;
-            let theoreticalProfitDeltas = r.theoreticalProfitDeltas;
-            if (deletedTradingTypes.includes(r.tradingType)) { tradingType = '未知'; changed = true; }
-            if (deletedTrendFeatures.some(dt => r.trendFeatures.includes(dt))) {
-              trendFeatures = r.trendFeatures.filter(et => !deletedTrendFeatures.includes(et));
-              if (trendFeatures.length === 0) trendFeatures = ['未知'];
+        if (!currentDatasetId) throw new Error('未选择数据集');
+        // 先把未保存的编辑落盘：下面的全量拉取读的是服务端数据，必须已包含它们
+        await saveNow();
+        // 需要改写全表：这是用户主动保存触发的少数场景，此时才按需全量拉取
+        const all = await fetchAllRecords(currentDatasetId);
+        const upserts: TradingRecord[] = [];
+        for (const r of all) {
+          let changed = false;
+          let tradingType = r.tradingType;
+          let trendFeatures = r.trendFeatures;
+          let patternFeatures = r.patternFeatures;
+          let theoreticalProfitRatios = r.theoreticalProfitRatios;
+          let theoreticalProfitDeltas = r.theoreticalProfitDeltas;
+          if (deletedTradingTypes.includes(r.tradingType)) { tradingType = '未知'; changed = true; }
+          if (deletedTrendFeatures.some(dt => r.trendFeatures.includes(dt))) {
+            trendFeatures = r.trendFeatures.filter(et => !deletedTrendFeatures.includes(et));
+            if (trendFeatures.length === 0) trendFeatures = ['未知'];
+            changed = true;
+          }
+          if (deletedPatternFeatures.some(dt => r.patternFeatures.includes(dt))) {
+            patternFeatures = r.patternFeatures.filter(pf => !deletedPatternFeatures.includes(pf));
+            changed = true;
+          }
+          if (dimensionsChanged) {
+            const converted = convertRecordForDimensionChange(
+              { ...r, tradingType, trendFeatures, patternFeatures, theoreticalProfitRatios },
+              fieldConfig.theoreticalDimensions,
+              pending.theoreticalDimensions,
+            );
+            const ratiosDiff = JSON.stringify(converted.theoreticalProfitRatios ?? {}) !== JSON.stringify(r.theoreticalProfitRatios ?? {});
+            const deltasDiff = JSON.stringify(converted.theoreticalProfitDeltas ?? {}) !== JSON.stringify(r.theoreticalProfitDeltas ?? {});
+            if (ratiosDiff || deltasDiff) {
+              theoreticalProfitRatios = converted.theoreticalProfitRatios;
+              theoreticalProfitDeltas = converted.theoreticalProfitDeltas;
               changed = true;
             }
-            if (deletedPatternFeatures.some(dt => r.patternFeatures.includes(dt))) {
-              patternFeatures = r.patternFeatures.filter(pf => !deletedPatternFeatures.includes(pf));
-              changed = true;
-            }
-            if (dimensionsChanged) {
-              const converted = convertRecordForDimensionChange(
-                { ...r, tradingType, trendFeatures, patternFeatures, theoreticalProfitRatios },
-                fieldConfig.theoreticalDimensions,
-                pending.theoreticalDimensions,
-              );
-              const ratiosDiff = JSON.stringify(converted.theoreticalProfitRatios ?? {}) !== JSON.stringify(r.theoreticalProfitRatios ?? {});
-              const deltasDiff = JSON.stringify(converted.theoreticalProfitDeltas ?? {}) !== JSON.stringify(r.theoreticalProfitDeltas ?? {});
-              if (ratiosDiff || deltasDiff) {
-                theoreticalProfitRatios = converted.theoreticalProfitRatios;
-                theoreticalProfitDeltas = converted.theoreticalProfitDeltas;
-                changed = true;
-              }
-            }
-            return changed ? { ...r, tradingType, trendFeatures, patternFeatures, theoreticalProfitRatios, theoreticalProfitDeltas, hasCycleStats: false, cycleId: undefined } : r;
-          })
-        );
+          }
+          if (changed) {
+            upserts.push({ ...r, tradingType, trendFeatures, patternFeatures, theoreticalProfitRatios, theoreticalProfitDeltas, hasCycleStats: false, cycleId: undefined });
+          }
+        }
+        if (upserts.length > 0) {
+          const saveRecords = await r2StorageService.saveRecords(currentDatasetId, {
+            baseVersion: useRecordsStore.getState().version ?? 0,
+            upserts,
+          });
+          if (!saveRecords.success) throw new Error(saveRecords.message || '记录更新失败');
+          // 直连保存绕过了自动保存，版本号必须回写
+          if (typeof saveRecords.version === 'number') {
+            useRecordsStore.getState().setVersion(saveRecords.version);
+          }
+          // 落盘后重拉首页（带 meta 刷新全量条数与月份选项），让缓存与视图反映改写结果
+          await useRecordsStore.getState().loadRecordPage(currentDatasetId, { offset: 0, meta: true });
+        }
       }
 
       // 1.5 删除理论维度：同步删除引用该维度的分析页签（及其分组）
@@ -433,8 +450,8 @@ export const FieldConfigPage: React.FC = () => {
       } else {
         setMessage({ type: 'error', text: saveResult.error || '保存失败，请重试' });
       }
-    } catch {
-      setMessage({ type: 'error', text: '保存失败，请重试' });
+    } catch (e) {
+      setMessage({ type: 'error', text: e instanceof Error ? e.message : '保存失败，请重试' });
     } finally {
       setSaving(false);
     }

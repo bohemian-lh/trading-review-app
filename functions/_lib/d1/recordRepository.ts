@@ -5,6 +5,8 @@
 // 与对象存储的关键差异：不做「整表删除 + 全量插入」，
 //   新增/修改按 id upsert，删除只删真正消失的 id；
 //   月度、周期统计同样按主键差量。
+import { clampLimit, dayExpr, keysetWhere, makeCursor, monthExpr, normalizeDay, parseCursor } from './pagination';
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -42,11 +44,20 @@ function recordPayload(record: any): string {
   });
 }
 
+/**
+ * 特征过滤用的 JSON 表达式：非法 JSON / 空串视为 `{}`。
+ * 历史脏数据若直接进 json_each 会抛 "malformed JSON"，让整页列表查询失败。
+ */
+function jsonPayload(column: string): string {
+  return `(CASE WHEN json_valid(${column}) THEN ${column} ELSE '{}' END)`;
+}
+
 const RECORD_GUARD = 'WHERE (SELECT write_token FROM record_meta WHERE dataset_id = ?) = ?';
 
 /** 单条记录 upsert；guardToken 为 null 时不做版本守卫（迁移用） */
 function buildRecordUpsert(db: any, datasetId: string, record: any, guardToken: string | null) {
-  const params: any[] = [
+  // 列值必须与 VALUES 的占位符一一对应；守卫参数是额外的 WHERE 绑定，不能算进 VALUES
+  const values: any[] = [
     datasetId,
     String(record.id),
     record.openDate ?? '',
@@ -66,13 +77,13 @@ function buildRecordUpsert(db: any, datasetId: string, record: any, guardToken: 
     recordPayload(record),
     nowIso(),
   ];
-  if (guardToken !== null) params.push(datasetId, guardToken);
+  const params = guardToken === null ? values : [...values, datasetId, guardToken];
 
   return db
     .prepare(
       `INSERT INTO records (dataset_id, id, open_date, stock_code, stock_name, trading_type, pre_market, has_mistake,
          profit_percent, hold_days, position_size, has_cycle_stats, has_monthly_stats, cycle_id, image_prefix, remark, payload, updated_at)
-       VALUES (${params.map(() => '?').join(', ')})
+       VALUES (${values.map(() => '?').join(', ')})
        ON CONFLICT(dataset_id, id) DO UPDATE SET
          open_date = excluded.open_date,
          stock_code = excluded.stock_code,
@@ -130,7 +141,7 @@ function monthlyFromRow(row: any): any {
 }
 
 function monthlyUpsertSql(db: any, datasetId: string, item: any, guardToken: string | null) {
-  const params: any[] = [
+  const values: any[] = [
     datasetId,
     String(item.month),
     nullableNum(item.systemProfitRatio),
@@ -140,12 +151,12 @@ function monthlyUpsertSql(db: any, datasetId: string, item: any, guardToken: str
     nullableNum(item.avgProfitRatio),
     nullableNum(item.totalProfit),
   ];
-  if (guardToken !== null) params.push(datasetId, guardToken);
+  const params = guardToken === null ? values : [...values, datasetId, guardToken];
   return db
     .prepare(
       `INSERT INTO monthly_analysis (dataset_id, month, system_profit_ratio, system_no_mistake_profit_ratio,
          system_with_mistake_profit_ratio, non_system_profit_ratio, avg_profit_ratio, total_profit)
-       VALUES (${params.map(() => '?').join(', ')})
+       VALUES (${values.map(() => '?').join(', ')})
        ON CONFLICT(dataset_id, month) DO UPDATE SET
          system_profit_ratio = excluded.system_profit_ratio,
          system_no_mistake_profit_ratio = excluded.system_no_mistake_profit_ratio,
@@ -176,7 +187,7 @@ function cycleFromRow(row: any): any {
 }
 
 function cycleUpsertSql(db: any, datasetId: string, item: any, guardToken: string | null) {
-  const params: any[] = [
+  const values: any[] = [
     datasetId,
     String(item.statType),
     String(item.cycleId),
@@ -191,12 +202,12 @@ function cycleUpsertSql(db: any, datasetId: string, item: any, guardToken: strin
     Math.trunc(num(item.createdAt)),
     Math.trunc(num(item.updatedAt)),
   ];
-  if (guardToken !== null) params.push(datasetId, guardToken);
+  const params = guardToken === null ? values : [...values, datasetId, guardToken];
   return db
     .prepare(
       `INSERT INTO cycle_stats (dataset_id, stat_type, cycle_id, start_date, end_date, record_count, is_complete,
          profit_sum, loss_sum, profit_ratio, record_ids, created_at, updated_at)
-       VALUES (${params.map(() => '?').join(', ')})
+       VALUES (${values.map(() => '?').join(', ')})
        ON CONFLICT(dataset_id, stat_type, cycle_id) DO UPDATE SET
          start_date = excluded.start_date,
          end_date = excluded.end_date,
@@ -215,12 +226,14 @@ function cycleUpsertSql(db: any, datasetId: string, item: any, guardToken: strin
 // ─── 读取 ─────────────────────────────────────────────────────
 /** 数据集级元信息与派生数据（不含记录明细） */
 export async function getRecordsMeta(db: any, datasetId: string): Promise<any> {
-  const [meta, analysisRow, monthlyRows, cycleRows, totalRow] = await Promise.all([
+  const [meta, analysisRow, monthlyRows, cycleRows, totalRow, monthRows] = await Promise.all([
     db.prepare('SELECT version, custom_monthly_use, cycle_stats_generated_at FROM record_meta WHERE dataset_id = ?').bind(datasetId).first(),
     db.prepare('SELECT use_custom, payload FROM custom_analysis WHERE dataset_id = ?').bind(datasetId).first(),
     db.prepare('SELECT * FROM monthly_analysis WHERE dataset_id = ? ORDER BY month ASC').bind(datasetId).all(),
     db.prepare('SELECT * FROM cycle_stats WHERE dataset_id = ? ORDER BY stat_type ASC, start_date ASC').bind(datasetId).all(),
     db.prepare('SELECT COUNT(*) AS c FROM records WHERE dataset_id = ?').bind(datasetId).first(),
+    // 月份筛选项：分页后前端只持有当前页，选项必须由服务端给出
+    db.prepare(`SELECT DISTINCT ${monthExpr('open_date')} AS m FROM records WHERE dataset_id = ? ORDER BY m DESC`).bind(datasetId).all(),
   ]);
 
   const cycleStats: Record<string, any[]> = {};
@@ -232,6 +245,11 @@ export async function getRecordsMeta(db: any, datasetId: string): Promise<any> {
   return {
     version: typeof meta?.version === 'number' ? meta.version : 0,
     total: Number(totalRow?.c ?? 0),
+    // 与分页里的 total（当前筛选条件下的条数）区分：这是数据集全量条数
+    datasetTotal: Number(totalRow?.c ?? 0),
+    months: (monthRows?.results ?? [])
+      .map((r: any) => String(r.m ?? ''))
+      .filter((m: string) => m.length === 6),
     customAnalysis: analysisRow
       ? { useCustom: !!analysisRow.use_custom, data: parseJson(analysisRow.payload, {}) }
       : undefined,
@@ -244,44 +262,117 @@ export async function getRecordsMeta(db: any, datasetId: string): Promise<any> {
   };
 }
 
+export interface RecordPageOptions {
+  limit?: number;
+  cursor?: string | null;
+  /** 排序键：开单日（默认）或股票代码 */
+  sortKey?: 'openDate' | 'stockCode' | null;
+  /** 页码分页：与 cursor 互斥，传了 offset 就按 LIMIT/OFFSET 取页（表格需要跳页） */
+  offset?: number | null;
+  sort?: 'asc' | 'desc';
+  fromDay?: string | null;
+  toDay?: string | null;
+  code?: string | null;
+  keyword?: string | null;
+  tradingType?: string | null;
+  /** 趋势特征 / 模式特征：JSON 数组包含判断 */
+  trendFeature?: string | null;
+  patternFeature?: string | null;
+}
+
 /**
- * 按 open_date + id 倒序的键集分页。
- * 返回 size 条记录与下一页游标（没有更多时为 null）。
+ * 记录分页：过滤条件全部下推到 SQL，前端只拿当前页。
+ * 两种翻页方式：
+ *   - cursor（键集，默认）：游标为「排序键值|id」，适合「加载更多」；
+ *   - offset：LIMIT/OFFSET，允许表格直接跳到任意页。
  */
 export async function getRecordsPage(
   db: any,
   datasetId: string,
-  limit = 20,
-  cursor: string | null = null,
-): Promise<{ records: any[]; nextCursor: string | null }> {
-  const size = Math.min(Math.max(1, Math.trunc(limit) || 20), 200);
-  const params: any[] = [datasetId];
-  let where = 'dataset_id = ?';
+  options: RecordPageOptions = {},
+): Promise<{ records: any[]; nextCursor: string | null; total: number; version: number }> {
+  const limit = clampLimit(options.limit, 20);
+  const sort = options.sort === 'asc' ? 'asc' : 'desc';
+  const dir = sort.toUpperCase();
+  const day = dayExpr('open_date');
+  const byStockCode = options.sortKey === 'stockCode';
+  const orderExprs = byStockCode ? ['stock_code', 'id'] : [day, 'id'];
+  const orderBy = orderExprs.map(expr => `${expr} ${dir}`).join(', ');
+  const offsetValue = Number(options.offset);
+  const offset = Number.isFinite(offsetValue) && offsetValue > 0 ? Math.trunc(offsetValue) : 0;
 
-  if (cursor) {
-    const index = cursor.indexOf('|');
-    // index === 0 表示 open_date 为空串，仍然要生效，否则会一直返回第一页
-    if (index >= 0) {
-      const openDate = cursor.slice(0, index);
-      const id = cursor.slice(index + 1);
-      where += ' AND (open_date < ? OR (open_date = ? AND id < ?))';
-      params.push(openDate, openDate, id);
-    }
+  const where: string[] = ['dataset_id = ?'];
+  const params: any[] = [datasetId];
+
+  const fromDay = normalizeDay(options.fromDay);
+  const toDay = normalizeDay(options.toDay);
+  if (fromDay) {
+    where.push(`${day} >= ?`);
+    params.push(fromDay);
   }
-  params.push(size + 1);
+  if (toDay) {
+    where.push(`${day} <= ?`);
+    params.push(toDay);
+  }
+  if (options.code) {
+    where.push('stock_code LIKE ?');
+    params.push(`%${options.code}%`);
+  }
+  if (options.tradingType) {
+    where.push('trading_type = ?');
+    params.push(options.tradingType);
+  }
+  if (options.trendFeature) {
+    where.push(`EXISTS (SELECT 1 FROM json_each(${jsonPayload('payload')}, '$.trendFeatures') jt WHERE jt.value = ?)`);
+    params.push(options.trendFeature);
+  }
+  if (options.patternFeature) {
+    where.push(`EXISTS (SELECT 1 FROM json_each(${jsonPayload('payload')}, '$.patternFeatures') jp WHERE jp.value = ?)`);
+    params.push(options.patternFeature);
+  }
+  if (options.keyword) {
+    where.push('(stock_code LIKE ? OR stock_name LIKE ?)');
+    params.push(`%${options.keyword}%`, `%${options.keyword}%`);
+  }
+
+  const filters = where.join(' AND ');
+  const [versionRow, totalRow] = await Promise.all([
+    db.prepare('SELECT version FROM record_meta WHERE dataset_id = ?').bind(datasetId).first(),
+    db.prepare(`SELECT COUNT(*) AS c FROM records WHERE ${filters}`).bind(...params).first(),
+  ]);
+
+  const pageWhere = [...where];
+  const pageParams = [...params];
+  const cursor = offset > 0 ? null : parseCursor(options.cursor ?? null, 2);
+  if (cursor) {
+    const keyset = keysetWhere(orderExprs, cursor, sort);
+    pageWhere.push(keyset.sql);
+    pageParams.push(...keyset.params);
+  }
 
   const rows = await db
-    .prepare(`SELECT * FROM records WHERE ${where} ORDER BY open_date DESC, id DESC LIMIT ?`)
-    .bind(...params)
+    .prepare(
+      `SELECT * FROM records
+        WHERE ${pageWhere.join(' AND ')}
+        ORDER BY ${orderBy}
+        LIMIT ?${offset > 0 ? ' OFFSET ?' : ''}`,
+    )
+    .bind(...pageParams, limit + 1, ...(offset > 0 ? [offset] : []))
     .all();
 
   const rawRows: any[] = rows?.results ?? [];
-  const hasMore = rawRows.length > size;
-  const pageRows = hasMore ? rawRows.slice(0, size) : rawRows;
-  const lastRaw = pageRows[pageRows.length - 1];
+  const hasMore = rawRows.length > limit;
+  const pageRows = hasMore ? rawRows.slice(0, limit) : rawRows;
+  const last = pageRows[pageRows.length - 1];
+  const lastSortValue = byStockCode
+    ? String(last?.stock_code ?? '')
+    : String(last?.open_date ?? '').replace(/-/g, '').slice(0, 8);
+
   return {
     records: pageRows.map(fromRow),
-    nextCursor: hasMore && lastRaw ? `${lastRaw.open_date}|${lastRaw.id}` : null,
+    nextCursor: offset > 0 || !hasMore || !last ? null : makeCursor([lastSortValue, last.id]),
+    total: Number(totalRow?.c ?? 0),
+    version: typeof versionRow?.version === 'number' ? versionRow.version : 0,
   };
 }
 
@@ -308,7 +399,7 @@ export interface RecordChanges {
 }
 
 export type ApplyRecordChangesResult =
-  | { ok: true; version: number }
+  | { ok: true; version: number; /** 覆盖导入：写入/删除的条数，供 UI 汇报 */ replaced?: number; removed?: number }
   | { ok: false; version: number; snapshot: any };
 
 /** 提交一批增量变更；版本冲突时整批 no-op，回传服务端版本号（可选回传全量快照） */
@@ -420,8 +511,11 @@ export async function applyRecordChanges(
 }
 
 /**
- * 旧版全量覆盖（兼容缓存里的旧客户端）：
+ * 旧版全量覆盖（兼容缓存里的旧客户端，也用于 Excel 覆盖导入）：
  * 读取现有主键集合，换算成差量后走同一条增量写入路径，不做整表删除重建。
+ *
+ * 月度 / 周期统计遵循「字段缺失 = 不动」：客户端没带这两类集合时不能当成“清空”，
+ * 否则一次只导入 table1 的覆盖操作会顺手清掉派生结果表。
  */
 export async function replaceAllRecords(
   db: any,
@@ -441,36 +535,45 @@ export async function replaceAllRecords(
     .map((r: any) => String(r.id))
     .filter((id: string) => !keepRecords.has(id));
 
-  const monthly = Array.isArray(body.customMonthly?.data) ? body.customMonthly.data : [];
+  const hasMonthly = body.customMonthly !== undefined && body.customMonthly !== null;
+  const monthly = hasMonthly && Array.isArray(body.customMonthly.data) ? body.customMonthly.data : [];
   const keepMonths = new Set(monthly.map((m: any) => String(m.month)));
-  const monthlyDeletes = (existingMonthly?.results ?? [])
-    .map((r: any) => String(r.month))
-    .filter((m: string) => !keepMonths.has(m));
+  const monthlyDeletes = hasMonthly
+    ? (existingMonthly?.results ?? [])
+      .map((r: any) => String(r.month))
+      .filter((m: string) => !keepMonths.has(m))
+    : [];
 
+  const hasCycles = body.cycleStats !== undefined && body.cycleStats !== null;
   const cycleUpserts: any[] = [];
   const keepCycles = new Set<string>();
-  for (const [statType, list] of Object.entries(body.cycleStats ?? {})) {
+  for (const [statType, list] of Object.entries(hasCycles ? body.cycleStats : {})) {
     for (const item of (Array.isArray(list) ? list : []) as any[]) {
       cycleUpserts.push({ ...item, statType: item.statType ?? statType });
       keepCycles.add(`${statType}::${item.cycleId}`);
     }
   }
-  const cycleDeletes = (existingCycles?.results ?? [])
-    .map((r: any) => ({ statType: String(r.stat_type), cycleId: String(r.cycle_id) }))
-    .filter((c: any) => !keepCycles.has(`${c.statType}::${c.cycleId}`));
+  const cycleDeletes = hasCycles
+    ? (existingCycles?.results ?? [])
+      .map((r: any) => ({ statType: String(r.stat_type), cycleId: String(r.cycle_id) }))
+      .filter((c: any) => !keepCycles.has(`${c.statType}::${c.cycleId}`))
+    : [];
 
   const baseVersion = typeof meta?.version === 'number' ? meta.version : 0;
-  return applyRecordChanges(db, datasetId, baseVersion, {
+  const result = await applyRecordChanges(db, datasetId, baseVersion, {
     upserts: records,
     deletes,
     customAnalysis: body.customAnalysis,
     monthlyUpserts: monthly,
     monthlyDeletes,
-    monthlyUseCustom: body.customMonthly?.useCustom,
+    monthlyUseCustom: hasMonthly ? body.customMonthly?.useCustom : undefined,
     cycleStatsUpserts: cycleUpserts,
     cycleStatsDeletes: cycleDeletes,
     cycleStatsGeneratedAt: body.cycleStatsGeneratedAt,
   });
+  return result.ok
+    ? { ...result, replaced: records.length, removed: deletes.length }
+    : result;
 }
 
 // ─── 迁移辅助 ──────────────────────────────────────────────────

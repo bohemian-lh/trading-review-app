@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import type { TradingJournal, CustomStrategy, JournalConfigSnapshot, JournalStageConfig, JournalStrategyGroup, JournalDraft } from '@/types';
 import { DEFAULT_JOURNAL_STAGES, DEFAULT_SHARED_STRATEGY_GROUPS } from '@/types';
 import {
-  loadJournals,
+  loadJournalPage,
   loadSnapshots,
   saveSnapshots,
   saveJournalOps,
@@ -15,13 +15,56 @@ import {
   JournalConflictError,
   CollectionConflictError,
 } from '@/services/journalService';
-import type { JournalOp } from '@/services/journalService';
+import type { JournalOp, JournalPageQuery } from '@/services/journalService';
 import { outboxKey, outboxList, outboxPut, outboxRemove } from '@/services/journalOutbox';
 import type { JournalOutboxEntry } from '@/services/journalOutbox';
+import { readPage, removeRows, writePage, writeRows } from '@/services/pagedCache';
 import { generateId } from '@/utils';
 import { useRecordsStore } from '@/stores/recordsStore';
 
+/** 当前视图的服务端分页状态：只保存行 id 顺序与页码，行内容统一放 journals 缓存 */
+export interface JournalPageState {
+  status: 'submitted' | 'draft';
+  ids: string[];
+  total: number;
+  /** 当前页码（从 1 开始） */
+  page: number;
+  pageSize: number;
+  /** 总页数（至少 1，便于界面直接渲染页码） */
+  totalPages: number;
+  loading: boolean;
+  error: string | null;
+}
+
+/** 查看页下推到服务端的筛选条件 */
+export interface JournalQuery {
+  fromDay: string;
+  toDay: string;
+  code: string;
+  sort: 'asc' | 'desc';
+}
+
+/** 一页 50 条：与服务端默认一致 */
+const JOURNAL_PAGE_SIZE = 50;
+
+const EMPTY_PAGE: JournalPageState = {
+  status: 'submitted',
+  ids: [],
+  total: 0,
+  page: 1,
+  pageSize: JOURNAL_PAGE_SIZE,
+  totalPages: 1,
+  loading: false,
+  error: null,
+};
+
+const INITIAL_QUERY: JournalQuery = { fromDay: '', toDay: '', code: '', sort: 'desc' };
+
 interface JournalState {
+  /**
+   * 已加载行缓存：只含「按需拉取过的分页」+「本地新增/编辑的行」，
+   * 不再是整表数据；写路径（出站队列）与渲染都从这里取行内容。
+   */
   journals: TradingJournal[];
   snapshots: JournalConfigSnapshot[];
   activeStages: JournalStageConfig[];
@@ -34,8 +77,24 @@ interface JournalState {
   lastSyncedAt: number | null;
   /** 尚未被服务端确认的日志条数，用于页头提示 */
   pendingCount: number;
+  journalPage: JournalPageState;
+  journalQuery: JournalQuery;
+  pageSize: number;
 
   init: (datasetId: string) => Promise<void>;
+  loadPage: (
+    status: 'submitted' | 'draft',
+    query?: Partial<JournalQuery>,
+    datasetId?: string,
+    page?: number,
+  ) => Promise<void>;
+  /** 跳到指定页（1 起）：筛选条件与视图不变 */
+  goToPage: (page: number, datasetId?: string) => Promise<void>;
+  /**
+   * 重排「当前交易」：nextOrder 是拖动后的完整显示顺序（当前页）。
+   * 只给被移动的行写新序号，其余行不动；间隔耗尽时整页重新编号。
+   */
+  reorderDrafts: (movedId: string, nextOrder: string[], datasetId?: string) => Promise<void>;
   createSnapshot: (stages: JournalStageConfig[], datasetId: string) => Promise<JournalConfigSnapshot | null>;
   createJournal: (draft: JournalDraft, snapshotId: string, datasetId: string) => Promise<void>;
   finalizeJournal: (journalId: string, datasetId: string) => Promise<void>;
@@ -290,18 +349,20 @@ function scheduleFlush(): void {
   }, wait);
 }
 
+/**
+ * 冲突重放：服务端只回传受影响的行，因此这里按 id 覆盖缓存而不是整表替换。
+ * 本地尚未确认的改动优先，避免把用户刚做的修改冲掉。
+ */
 function mergeServerState(version: number, serverJournals: TradingJournal[]): void {
-  const merged = new Map<string, TradingJournal>();
-  for (const journal of serverJournals) merged.set(journal.id, migrateJournal(journal));
-  for (const [id, entry] of touched) {
-    if (entry.op === 'delete') {
-      merged.delete(id);
-    } else {
-      const local = getState().journals.find(j => j.id === id);
-      if (local) merged.set(id, local);
-    }
+  const cache = new Map<string, TradingJournal>();
+  for (const journal of getState().journals) cache.set(journal.id, journal);
+  for (const journal of serverJournals) {
+    if (touched.has(journal.id)) continue;
+    const migrated = migrateJournal(journal);
+    cache.set(journal.id, migrated);
+    cacheJournal(migrated);
   }
-  useJournalStore.setState({ journals: [...merged.values()], version });
+  useJournalStore.setState({ journals: [...cache.values()], version });
 }
 
 async function flushJournals(keepalive = false): Promise<void> {
@@ -348,7 +409,6 @@ async function flushJournals(keepalive = false): Promise<void> {
       lastSyncedAt: Date.now(),
       pendingCount: touched.size,
     });
-    collectOrphanSnapshots();
     if (remaining) scheduleFlush();
   } catch (e) {
     if (e instanceof JournalConflictError) {
@@ -481,19 +541,114 @@ export async function flushJournalsNow(keepalive = false): Promise<void> {
   settleSyncState();
 }
 
-function collectOrphanSnapshots(): void {
-  const { journals, snapshots } = getState();
-  if (snapshots.length === 0) return;
-  const referenced = new Set<string>();
+/**
+ * 分页后前端只持有部分日志，无法再据本地数据判断「快照是否仍被引用」，
+ * 因此不再在浏览器回收快照（误删会让历史日志丢失配置）。
+ * 快照按内容哈希去重，重复创建不会增长；如需回收应在服务端按全表引用判断。
+ */
+
+/** 把服务端返回的行并入缓存（按 id 覆盖） */
+function mergeCache(rows: TradingJournal[]): TradingJournal[] {
+  const map = new Map<string, TradingJournal>();
+  for (const journal of getState().journals) map.set(journal.id, journal);
+  for (const journal of rows) map.set(journal.id, journal);
+  return [...map.values()];
+}
+
+/** 页面视图里移除一行（删除 / 状态不再匹配当前视图） */
+function dropFromPageView(ids: string[]): void {
+  const page = getState().journalPage;
+  const drop = new Set(ids);
+  const next = page.ids.filter(id => !drop.has(id));
+  if (next.length === page.ids.length) return;
+  useJournalStore.setState({
+    journalPage: { ...page, ids: next, total: Math.max(0, page.total - (page.ids.length - next.length)) },
+  });
+}
+
+/** 把查询条件转成分页参数：空字符串不上行，避免服务端做无意义的空条件筛选 */
+function toPageQuery(query: JournalQuery, extra: Partial<JournalPageQuery> = {}): JournalPageQuery {
+  return {
+    fromDay: query.fromDay || undefined,
+    toDay: query.toDay || undefined,
+    code: query.code || undefined,
+    sort: query.sort,
+    ...extra,
+  };
+}
+
+/** 本地缓存的分页所属资源名 */
+const JOURNAL_RESOURCE = 'journal';
+
+function journalQueryKey(status: string, query: JournalQuery, page = 1): string {
+  // 页码进入缓存 key：不同页各自缓存，翻回上一页可直接命中
+  return `${status}|${query.fromDay}|${query.toDay}|${query.code}|${query.sort}|p${page}`;
+}
+
+/** 本地未确认的改动优先：拉回来的服务端旧值不能覆盖尚未提交的行 */
+function preferPending(rows: TradingJournal[]): TradingJournal[] {
+  if (touched.size === 0) return rows;
+  const out: TradingJournal[] = [];
+  for (const row of rows) {
+    const entry = touched.get(row.id);
+    if (!entry) {
+      out.push(row);
+      continue;
+    }
+    if (entry.op === 'delete') continue;
+    out.push(entry.journal ? migrateJournal(entry.journal) : row);
+  }
+  return out;
+}
+
+/** 本地编辑后同步缓存，避免下次进入页面读到旧值 */
+function cacheJournal(journal: TradingJournal): void {
+  const datasetId = currentDatasetId;
+  if (!datasetId) return;
+  void writeRows(datasetId, JOURNAL_RESOURCE, [journal], j => j.id);
+}
+
+/** 把新的手动序号写回本地缓存，并按现有 outbox 逐行提交（合并成一次请求） */
+async function applyDraftSortValues(updates: Map<string, number>): Promise<void> {
+  if (updates.size === 0) return;
+  const journals = getState().journals.map(j => {
+    const value = updates.get(j.id);
+    return value === undefined ? j : { ...j, sortOrder: value };
+  });
+  useJournalStore.setState({ journals });
   for (const journal of journals) {
-    if (journal.snapshotId) referenced.add(journal.snapshotId);
+    if (!updates.has(journal.id)) continue;
+    cacheJournal(journal);
+    void markTouched(journal.id, 'upsert');
   }
-  const latest = snapshots[snapshots.length - 1]?.snapshotId;
-  const kept = snapshots.filter(s => referenced.has(s.snapshotId) || s.snapshotId === latest);
-  if (kept.length !== snapshots.length) {
-    useJournalStore.setState({ snapshots: kept });
-    markSnapshotsDirty();
+}
+
+/**
+ * 「当前交易」跨页时的整表重编号：
+ * 按服务端手动顺序取回全部 draft，把当前页的新顺序替换进去，再整体编号 10,20,30…
+ * 草稿是工作队列，数量很小；只有超过一页（>50 条）才会走这里。
+ */
+async function renumberAllDrafts(dsId: string, pageOrder: string[]): Promise<void> {
+  const fetched: TradingJournal[] = [];
+  let offset = 0;
+  for (let guard = 0; guard < 5; guard += 1) {
+    const result = await loadJournalPage(dsId, { status: 'draft', orderBy: 'manual', limit: 200, offset });
+    fetched.push(...result.journals.map(migrateJournal));
+    if (result.journals.length < 200) break;
+    offset += 200;
   }
+  const ids = fetched.map(j => j.id);
+  const start = ids.indexOf(pageOrder[0]);
+  if (start >= 0) ids.splice(start, pageOrder.length, ...pageOrder);
+
+  // 取回的行并入缓存，后续 markTouched 才能取到完整行内容
+  const merged = new Map(getState().journals.map(j => [j.id, j]));
+  for (const row of fetched) if (!merged.has(row.id)) merged.set(row.id, row);
+  useJournalStore.setState({ journals: [...merged.values()] });
+
+  const updates = new Map<string, number>();
+  ids.forEach((id, i) => updates.set(id, (i + 1) * 10));
+  await applyDraftSortValues(updates);
 }
 
 export const useJournalStore = create<JournalState>((set, get) => ({
@@ -508,6 +663,9 @@ export const useJournalStore = create<JournalState>((set, get) => ({
   syncError: null,
   lastSyncedAt: null,
   pendingCount: 0,
+  journalPage: { ...EMPTY_PAGE },
+  journalQuery: { ...INITIAL_QUERY },
+  pageSize: JOURNAL_PAGE_SIZE,
 
   init: async (datasetId: string) => {
     // 切换数据集前先把旧数据写完；未写完则中止切换，避免改动写进新数据集
@@ -521,10 +679,20 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     currentDatasetId = datasetId;
     resetQueues();
 
-    set({ loading: true, error: null, syncError: null, syncState: 'idle', pendingCount: 0 });
+    set({
+      loading: true,
+      error: null,
+      syncError: null,
+      syncState: 'idle',
+      pendingCount: 0,
+      journals: [],
+      journalPage: { ...EMPTY_PAGE },
+      journalQuery: { ...INITIAL_QUERY },
+    });
     try {
-      const [journalData, snapshotData, watchlistData, pending] = await Promise.all([
-        loadJournals(datasetId),
+      // 日志不再预取全表：只取 1 条拿到服务端版本号，真正的数据由各视图按需分页拉取
+      const [versionProbe, snapshotData, watchlistData, pending] = await Promise.all([
+        loadJournalPage(datasetId, { limit: 1 }),
         loadSnapshots(datasetId),
         loadWatchlist(datasetId),
         outboxList(datasetId),
@@ -538,10 +706,8 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       const sharedGroups = fc.sharedJournalStrategyGroups ?? DEFAULT_SHARED_STRATEGY_GROUPS;
       const activeStages = buildActiveStages(stageNames, sharedGroups);
 
-      // 服务端数据 → 叠加出站队列中尚未确认的变更 → 作为首屏状态
+      // 出站队列里尚未确认的变更先落到缓存：它们不在任何已拉取的分页里，必须补出来
       const merged = new Map<string, TradingJournal>();
-      for (const journal of journalData.journals) merged.set(journal.id, migrateJournal(journal));
-
       const recoveredSnapshots: JournalConfigSnapshot[] = [];
       for (const entry of pending) {
         touched.set(entry.journalId, entry);
@@ -568,7 +734,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
         snapshots: recoveredSnapshots.length ? [...snapshots, ...recoveredSnapshots] : snapshots,
         activeStages,
         watchlist: Array.isArray(watchlistData.watchlist) ? watchlistData.watchlist : [],
-        version: journalData.version,
+        version: versionProbe.version,
         loading: false,
         lastSyncedAt: Date.now(),
         pendingCount: touched.size,
@@ -580,9 +746,164 @@ export const useJournalStore = create<JournalState>((set, get) => ({
         if (recoveredSnapshots.length) markSnapshotsDirty();
         scheduleFlush();
       }
-    } catch (e: any) {
-      set({ error: e.message, loading: false });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : '加载失败', loading: false });
     }
+  },
+
+  // 拉取某一视图的指定页（替换当前视图）：服务端分页，前端只保留 id 顺序
+  loadPage: async (status, query, datasetId, page = 1) => {
+    const dsId = datasetId || currentDatasetId;
+    if (!dsId) return;
+    currentDatasetId = dsId;
+    const nextQuery: JournalQuery = { ...INITIAL_QUERY, ...query };
+    const pageSize = get().pageSize || JOURNAL_PAGE_SIZE;
+    const targetPage = Math.max(1, Math.trunc(Number(page)) || 1);
+    const offset = (targetPage - 1) * pageSize;
+    // 缓存 key 带上页码：翻回上一页可以秒开
+    const queryKey = journalQueryKey(status, nextQuery, targetPage);
+    set({
+      journalQuery: nextQuery,
+      journalPage: {
+        status,
+        ids: [],
+        total: 0,
+        page: targetPage,
+        pageSize,
+        totalPages: 1,
+        loading: true,
+        error: null,
+      },
+    });
+
+    // 先出本地缓存：同一查询同一页再次进入时不必等网络
+    const cached = await readPage<TradingJournal>(dsId, JOURNAL_RESOURCE, queryKey);
+    if (currentDatasetId !== dsId) return;
+    if (cached && cached.items.length > 0) {
+      const items = preferPending(cached.items);
+      set({
+        journals: mergeCache(items),
+        version: cached.version,
+        journalPage: {
+          status,
+          ids: items.map(j => j.id),
+          total: cached.total,
+          page: targetPage,
+          pageSize,
+          totalPages: Math.max(1, Math.ceil(cached.total / pageSize)),
+          loading: true,
+          error: null,
+        },
+      });
+    }
+
+    try {
+      const result = await loadJournalPage(dsId, toPageQuery(nextQuery, {
+        limit: pageSize,
+        status,
+        offset,
+        // 「当前交易」按手动序号排；已存储日志仍按日期
+        orderBy: status === 'draft' ? 'manual' : 'date',
+      }));
+      if (currentDatasetId !== dsId) return;
+
+      const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
+
+      // 版本没变且缓存已有这一页：保留缓存内容，只对齐总数
+      if (cached && cached.version === result.version && cached.items.length > 0) {
+        set({
+          version: result.version,
+          journalPage: { ...get().journalPage, total: result.total, totalPages, loading: false },
+        });
+        return;
+      }
+
+      // 页码越界（例如其它页面删除了数据）：回落到最后一页，避免停在空页
+      if (result.journals.length === 0 && offset > 0 && targetPage > totalPages) {
+        await get().loadPage(status, nextQuery, dsId, totalPages);
+        return;
+      }
+
+      const rows = preferPending(result.journals.map(migrateJournal));
+      set({
+        journals: mergeCache(rows),
+        version: result.version,
+        journalPage: {
+          status,
+          ids: rows.map(j => j.id),
+          total: result.total,
+          page: targetPage,
+          pageSize,
+          totalPages,
+          loading: false,
+          error: null,
+        },
+      });
+      void writePage({
+        datasetId: dsId,
+        resource: JOURNAL_RESOURCE,
+        queryKey,
+        items: rows,
+        nextCursor: null,
+        total: result.total,
+        version: result.version,
+        idOf: j => j.id,
+      });
+    } catch (e) {
+      if (currentDatasetId !== dsId) return;
+      set({
+        journalPage: { ...get().journalPage, loading: false, error: e instanceof Error ? e.message : '读取失败' },
+      });
+    }
+  },
+
+  // 跳到指定页：视图与筛选条件保持不变
+  goToPage: async (page, datasetId) => {
+    const state = get().journalPage;
+    await get().loadPage(state.status, get().journalQuery, datasetId, page);
+  },
+
+  // 拖动 / 上移下移后的顺序落库：走现有 outbox，一处提交
+  reorderDrafts: async (movedId, nextOrder, datasetId) => {
+    const dsId = datasetId || currentDatasetId;
+    if (!dsId || nextOrder.length === 0) return;
+    currentDatasetId = dsId;
+    const state = get();
+    const page = state.journalPage;
+    const rows = nextOrder
+      .map(id => state.journals.find(j => j.id === id))
+      .filter((j): j is TradingJournal => !!j);
+    const index = nextOrder.indexOf(movedId);
+    if (index < 0) return;
+
+    // 视图顺序先乐观更新，不等网络
+    set({ journalPage: { ...page, ids: nextOrder } });
+
+    // 跨页时整表重编号，否则页内序号会和其它页冲突
+    if (page.totalPages > 1) {
+      await renumberAllDrafts(dsId, nextOrder);
+      return;
+    }
+
+    const valueOf = (row?: TradingJournal) => (typeof row?.sortOrder === 'number' ? row.sortOrder : 0);
+    const prev = rows[index - 1];
+    const next = rows[index + 1];
+    const updates = new Map<string, number>();
+
+    if (prev && next && valueOf(next) - valueOf(prev) > 1e-6) {
+      // 取相邻两行中点，只改被移动的这一行
+      updates.set(movedId, valueOf(prev) + (valueOf(next) - valueOf(prev)) / 2);
+    } else if (prev && !next) {
+      updates.set(movedId, valueOf(prev) + 10);
+    } else if (!prev && next) {
+      updates.set(movedId, valueOf(next) - 10);
+    } else if (prev && next) {
+      // 中点间隔耗尽（或尚未初始化序号）：单页就是整表，直接按显示顺序重编号
+      rows.forEach((row, i) => updates.set(row.id, (i + 1) * 10));
+    }
+
+    if (updates.size === 0) return;
+    await applyDraftSortValues(updates);
   },
 
   createSnapshot: async (stages: JournalStageConfig[], datasetId: string) => {
@@ -630,6 +951,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       createdAt: new Date().toISOString(),
     };
     set({ journals: [...get().journals, newJournal] });
+    cacheJournal(newJournal);
     // 只有出站队列真正落盘后才删除草稿，避免「提交后刷新」既没推送到服务端也丢了输入
     const durable = await markTouched(newJournal.id, 'upsert');
     if (durable) localStorage.removeItem(`${DRAFT_PREFIX}${draft.entryId}`);
@@ -642,16 +964,25 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       j.id === journalId ? { ...j, status: 'submitted' as const } : j
     );
     set({ journals: newJournals });
+    // 当前视图是「当前交易」时，提交后该行不再属于本视图
+    if (get().journalPage.status === 'draft') dropFromPageView([journalId]);
+    const updated = newJournals.find(j => j.id === journalId);
+    if (updated) cacheJournal(updated);
     void markTouched(journalId, 'upsert');
   },
 
-  // 撤回提交 → status: 'draft'（回退到中间态）
+  // 撤回提交 → status: 'draft'（回退到中间态，并排到「当前交易」末尾）
   revertJournal: async (journalId: string, datasetId: string) => {
     currentDatasetId = datasetId;
     const newJournals = get().journals.map(j =>
-      j.id === journalId ? { ...j, status: 'draft' as const } : j
+      // 清掉旧序号，交给服务端按「当前交易」最大值 + 10 重新分配
+      j.id === journalId ? { ...j, status: 'draft' as const, sortOrder: undefined } : j
     );
     set({ journals: newJournals });
+    // 当前视图是「已存储日志」时，回退后该行不再属于本视图
+    if (get().journalPage.status === 'submitted') dropFromPageView([journalId]);
+    const updated = newJournals.find(j => j.id === journalId);
+    if (updated) cacheJournal(updated);
     void markTouched(journalId, 'upsert');
   },
 
@@ -662,6 +993,8 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       j.id === journalId ? { ...j, ...partial } : j
     );
     set({ journals: newJournals });
+    const updated = newJournals.find(j => j.id === journalId);
+    if (updated) cacheJournal(updated);
     void markTouched(journalId, 'upsert');
   },
 
@@ -671,14 +1004,18 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       j.id === journalId ? { ...j, recordId } : j
     );
     set({ journals: newJournals });
+    const updated = newJournals.find(j => j.id === journalId);
+    if (updated) cacheJournal(updated);
     void markTouched(journalId, 'upsert');
   },
 
   deleteJournal: async (journalId: string, datasetId: string) => {
     currentDatasetId = datasetId;
     set({ journals: get().journals.filter(j => j.id !== journalId) });
+    dropFromPageView([journalId]);
+    void removeRows(datasetId, JOURNAL_RESOURCE, [journalId]);
     void markTouched(journalId, 'delete');
-    // 孤儿快照在写回成功后再回收，避免删除失败导致历史日志失去配置引用
+    // 快照回收需要全表引用判断，已不再由前端执行
   },
 
   updateWatchlist: async (watchlist: string[], datasetId: string) => {

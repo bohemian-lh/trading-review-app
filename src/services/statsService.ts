@@ -1,6 +1,6 @@
 // 预计算统计结果服务（D1 /api/stats）
-// 读取直接取结果表；刷新由服务端用 SQL 重算，前端不再计算总览与配置化序列。
-import type { AnalysisSeriesResult, MonthlyAnalysis, StatOverview } from '@/types';
+// 读取直接取结果表；刷新由服务端用 SQL 重算，前端不再计算总览、周期统计与配置化序列。
+import type { AnalysisSeriesResult, CycleStats, MonthlyAnalysis, StatOverview } from '@/types';
 
 const API_BASE = '';
 
@@ -9,6 +9,11 @@ export interface StatsSnapshot {
   overview: StatOverview | null;
   monthly: MonthlyAnalysis[];
   analysisResults: AnalysisSeriesResult[];
+  /** 周期统计：统计类型 → 周期列表（服务端按每 30 条一批生成） */
+  cycleStats: Record<string, CycleStats[]>;
+  cycleStatsGeneratedAt: number | null;
+  /** 结果落后于记录的类别（overview / month / dimension / tab / stress / cycle） */
+  staleKinds: string[];
 }
 
 export interface RecomputeResult {
@@ -31,6 +36,9 @@ export async function fetchStats(datasetId: string): Promise<StatsSnapshot | nul
       overview: data.overview ?? null,
       monthly: Array.isArray(data.monthly) ? data.monthly : [],
       analysisResults: Array.isArray(data.analysisResults) ? data.analysisResults : [],
+      cycleStats: data.cycleStats && typeof data.cycleStats === 'object' ? data.cycleStats : {},
+      cycleStatsGeneratedAt: typeof data.cycleStatsGeneratedAt === 'number' ? data.cycleStatsGeneratedAt : null,
+      staleKinds: Array.isArray(data.staleKinds) ? data.staleKinds.filter((k: unknown) => typeof k === 'string') : [],
     };
   } catch {
     return null;
